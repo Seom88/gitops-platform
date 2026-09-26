@@ -1,0 +1,32 @@
+# Declarative database management (CNPG Database CRD).
+# The Cluster (wave 1, see pg-immich.yaml) only stages the vchord extension
+# *files* via the sidecar image; the extensions themselves must be created
+# inside the `immich` database as superuser. The `immich` app user is not a
+# superuser, so its own `CREATE EXTENSION IF NOT EXISTS vchord CASCADE`
+# fails with `permission denied to create extension "vector"`.
+# Mirrors the official immich-charts reference:
+#   local/cloudnative-pg.yaml + local/cloudnative-pg-database.yaml
+# Order matters: vector first (vchord CASCADEs onto it), cube before
+# earthdistance (earthdistance depends on cube).
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: immich-database-immich
+  annotations:
+    # Wave 1, alongside the Cluster: CNPG creates the extensions as soon as
+    # the cluster bootstraps, before the server Deployment (wave 2) starts.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  name: immich
+  owner: immich
+  cluster:
+    name: immich-database
+  extensions:
+    - name: vector
+      ensure: present
+    - name: vchord
+      ensure: present
+    - name: earthdistance
+      ensure: present
+    - name: cube
+      ensure: present
