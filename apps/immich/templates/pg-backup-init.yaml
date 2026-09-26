@@ -1,3 +1,0 @@
-{{- if .Values.backup.enabled }}
-{{ include "cnpg-backup.job" $ }}
-{{- end }}
