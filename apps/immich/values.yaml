@@ -42,6 +42,7 @@ immich:
           #         topologyKey: kubernetes.io/hostname
         containers:
           main:
+            image: { repository: ghcr.io/immich-app/immich-server, tag: v3.2.2, pullPolicy: IfNotPresent }
             env:
               DB_HOSTNAME:
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: host } }
@@ -54,6 +55,9 @@ immich:
   machine-learning:
     controllers:
       main:
+        containers:
+          main:
+            image: { repository: ghcr.io/immich-app/immich-machine-learning, tag: v3.2.2, pullPolicy: IfNotPresent }
         # pod:
           # affinity:
           #   podAntiAffinity:
