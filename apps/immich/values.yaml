@@ -23,6 +23,13 @@ backup:
   # "3 backup points" policy is expressed as 3d (one backup/day ≈ 3 points).
   retentionPolicy: "3d"
 
+# Naming contract for the cnpg-seaweedfs-backup library chart
+# (charts/cnpg-seaweedfs-backup). All other backup settings stay in `backup`
+# above; the library fills image/waves/seaweedfs defaults.
+cnpgBackup:
+  app: immich
+  cluster: immich-database
+
 immich:
   immich:
     metrics:

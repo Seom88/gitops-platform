@@ -2,5 +2,8 @@ dependencies:
 - name: immich
   repository: oci://ghcr.io/immich-app/immich-charts
   version: 0.13.2
-digest: sha256:35603c572e4cf2f30631e8e3cf3f2caffd1ebbcfe824ddd6d2b0538672acf5af
-generated: "2026-09-22T14:38:27.271355723-05:00"
+- name: cnpg-seaweedfs-backup
+  repository: file://../../charts/cnpg-seaweedfs-backup
+  version: 0.1.0
+digest: sha256:9326783c6d7dc999bfaf36562381a5f9a96ebcb2c327f9a07b34e23864cfce2b
+generated: "2026-09-26T18:07:21.267691938-05:00"

@@ -153,44 +153,8 @@ spec:
             - port: "3003"
               protocol: TCP
 ---
-# CNPG backup data plane -> SeaweedFS S3 (immich-seaweedfs-backups). Scoped to
-# the CNPG instance pods (label cnpg.io/cluster set by the operator) and the
-# backup-init hook pods; destination narrowed to the S3 pods on 8333 only.
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: immich-backup-to-seaweedfs-s3
-  namespace: immich
-spec:
-  endpointSelector:
-    matchLabels:
-      cnpg.io/cluster: immich-database
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: seaweedfs
-            k8s:app.kubernetes.io/component: s3
-      toPorts:
-        - ports:
-            - port: "8333"
-              protocol: TCP
----
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: immich-backup-init-to-seaweedfs-s3
-  namespace: immich
-spec:
-  endpointSelector:
-    matchLabels:
-      app.kubernetes.io/name: immich-backup-init
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: seaweedfs
-            k8s:app.kubernetes.io/component: s3
-      toPorts:
-        - ports:
-            - port: "8333"
-              protocol: TCP
+# CNPG backup data plane -> SeaweedFS S3 (library: cnpg-backup.ciliumEgress).
+{{- if .Values.backup.enabled }}
+{{ include "cnpg-backup.ciliumEgress" $ }}
+{{- end }}
 {{- end }}
