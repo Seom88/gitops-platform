@@ -30,7 +30,7 @@ immich:
   server:
     controllers:
       main:
-        pod:
+        # pod:
           # affinity:
           #   podAntiAffinity:
           #     requiredDuringSchedulingIgnoredDuringExecution:
@@ -54,7 +54,7 @@ immich:
   machine-learning:
     controllers:
       main:
-        pod:
+        # pod:
           # affinity:
           #   podAntiAffinity:
           #     requiredDuringSchedulingIgnoredDuringExecution:
