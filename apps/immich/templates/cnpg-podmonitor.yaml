@@ -1,4 +1,3 @@
-{{- if not (eq (index .Values "kube-prometheus-stack" "enabled") false) }}
 # CNPG PodMonitor mirror managed by monitoring chart.
 # The CNPG operator auto-creates PodMonitor `immich-database` (port `metrics`,
 # selector cnpg.io/cluster + podRole=instance) but without the
@@ -32,4 +31,3 @@ spec:
       scheme: http
       interval: 60s
       scrapeTimeout: 10s
-{{- end }}
