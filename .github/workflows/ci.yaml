@@ -118,6 +118,22 @@ jobs:
           done
           exit $failed
 
+      - name: Lint shared library charts
+        run: |
+          set -e
+          failed=0
+          for dir in charts/*/; do
+            if [ -f "${dir}Chart.yaml" ]; then
+              echo "::group::helm lint $dir"
+              if ! helm lint "$dir"; then
+                echo "::error::helm lint failed for $dir"
+                failed=1
+              fi
+              echo "::endgroup::"
+            fi
+          done
+          exit $failed
+
       - name: ShellCheck bootstrap scripts
         run: |
           if ! command -v shellcheck >/dev/null 2>&1; then

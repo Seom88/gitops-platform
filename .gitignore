@@ -1,4 +1,8 @@
-charts/
+# Vendored subchart archives (output of `helm dependency build` inside each
+# deployable chart) — the shared library source in /charts stays tracked.
+**/charts/
+!/charts/
+!/charts/**
 .env
 *~
 *.bak

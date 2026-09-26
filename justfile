@@ -331,7 +331,7 @@ validate-platform:
     helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
     helm repo update >/dev/null 2>&1 || true
     failed=0
-    for dir in platform/*/; do
+    for dir in platform/*/ charts/*/; do
       if [ -f "${dir}Chart.yaml" ]; then
         echo "==> helm dependency build $dir"
         # Use update to handle out-of-sync Chart.lock (e.g. vault)

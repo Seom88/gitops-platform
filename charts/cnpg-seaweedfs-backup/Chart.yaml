@@ -1,0 +1,8 @@
+apiVersion: v2
+name: cnpg-seaweedfs-backup
+description: "Shared CloudNativePG Barman backup stack on SeaweedFS S3 (ObjectStore, ScheduledBackup, RBAC, backup-init hook, Cilium egress). Library chart — only named templates, no manifests of its own."
+type: library
+version: 0.1.0
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88
