@@ -1,6 +1,9 @@
 ciliumNetworkPolicy:
   enabled: true
 
+kube-prometheus-stack:
+  enabled: true
+
 developmentApp:
   enabled: false
 
