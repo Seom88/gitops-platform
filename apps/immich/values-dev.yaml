@@ -9,7 +9,7 @@ developmentApp:
 backup:
   bucket: immich-db-backups-dev
   iamUser: immich-backup-dev
-  secretName: immich-backup-s3-credentials-dev
+  secretName: immich-backup-s3-credentials-dev # pragma: allowlist secret
 
 tailscaleIngress:
   immich:
