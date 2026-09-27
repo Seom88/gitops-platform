@@ -64,7 +64,7 @@
     {
       "description": "Images/charts without digest support - tags only (helmv3 OCI group)",
       "matchManagers": ["helmv3"],
-      "matchPackageNames": ["immich"],
+      "matchPackagePatterns": ["immich"],
       "pinDigests": false
     },
     {
