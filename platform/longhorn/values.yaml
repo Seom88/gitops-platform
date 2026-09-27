@@ -14,9 +14,10 @@ s3:
 # Auto-restore data volumes from S3 backups on (re)start — idempotent
 # ArgoCD Sync-hook Job (platform/longhorn/templates/job-auto-restore.yaml,
 # local wave 2, after bucket-init wave 0 and csi-wait wave 1).
-# Restores ONLY backups labeled volume=default (default-daily-backup group);
-# vault-hourly is snapshot-only and no-snapshot volumes produce no Backup CRs,
-# so Vault/SeaweedFS/monitoring are never touched.
+# Restores every backup labeled backup=daily (default-daily-backup plus the
+# seaweedfs/monitoring/cnpg backup-only groups); vault-hourly is snapshot-only
+# and legacy no-snapshot volumes produce no Backup CRs, so Vault and fully
+# excluded volumes are never touched.
 autoRestore:
   enabled: true
   # Must mirror longhorn.defaultSettings.defaultReplicaCount (single-zone homelab).

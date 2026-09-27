@@ -7,18 +7,20 @@
 # always BEFORE any platform/app PVC can provision an empty replacement volume.
 # No syncwave has to be stopped and no manual UI/CR restore is needed.
 #
-# What it does: for every BackupVolume in the `default` group (label
-# `volume=default`, set by the default-daily-backup RecurringJob), resolve the
-# latest Completed Backup and re-create the Longhorn Volume CR from its exact
-# backup URL + exact byte size (the admission webhook rejects anything else,
-# including bare `?volume=x` URLs without a backup ID). Volumes that already
-# exist are skipped — never overwrite, never delete — so re-running on a
-# healthy cluster is a safe no-op.
+# What it does: for every S3 backup produced by a daily backup RecurringJob
+# (label `backup=daily`, set by default-daily-backup AND the backup-only jobs
+# seaweedfs-daily-backup, monitoring-daily-backup, cnpg-daily-backup), resolve
+# the latest Completed Backup and re-create the Longhorn Volume CR from its
+# exact backup URL + exact byte size (the admission webhook rejects anything
+# else, including bare `?volume=x` URLs without a backup ID). Volumes that
+# already exist are skipped — never overwrite, never delete — so re-running on
+# a healthy cluster is a safe no-op.
 #
 # Vault is NEVER restored here: vault-hourly-snapshot is task snapshot (local
-# only, no Backup CRs), so the `-l volume=default` selector excludes it by
-# construction. SeaweedFS/monitoring carry the no-snapshot marker for the same
-# reason. System Backup Bundle is intentionally not used (manual, GitOps-hostile).
+# only, no Backup CRs, no `backup=daily` label), so the selector excludes it by
+# construction. The legacy `no-snapshot` marker group (no job bound) likewise
+# produces no Backup CRs. System Backup Bundle is intentionally not used
+# (manual, GitOps-hostile).
 #
 # Scope v1: Volume CRs only (namespaced RBAC, no ClusterRole). Rebinding
 # workloads to restored volumes (PV/PVC surgery) stays a documented phase-2
@@ -96,7 +98,7 @@ spec:
               set -euo pipefail
               NS="longhorn-system"
               REPLICAS="{{ .Values.autoRestore.numberOfReplicas }}"
-              echo "[auto-restore] Longhorn volume auto-restore from S3 backups (default group only)..."
+              echo "[auto-restore] Longhorn volume auto-restore from S3 backups (all backup=daily groups)..."
 
               # Wait for the Longhorn backup CRDs to be served (manager may still
               # be coming up even after CSI is ready).
@@ -116,15 +118,17 @@ spec:
                 exit 1
               fi
 
-              # One line per default-group backup:
+              # One line per backup-group backup (`backup=daily` covers default,
+              # seaweedfs, monitoring and cnpg backup jobs; snapshot-only jobs
+              # carry no such label):
               #   <backup-name> <backup-volume-label> <spec.volumeName> <state> <url> <volumeSize> <creationTimestamp>
               # URL/size/timestamp contain no spaces, so space-splitting is safe.
               # Label key needs bracket syntax (dash in key name).
-              ROWS="$(kubectl get backups.longhorn.io -n "$NS" -l volume=default \
+              ROWS="$(kubectl get backups.longhorn.io -n "$NS" -l backup=daily \
                 -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.labels['\''backup-volume'\'']}{" "}{.spec.volumeName}{" "}{.status.state}{" "}{.status.url}{" "}{.status.volumeSize}{" "}{.metadata.creationTimestamp}{"\n"}{end}' \
                 2>/dev/null || true)"
               if [ -z "${ROWS//[[:space:]]/}" ]; then
-                echo "[auto-restore] No default-group backups found — nothing to restore."
+                echo "[auto-restore] No backup-group backups found — nothing to restore."
                 exit 0
               fi
 
@@ -143,7 +147,7 @@ spec:
               done <<< "$ROWS"
 
               if [ "${#BEST_TS[@]}" -eq 0 ]; then
-                echo "[auto-restore] No Completed default-group backup with URL+size — nothing to restore."
+                echo "[auto-restore] No Completed backup-group backup with URL+size — nothing to restore."
                 exit 0
               fi
 
