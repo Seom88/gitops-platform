@@ -71,3 +71,10 @@ tailscaleIngress:
     hostname: grafana-dev
   prometheus:
     hostname: prometheus-dev
+
+# Dev backup identity: separate bucket/user/secret so dev and prod never share
+# a backup store or credentials. Schedule/retention mirror prod.
+backup:
+  bucket: grafana-db-backups-dev
+  iamUser: grafana-backup-dev
+  secretName: grafana-backup-s3-credentials-dev # pragma: allowlist secret (name reference, not a value)

@@ -153,6 +153,35 @@ kube-prometheus-stack:
       # per-target fast scrapes (e.g. ecoflow 15-30s) render smoothly here.
       dashboards:
         min_refresh_interval: 30s
+      # Shared Postgres (CNPG grafana-database, gitops wave 5) so both replicas
+      # share users/tokens/dashboards instead of per-pod SQLite (which caused
+      # the 401 "user token not found" login loop). Non-secret parts live here;
+      # the password comes from the CNPG-generated grafana-database-app Secret
+      # via envValueFrom below — never in this ConfigMap-rendered ini.
+      # Fresh DB on first sync: sqlite history is NOT migrated. Git-provisioned
+      # dashboards/datasources reappear automatically; admin login still comes
+      # from grafana-admin-credentials.
+      database:
+        path: /var/lib/grafana/grafana.db
+        host: grafana-database-rw.monitoring.svc.cluster.local
+        # REQUIRED: without type=postgres Grafana ignores host/port/name/user
+        # and silently keeps per-pod SQLite (the original 401 bug).
+        type: postgres
+        port: 5432
+        name: grafana
+        user: grafana
+        # Grafana default for postgres + CNPG accepts plaintext (immich
+        # connects the same way with no TLS config).
+        ssl_mode: disable
+    # DB password from CNPG (Secret created at wave 5 by the grafana-database
+    # app, after this monitoring app at wave 3). On first install Grafana pods
+    # wait (CreateContainerConfigError) until the Secret exists — kubelet
+    # retries on its own, no manual step needed.
+    envValueFrom:
+      GF_DATABASE_PASSWORD:
+        secretKeyRef:
+          name: grafana-database-app # pragma: allowlist secret
+          key: password
 
     # Add Loki as a data source
     additionalDataSources:
@@ -410,3 +439,38 @@ tailscaleIngress:
   prometheus:
     enabled: true
     hostname: prometheus
+
+# Shared CNPG Postgres for Grafana (2 replicas, one DB — fixes the 401
+# sqlite-per-pod split). Cluster + backups live in this chart (operator is
+# wave -1, so the CRD exists before this wave-3 app syncs). Templates:
+# grafana-database-*.yaml. Mirrors the apps/immich backup pattern.
+# Shares ciliumNetworkPolicy.enabled / developmentApp.enabled above.
+backup:
+  enabled: true
+  endpoint: http://seaweedfs-s3.seaweedfs.svc:8333
+  region: us-east-1
+  bucket: grafana-db-backups
+  iamUser: grafana-backup
+  secretName: grafana-backup-s3-credentials # pragma: allowlist secret
+  # 04:00 UTC daily, matching Longhorn default-daily-backup (retain 3).
+  schedule: "0 4 * * *"
+  # Recovery-window retention. The plugin CRD only accepts `<n>[dwm]`, so the
+  # "3 backup points" policy is expressed as 3d (one backup/day ≈ 3 points).
+  retentionPolicy: "3d"
+
+# Naming contract for the cnpg-seaweedfs-backup library chart
+# (charts/cnpg-seaweedfs-backup). namespace is explicit here because the
+# repo convention (namespace == app slug) does not hold: the cluster lives
+# in `monitoring`, not `grafana`.
+cnpgBackup:
+  app: grafana
+  cluster: grafana-database
+  namespace: monitoring
+
+# Single-node: 1 instance. Grafana HA comes from 2 stateless-ish pods
+# sharing this DB, not from Postgres replicas.
+cnpg:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
+  storage:
+    size: 2Gi

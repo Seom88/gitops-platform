@@ -1,0 +1,38 @@
+# Shared Postgres for Grafana (2 replicas, one DB).
+# Unlike immich (pg-immich.yaml) this cluster needs NO extensions and NO
+# Database CR: Grafana uses plain tables, and initdb below creates the
+# database + owner. Connection details land in the CNPG-generated
+# `grafana-database-app` Secret (keys host/username/password/dbname),
+# consumed below by the Grafana subchart via GF_DATABASE_* env (see values.yaml).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: grafana-database
+  annotations:
+    # Local wave 1: runs after the backup-init Sync hook (wave 0), so the
+    # ObjectStore credentials Secret already exists when WAL archiving starts.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  monitoring:
+    enablePodMonitor: true
+  instances: {{ .Values.cnpg.instances }}
+  imageName: {{ .Values.cnpg.imageName }}
+{{- if .Values.backup.enabled }}
+  # WAL archiving via the plugin-barman-cloud CNPG-I plugin (ObjectStore
+  # grafana-backup-store, see grafana-database-backup.yaml). No legacy .spec.backup section:
+  # retention lives on the ObjectStore (.spec.retentionPolicy).
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      enabled: true
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: grafana-backup-store
+{{- end }}
+
+  bootstrap:
+    initdb:
+      database: grafana
+      owner: grafana
+
+  storage:
+    size: {{ .Values.cnpg.storage.size }}

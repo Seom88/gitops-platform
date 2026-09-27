@@ -8,5 +8,8 @@ dependencies:
 - name: alloy
   repository: https://grafana.github.io/helm-charts
   version: 1.12.1
-digest: sha256:849af8007f7f9d1726da0daeece10b1bbe8da2794df234cafdf5648cba104711
-generated: "2026-09-23T01:33:40.526868731Z"
+- name: cnpg-seaweedfs-backup
+  repository: file://../../charts/cnpg-seaweedfs-backup
+  version: 0.1.0
+digest: sha256:fa0219528d93be9b740bceee6cc783503e465bcbc846a8c5a0588ff3466d63ba
+generated: "2026-09-26T19:22:41.402948647-05:00"

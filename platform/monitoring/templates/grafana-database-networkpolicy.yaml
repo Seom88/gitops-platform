@@ -1,0 +1,52 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicy for the grafana-database CNPG cluster (namespace monitoring).
+# Additive to this chart's other policies (DNS egress already covers these
+# pods via monitoring-allow-dns). Covers: Grafana -> postgres 5432, CNPG
+# operator reconciliation 5432+8000, Prometheus scraping 9187+8000.
+# Pod ports only (post-DNAT). Kubelet probes need no rule (immich precedent).
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana-database-allow-ingress
+  namespace: monitoring
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: grafana-database
+  ingress:
+    # Grafana pods -> postgres 5432 (shared DB for both replicas)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:app.kubernetes.io/name: grafana
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    # CNPG operator reconciliation (lives in cnpg-system) -> postgres 5432 + metrics 8000
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+    # Prometheus scraping from monitoring -> CNPG metrics 8000/9187
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+            - port: "9187"
+              protocol: TCP
+---
+# CNPG backup data plane -> SeaweedFS S3 (library: cnpg-backup.ciliumEgress).
+{{- if .Values.backup.enabled }}
+{{ include "cnpg-backup.ciliumEgress" $ }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,5 @@
+{{- if .Values.backup.enabled }}
+{{ include "cnpg-backup.job" $ }}
+{{ include "cnpg-backup.rbac" $ }}
+{{ include "cnpg-backup.store" $ }}
+{{- end }}

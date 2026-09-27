@@ -17,7 +17,7 @@ The homelab runs on 3 worker VMs. The user plans to migrate to bare metal with a
 | Immich server | 1 replica | **1 replica** | Unchanged. |
 | Immich machine-learning | 1 replica | **1 replica** | GPU workload — only 1 GPU available on single node. |
 | Homepage | 1 replica | **2 replicas** | Stateless dashboard; zero-downtime restarts. |
-| Grafana | 1 replica (default) | **2 replicas** | Stateless UI; zero-downtime restarts. |
+| Grafana | 1 replica (default) | **2 replicas + shared CNPG Postgres** | Stateful (SQLite by default): 2 replicas on SQLite caused the 401 `user token not found` login loop. Zero-downtime restarts kept via the shared `grafana-database` cluster (in platform/monitoring, wave 3; operator at wave -1). |
 | Alertmanager | 1 replica | **2 replicas** | Stateless alerting; zero-downtime restarts. |
 | Loki gateway | 1 replica (default) | **1 replica** | Chart's hard `podAntiAffinity` cannot be disabled via `affinity: {}` (Helm deep-merge preserves it); 2 replicas unschedulable on single node. Zero-downtime restarts lost. |
 | Loki singleBinary | 1 replica | **1 replica** | Stateful, 1 PVC. |
