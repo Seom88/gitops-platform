@@ -11,6 +11,17 @@ s3:
   bucket: longhorn-homelab
   region: us-east-1
 
+# Auto-restore data volumes from S3 backups on (re)start — idempotent
+# ArgoCD Sync-hook Job (platform/longhorn/templates/job-auto-restore.yaml,
+# local wave 2, after bucket-init wave 0 and csi-wait wave 1).
+# Restores ONLY backups labeled volume=default (default-daily-backup group);
+# vault-hourly is snapshot-only and no-snapshot volumes produce no Backup CRs,
+# so Vault/SeaweedFS/monitoring are never touched.
+autoRestore:
+  enabled: true
+  # Must mirror longhorn.defaultSettings.defaultReplicaCount (single-zone homelab).
+  numberOfReplicas: 1
+
 longhorn:
   # Default backup target (RustFS S3-compatible). Endpoint + credentials come
   # from the bootstrap-created Secret longhorn-system/longhorn-backup-secret
