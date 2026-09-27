@@ -16,16 +16,32 @@
 #                     `recurring-job-group.longhorn.io/*` label at all. A volume
 #                     with at least one such label leaves the `default` group.
 #                     Job below: every 2h (`0 */2 * * *`), retain 12 = 24h coverage.
-#   - no-snapshot  -> MARKER group, no RecurringJob is bound to it. Labeling a
-#                     volume with it opts the volume OUT of `default` (the volume
-#                     now has a group label, so default no longer auto-applies)
-#                     while scheduling nothing. SeaweedFS + monitoring volumes
-#                     MUST carry this label: SeaweedFS manages its own
-#                     replication/erasure coding, and Prometheus/Loki data is
-#                     reproducible or S3-backed — Longhorn snapshots on them only
-#                     waste space and I/O:
-#                       kubectl -n longhorn-system label volume <seaweed|mon-volume> \
-#                         recurring-job-group.longhorn.io/no-snapshot=enabled
+#   - seaweedfs-backup -> backup-only daily 05:00, retain 3. SeaweedFS manages
+#                     its own replication; snapshots only waste I/O, so NO
+#                     snapshot job is bound. Label SeaweedFS volumes explicitly:
+#                       kubectl -n longhorn-system label volume <seaweed-volume> \
+#                         recurring-job-group.longhorn.io/seaweedfs-backup=enabled
+#   - monitoring-backup -> backup-only daily 05:30, retain 3. Same rationale
+#                     (reproducible / S3-backed data). Label:
+#                       kubectl -n longhorn-system label volume <mon-volume> \
+#                         recurring-job-group.longhorn.io/monitoring-backup=enabled
+#   - cnpg-backup -> backup-only daily 06:00, retain 3. CNPG clusters already
+#                     have app-consistent Barman backups to SeaweedFS S3
+#                     (immich-db-backups, grafana-db-backups); Longhorn 2h
+#                     crash-consistent snapshots add I/O for little value, but
+#                     the daily Longhorn S3 copy stays as the SeaweedFS-
+#                     independent off-site copy. Label DB data volumes:
+#                       kubectl -n longhorn-system label volume <db-volume> \
+#                         recurring-job-group.longhorn.io/cnpg-backup=enabled
+#                     IMPORTANT: moving a volume OUT of snapshots requires
+#                     REMOVING the default label (a volume with both labels gets
+#                     both jobs):
+#                       kubectl -n longhorn-system label volume <vol> \
+#                         recurring-job-group.longhorn.io/default-
+#   - no-snapshot  -> LEGACY MARKER, no RecurringJob bound. Kept only for
+#                     volumes intentionally excluded from ALL jobs. Do NOT use
+#                     for SeaweedFS/monitoring anymore — relabel them to the
+#                     backup groups above (remove no-snapshot, add new label).
 #
 # IMPORTANT: the label must live on the Longhorn Volume CR in `longhorn-system`,
 # NOT on the PVC — the CSI provisioner does not copy PVC labels to Volume CRs,
@@ -114,9 +130,86 @@ spec:
   labels:
     backup: daily
     volume: default
+---
+# Daily S3 backup for SeaweedFS object data (backup-only, NO snapshots).
+# SeaweedFS manages its own replication; snapshots only waste I/O. Label:
+#   kubectl -n longhorn-system label volume <seaweed-volume> \
+#     recurring-job-group.longhorn.io/seaweedfs-backup=enabled
+# 05:00 avoids overlapping Velero daily-full (02:00) and default-daily-backup (04:00).
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: seaweedfs-daily-backup
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: longhorn
+spec:
+  name: seaweedfs-daily-backup
+  cron: "0 5 * * *"
+  task: backup
+  groups:
+    - seaweedfs-backup
+  retain: 3
+  concurrency: 1
+  labels:
+    backup: daily
+    volume: seaweedfs
+---
+# Daily S3 backup for monitoring volumes (backup-only, NO snapshots).
+# Prometheus/Loki data is reproducible or S3-backed. Label:
+#   kubectl -n longhorn-system label volume <mon-volume> \
+#     recurring-job-group.longhorn.io/monitoring-backup=enabled
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: monitoring-daily-backup
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: longhorn
+spec:
+  name: monitoring-daily-backup
+  cron: "30 5 * * *"
+  task: backup
+  groups:
+    - monitoring-backup
+  retain: 3
+  concurrency: 1
+  labels:
+    backup: daily
+    volume: monitoring
+---
+# Daily S3 backup for CNPG database data volumes (backup-only, NO snapshots).
+# Barman ScheduledBackups already cover PITR; this is the independent RustFS
+# copy. Move each DB data volume OUT of default (remove default label, add new):
+#   kubectl -n longhorn-system label volume <db-volume> recurring-job-group.longhorn.io/default-
+#   kubectl -n longhorn-system label volume <db-volume> recurring-job-group.longhorn.io/cnpg-backup=enabled
+# 06:00 avoids overlapping Velero (02:00), default-daily-backup (04:00),
+# seaweedfs (05:00) and monitoring (05:30) jobs.
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: cnpg-daily-backup
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: longhorn
+spec:
+  name: cnpg-daily-backup
+  cron: "0 6 * * *"
+  task: backup
+  groups:
+    - cnpg-backup
+  retain: 3
+  concurrency: 1
+  labels:
+    backup: daily
+    volume: cnpg
 # ---------------------------------------------------------------------------
 # Optional future jobs (uncomment when needed). Same opt-in pattern: label the
-# target volumes with `recurring-job-group.longhorn.io/<group>: enabled`.
+# target volumes with `recurring-job-group.longhorn.io/<group>: enabled`,
+# remembering to REMOVE the default label so the volume leaves both default jobs.
 # NOTE: seaweedfs/monitoring stay intentionally EXCLUDED via the `no-snapshot`
 # marker label (see header) — only uncomment these if that policy is reversed
 # and the volumes are relabeled to the corresponding group.
