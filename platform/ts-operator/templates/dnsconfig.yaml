@@ -19,4 +19,4 @@ spec:
   nameserver:
     image:
       repo: tailscale/k8s-nameserver
-      tag: stable
+      tag: 1.102.4
