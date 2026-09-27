@@ -57,6 +57,11 @@
       "pinDigests": true
     },
     {
+      "description": "Tailscale DNSConfig CRD accepts only repo+tag, digest tracked in comment",
+      "matchPackageNames": ["tailscale/k8s-nameserver"],
+      "pinDigests": false
+    },
+    {
       "description": "kubectl - group the 6 jobs, pin digest",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["bitnami/kubectl"],
