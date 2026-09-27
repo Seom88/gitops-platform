@@ -222,10 +222,10 @@ runStatusChecks() {
       LONGHORN_TIMEOUT=300
       LONGHORN_INTERVAL=5
       LONGHORN_ELAPSED=0
-      echo -ne "${YELLOW}  [Longhorn] Waiting for StorageClasses (longhorn/longhorn-prod) and CSI to be ready...${NC}"
+      echo -ne "${YELLOW}  [Longhorn] Waiting for StorageClasses (longhorn) and CSI to be ready...${NC}"
       while [ $LONGHORN_ELAPSED -lt $LONGHORN_TIMEOUT ]; do
         SC_READY="false"
-        if kubectl get sc longhorn >/dev/null 2>&1 || kubectl get sc longhorn-prod >/dev/null 2>&1; then
+        if kubectl get sc longhorn >/dev/null 2>&1; then
           SC_READY="true"
         fi
 
