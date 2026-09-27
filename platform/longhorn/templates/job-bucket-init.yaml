@@ -38,7 +38,7 @@ spec:
           # Digest-pinned (fail-closed Trivy gate); Renovate-tracked (regex manager
           # covers platform/*/templates). Refresh:
           # skopeo inspect docker://amazon/aws-cli:<tag> | jq -r .Digest
-          image: amazon/aws-cli:2.37.0@sha256:337494c2047176fe9abcf45a5d1eaf1c2c62cae40953284fb1143b5c6170f065
+          image: amazon/aws-cli:2.37.4@sha256:fdd8d1fcbea9c371678dee5a40df8b178c7a781b4586605756ee28114c97ead6
           imagePullPolicy: IfNotPresent
           env:
             - name: AWS_ACCESS_KEY_ID
