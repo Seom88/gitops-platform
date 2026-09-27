@@ -13,6 +13,9 @@ kind: PodMonitor
 metadata:
   name: grafana-database-mirror
   namespace: monitoring
+  annotations:
+    # Wave -1 with the rest of the DB set.
+    argocd.argoproj.io/sync-wave: "-1"
   labels:
     release: monitoring
     app.kubernetes.io/name: grafana-database

@@ -10,6 +10,10 @@ kind: CiliumNetworkPolicy
 metadata:
   name: grafana-database-allow-ingress
   namespace: monitoring
+  annotations:
+    # Wave -1 with the rest of the DB set (Cluster, store, hook): the policy
+    # must exist before the CNPG pods start talking.
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   endpointSelector:
     matchLabels:

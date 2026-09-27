@@ -9,9 +9,12 @@ kind: Cluster
 metadata:
   name: grafana-database
   annotations:
-    # Local wave 1: runs after the backup-init Sync hook (wave 0), so the
-    # ObjectStore credentials Secret already exists when WAL archiving starts.
-    argocd.argoproj.io/sync-wave: "1"
+    # Wave -1: right after the namespace (-2), alongside the secrets and
+    # the backup RBAC/store/hook (cnpgBackup.waves). The Cluster must be
+    # applied before the Grafana Deployment (wave 2), which consumes the
+    # CNPG-generated `grafana-database-app` Secret. Transient same-wave
+    # races (ObjectStore/hook not yet ready) self-heal via operator retry.
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   monitoring:
     enablePodMonitor: true

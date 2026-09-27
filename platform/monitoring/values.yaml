@@ -139,11 +139,10 @@ kube-prometheus-stack:
   grafana:
     replicas: 2
     # Wave 2: this Deployment references the CNPG-generated
-    # `grafana-database-app` Secret (Cluster is local wave 1, after the
-    # backup-init hook at wave 0). Without this, Argo CD applies the
-    # Deployment at wave 0 and fails with
-    # `secret "grafana-database-app" not found` — same fix as the immich
-    # server Deployment (apps/immich/values.yaml).
+    # `grafana-database-app` Secret (DB set is wave -1, right after the
+    # namespace at -2). Without this delay, Argo CD applies the Deployment
+    # at wave 0 and fails with `secret "grafana-database-app" not found` —
+    # same fix as the immich server Deployment (apps/immich/values.yaml).
     annotations:
       argocd.argoproj.io/sync-wave: "2"
     admin:
@@ -161,8 +160,8 @@ kube-prometheus-stack:
       # per-target fast scrapes (e.g. ecoflow 15-30s) render smoothly here.
       dashboards:
         min_refresh_interval: 30s
-      # Shared Postgres (CNPG grafana-database Cluster in this chart,
-      # local wave 1) so both replicas
+      # Shared Postgres (CNPG grafana-database Cluster in this chart, wave
+      # -1) so both replicas
       # share users/tokens/dashboards instead of per-pod SQLite (which caused
       # the 401 "user token not found" login loop). Non-secret parts live here;
       # the password comes from the CNPG-generated grafana-database-app Secret
@@ -182,7 +181,7 @@ kube-prometheus-stack:
         # Grafana default for postgres + CNPG accepts plaintext (immich
         # connects the same way with no TLS config).
         ssl_mode: disable
-    # DB password from CNPG (Secret created by the Cluster at local wave 1;
+    # DB password from CNPG (Secret created by the Cluster at wave -1;
     # this Deployment is delayed to wave 2 via `annotations` above, so the
     # Secret exists before Argo CD applies it — no CreateContainerConfigError
     # loop on first install).
@@ -475,6 +474,14 @@ cnpgBackup:
   app: grafana
   cluster: grafana-database
   namespace: monitoring
+  # Negative waves: the whole DB set (RBAC, backup-init hook, ObjectStore,
+  # ScheduledBackup) applies at -1, right after the namespace (-2) and well
+  # before the Grafana Deployment (wave 2) that needs the CNPG secret.
+  # Same-wave races self-heal (operator retry / kubelet retry).
+  waves:
+    rbac: "-1"
+    hook: "-1"
+    resources: "-1"
 
 # Single-node: 1 instance. Grafana HA comes from 2 stateless-ish pods
 # sharing this DB, not from Postgres replicas.
