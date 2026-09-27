@@ -62,6 +62,12 @@
       "pinDigests": false
     },
     {
+      "description": "Images/charts without digest support - tags only (helmv3 OCI group)",
+      "matchManagers": ["helmv3"],
+      "matchPackageNames": ["immich"],
+      "pinDigests": false
+    },
+    {
       "description": "kubectl - group the 6 jobs, pin digest",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["bitnami/kubectl"],
