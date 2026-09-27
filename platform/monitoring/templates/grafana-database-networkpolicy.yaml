@@ -1,8 +1,10 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
 # CiliumNetworkPolicy for the grafana-database CNPG cluster (namespace monitoring).
 # Additive to this chart's other policies (DNS egress already covers these
-# pods via monitoring-allow-dns). Covers: Grafana -> postgres 5432, CNPG
-# operator reconciliation 5432+8000, Prometheus scraping 9187+8000.
+# pods via monitoring-allow-dns). Covers: Grafana -> postgres 5432 (ingress
+# on the DB pods + egress on the Grafana pods, because monitoring-allow-egress
+# selects every pod in the namespace and has no 5432), CNPG operator
+# reconciliation 5432+8000, Prometheus scraping 9187+8000.
 # Pod ports only (post-DNAT). Kubelet probes need no rule (immich precedent).
 ---
 apiVersion: cilium.io/v2
@@ -47,6 +49,33 @@ spec:
             - port: "8000"
               protocol: TCP
             - port: "9187"
+              protocol: TCP
+---
+# Egress side of Grafana -> postgres. Required because monitoring-allow-egress
+# selects all pods in the namespace (endpointSelector: {}) and allows no 5432:
+# without this, Grafana SYNs are dropped and the container crashloops after the
+# 30s migration-transaction timeout with zero attempts in the postgres logs.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana-allow-db-egress
+  namespace: monitoring
+  annotations:
+    # Same wave as the ingress twin above: must exist before Grafana connects.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  egress:
+    # Grafana pods -> postgres 5432 on the grafana-database pods
+    - toEndpoints:
+        - matchLabels:
+            k8s:cnpg.io/cluster: grafana-database
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "5432"
               protocol: TCP
 ---
 # CNPG backup data plane -> SeaweedFS S3 (library: cnpg-backup.ciliumEgress).
