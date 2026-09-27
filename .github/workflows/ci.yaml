@@ -1,8 +1,10 @@
 # CI — merged Validate + Security into a single workflow (single Deploy trigger).
 # validate runs lint/template checks on push/PR/dispatch only and is skipped
 # on schedule (weekly cron exists for CVEs; lint on cron is waste).
-# discover + trivy-images + trivy-config run on every trigger, including the
-# weekly CVE cron. No workflow-level concurrency so security scans are never
+# discover + trivy-images + trivy-config run only on main/dev (plus the
+# weekly CVE cron on the default branch and manual dispatches).
+# Feature-branch pushes skip Trivy; PRs targeting main/dev still scan.
+# No workflow-level concurrency so security scans are never
 # cancelled — cancellation lives on the validate job only.
 name: CI
 
@@ -227,6 +229,7 @@ jobs:
   # output). The union is scanned, so Renovate bumps are covered without
   # anyone maintaining a hardcoded list. trivy-images consumes the JSON.
   discover:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_name == 'main' || github.ref_name == 'dev' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -344,6 +347,7 @@ jobs:
 
   trivy-images:
     needs: [discover]
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_name == 'main' || github.ref_name == 'dev' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -407,6 +411,7 @@ jobs:
           category: trivy-${{ steps.name.outputs.safe }}
 
   trivy-config:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_name == 'main' || github.ref_name == 'dev' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
