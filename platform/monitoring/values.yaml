@@ -138,6 +138,14 @@ kube-prometheus-stack:
   # Grafana configuration
   grafana:
     replicas: 2
+    # Wave 2: this Deployment references the CNPG-generated
+    # `grafana-database-app` Secret (Cluster is local wave 1, after the
+    # backup-init hook at wave 0). Without this, Argo CD applies the
+    # Deployment at wave 0 and fails with
+    # `secret "grafana-database-app" not found` — same fix as the immich
+    # server Deployment (apps/immich/values.yaml).
+    annotations:
+      argocd.argoproj.io/sync-wave: "2"
     admin:
       existingSecret: "grafana-admin-credentials"
       userKey: admin-user
@@ -153,7 +161,8 @@ kube-prometheus-stack:
       # per-target fast scrapes (e.g. ecoflow 15-30s) render smoothly here.
       dashboards:
         min_refresh_interval: 30s
-      # Shared Postgres (CNPG grafana-database, gitops wave 5) so both replicas
+      # Shared Postgres (CNPG grafana-database Cluster in this chart,
+      # local wave 1) so both replicas
       # share users/tokens/dashboards instead of per-pod SQLite (which caused
       # the 401 "user token not found" login loop). Non-secret parts live here;
       # the password comes from the CNPG-generated grafana-database-app Secret
@@ -173,10 +182,10 @@ kube-prometheus-stack:
         # Grafana default for postgres + CNPG accepts plaintext (immich
         # connects the same way with no TLS config).
         ssl_mode: disable
-    # DB password from CNPG (Secret created at wave 5 by the grafana-database
-    # app, after this monitoring app at wave 3). On first install Grafana pods
-    # wait (CreateContainerConfigError) until the Secret exists — kubelet
-    # retries on its own, no manual step needed.
+    # DB password from CNPG (Secret created by the Cluster at local wave 1;
+    # this Deployment is delayed to wave 2 via `annotations` above, so the
+    # Secret exists before Argo CD applies it — no CreateContainerConfigError
+    # loop on first install).
     envValueFrom:
       GF_DATABASE_PASSWORD:
         secretKeyRef:
