@@ -78,8 +78,45 @@ spec:
             - port: "5432"
               protocol: TCP
 ---
-# CNPG backup data plane -> SeaweedFS S3 (library: cnpg.ciliumEgress).
+# CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
+# Same FQDN:443 pattern as Velero (RustFS needs SNI = LE-cert FQDN).
 {{- if .Values.backup.enabled }}
-{{ include "cnpg.ciliumEgress" $ }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana-backup-to-rustfs-s3
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: grafana-database
+  egress:
+    - toFQDNs:
+        - matchName: rustfs.lonk-mirfak.ts.net
+        - matchPattern: "*.lonk-mirfak.ts.net"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*.ts.net"
+              - matchPattern: "*.lonk-mirfak.ts.net"
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
 {{- end }}
 {{- end }}

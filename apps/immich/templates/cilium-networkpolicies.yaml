@@ -153,8 +153,44 @@ spec:
             - port: "3003"
               protocol: TCP
 ---
-# CNPG backup data plane -> SeaweedFS S3 (library: cnpg.ciliumEgress).
+# CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
+# RustFS aborts TLS unless SNI equals its LE-cert FQDN, so pods dial the FQDN
+# on 443 (same pattern as Velero). DNS already allowed via immich-allow-dns.
 {{- if .Values.backup.enabled }}
-{{ include "cnpg.ciliumEgress" $ }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: immich-backup-to-rustfs-s3
+  namespace: immich
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: immich-database
+  egress:
+    - toFQDNs:
+        - matchName: rustfs.lonk-mirfak.ts.net
+        - matchPattern: "*.lonk-mirfak.ts.net"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*.ts.net"
+              - matchPattern: "*.lonk-mirfak.ts.net"
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
 {{- end }}
 {{- end }}

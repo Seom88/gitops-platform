@@ -447,38 +447,23 @@ tailscaleIngress:
 # Shared CNPG Postgres for Grafana (2 replicas, one DB — fixes the 401
 # sqlite-per-pod split). Cluster + backups live in this chart (operator is
 # wave -1, so the CRD exists before this wave-3 app syncs). Templates:
-# grafana-database-*.yaml. Mirrors the apps/immich backup pattern.
-# Shares ciliumNetworkPolicy.enabled / developmentApp.enabled above.
+# grafana-database-*.yaml.
+# Backup model: single shared RustFS bucket `cnpg-db-backups` + single key
+# `cnpg-backup` created once in console (see docs/rustfs-iam.md), per-DB
+# prefix `grafana/`. Same key material as namespace-local Secret in both
+# consumer namespaces (CNPG requires it local).
 backup:
   enabled: true
-  endpoint: http://seaweedfs-s3.seaweedfs.svc:8333
+  endpoint: https://rustfs.lonk-mirfak.ts.net
   region: us-east-1
-  bucket: grafana-db-backups
-  iamUser: grafana-backup
-  secretName: grafana-backup-s3-credentials # pragma: allowlist secret
+  bucket: cnpg-db-backups
+  prefix: grafana
+  secretName: cnpg-backup-s3-credentials # pragma: allowlist secret
   # 04:00 UTC daily, matching Longhorn default-daily-backup (retain 3).
   schedule: "0 4 * * *"
   # Recovery-window retention. The plugin CRD only accepts `<n>[dwm]`, so the
   # "3 backup points" policy is expressed as 3d (one backup/day ≈ 3 points).
   retentionPolicy: "3d"
-
-# Naming contract for the cnpg library chart
-# (charts/cnpg). namespace is explicit here because the
-# repo convention (namespace == app slug) does not hold: the cluster lives
-# in `monitoring`, not `grafana`.
-cnpgBackup:
-  app: grafana
-  cluster: grafana-database
-  namespace: monitoring
-  # Negative waves: the whole DB set (RBAC, backup-init hook, ObjectStore,
-  # ScheduledBackup) applies at -1, right after the namespace (-2) and well
-  # before the Grafana Deployment (wave 2) that needs the CNPG secret.
-  # Same-wave races self-heal (operator retry / kubelet retry).
-  waves:
-    rbac: "-1"
-    hook: "-1"
-    resources: "-1"
-    podmonitor: "-1"
 
 # Single-node: 1 instance. Grafana HA comes from 2 stateless-ish pods
 # sharing this DB, not from Postgres replicas.

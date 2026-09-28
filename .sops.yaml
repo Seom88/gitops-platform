@@ -1,3 +1,5 @@
 creation_rules:
   - path_regex: platform/.*/sops/.*\.enc\.yaml$
     age: age1l8urdgwakvjweqwxuzma2k3lnz0rym2juyjn9uls330keufsqc7s65c5j5
+  - path_regex: apps/.*/sops/.*\.enc\.yaml$
+    age: age1l8urdgwakvjweqwxuzma2k3lnz0rym2juyjn9uls330keufsqc7s65c5j5

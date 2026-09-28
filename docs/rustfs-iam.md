@@ -2,7 +2,7 @@
 
 > **Scope:** RustFS is an **external system** (separate VM, managed outside this repo).
 > This doc is the runbook for creating least-privilege S3 keys for cluster
-> consumers (Longhorn, Velero). Cluster side (SOPS + bootstrap fallback) is
+> consumers (Longhorn, Velero, CNPG shared DB backups). Cluster side (SOPS + bootstrap fallback) is
 > wired here; the keys themselves are created in RustFS and never committed.
 
 ## Concepts (what matters here)
@@ -26,8 +26,8 @@
 Console → left nav **Access Keys** → **Add Access Key** (top right) →
 **Create Key** dialog:
 
-1. **Name**: `longhorn-backup` / `velero-backup`. **Description**: what it is
-   for (e.g. `Longhorn daily backups - homelab`).
+1. **Name**: `longhorn-backup` / `velero-backup` / `cnpg-backup`. **Description**: what it is
+   for (e.g. `Longhorn daily backups - homelab`, `CNPG shared DB backups - homelab`).
 2. **Access Key**: leave blank to autogenerate; if Submit complains, type the
    name by hand. **Secret Key** comes pre-generated (masked).
 3. **Expiry**: set ~1 year out (e.g. `2027-09-21`). Empty = permanent;
@@ -100,12 +100,61 @@ lists buckets, it goes straight to its own:
 }
 ```
 
+### CNPG shared (`cnpg-db-backups`)
+
+One bucket + one key for all CNPG databases (homelab decision 2026-09-28:
+replaces per-DB SeaweedFS IAM users). Each Cluster keeps its own
+`ObjectStore` pointing at a per-DB prefix (`s3://cnpg-db-backups/immich/`,
+`s3://cnpg-db-backups/grafana/`), so WAL + base backups never collide while
+rotation stays a single key.
+
+`s3:CreateBucket` is intentionally omitted: the bucket is created once manually
+in console (no bucket-init Job per user decision 2026-09-28). Barman uploads via
+multipart, hence the multipart actions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::cnpg-db-backups"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
+      "Resource": ["arn:aws:s3:::cnpg-db-backups/*"]
+    }
+  ]
+}
+```
+
+Manual step (once): create bucket `cnpg-db-backups` in console before the first
+backup. No cluster-side provisioning — the old SeaweedFS `backup-init` IAM flow
+is gone with `charts/cnpg` (deleted 2026-09-28).
+
+### Sharing one key + one bucket across namespaces
+
+CNPG `ObjectStore.s3Credentials` is namespace-local, so the same `cnpg-backup`
+key material is duplicated as one Secret per consumer namespace (same keys,
+different namespaces — not two different keys):
+
+Blast-radius note: one leaked key affects all DB backups (vs per-DB keys).
+Accepted for homelab (2 DBs); revisit per-DB keys if the fleet grows or
+compliance requires isolation.
+
 ## Cluster handoff (SOPS — operator encrypts, never shares plaintext)
 
 1. Scaffolds already exist with `CHANGEME` placeholders — replace the values
    with the real keys (shapes below for reference):
    `platform/longhorn/sops/backup-credentials.enc.yaml`,
-   `platform/velero/sops/cloud-credentials.enc.yaml`.
+   `platform/velero/sops/cloud-credentials.enc.yaml`,
+   `apps/immich/sops/cnpg-backup-credentials.enc.yaml` +
+   `platform/monitoring/sops/cnpg-backup-credentials.enc.yaml`
+   (same `cnpg-backup` key material in both — one logical credential, one
+   Secret per namespace because CNPG `ObjectStore.s3Credentials` is
+   namespace-local).
    Then encrypt from the repo root per [docs/sops.md](sops.md):
 2. Exact Secret shapes (no Helm templating inside `.enc.yaml` — pure YAML):
 
@@ -137,6 +186,41 @@ lists buckets, it goes straight to its own:
        aws_access_key_id=<velero key>
        aws_secret_access_key=<velero secret>
    ```
+
+   CNPG shared — same key material twice (one Secret per consumer namespace;
+   `bootstrap/init-sops.sh` applies every `*/sops/*.enc.yaml`):
+
+   `apps/immich/sops/cnpg-backup-credentials.enc.yaml`:
+   ```yaml
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: cnpg-backup-s3-credentials
+     namespace: immich
+   stringData:
+     ACCESS_KEY_ID: <cnpg-backup key>
+     SECRET_ACCESS_KEY: <cnpg-backup secret>
+   ```
+
+   `platform/monitoring/sops/cnpg-backup-credentials.enc.yaml`:
+   ```yaml
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: cnpg-backup-s3-credentials
+     namespace: monitoring
+   stringData:
+     ACCESS_KEY_ID: <cnpg-backup key>
+     SECRET_ACCESS_KEY: <cnpg-backup secret>
+   ```
+
+    Converge each app's `backup.secretName` to `cnpg-backup-s3-credentials` and
+    keep per-DB prefixes in the direct manifests (`destinationPath:
+    s3://cnpg-db-backups/<app>/`, e.g. `immich/`, `grafana/` in
+    `apps/immich/templates/pg-immich.yaml` and
+    `platform/monitoring/templates/grafana-database-cluster.yaml` — no library
+    chart since 2026-09-28). The bucket is pre-created manually in console;
+    no bucket-init Job, no IAM provisioning from the cluster.
 3. Apply: `just secrets-apply` (decrypt + `kubectl apply`, shreds key after).
 4. `bootstrap/init-gitops.sh` (`ensureVeleroCredentials`,
    `ensureLonghornBackupCredentials`) stays as **fallback**: if the Secret
@@ -164,11 +248,20 @@ Short answer: possible, not recommended yet.
 - **Decision (2026-09-21): console for now (2 keys), revisit when key count
   grows or the provider matures.** ClickOps on an external box twice a year
   beats maintaining TF glue against a 15-star provider.
+- **Decision (2026-09-28): same for the 3rd key (`cnpg-backup`).** No
+  cluster-side IAM provisioning against RustFS (the SeaweedFS `backup-init`
+  IAM flow does not port: `mc admin` unsupported, Terraform provider
+  immature, `rc` policy-attach incomplete). Bucket creation stays automated
+  via the scoped-key bucket-init Job; user/key creation stays console +
+  SOPS.
 
 ## Rotation
 
 1. Create the replacement key in console (same name + `-next`, same policy).
-2. Re-encrypt the SOPS file (`sops platform/<chart>/sops/<name>.enc.yaml`),
+2. Re-encrypt the SOPS file(s) (`sops platform/<chart>/sops/<name>.enc.yaml` —
+   for CNPG re-encrypt **both** `apps/immich/sops/cnpg-backup-credentials.enc.yaml`
+   and `platform/monitoring/sops/cnpg-backup-credentials.enc.yaml` with the same
+   pair),
    `just secrets-apply`, verify consumer works (Longhorn backup target OK /
-   Velero BSL Available).
+   Velero BSL Available / CNPG `head-bucket` + one `ScheduledBackup` succeeds).
 3. Disable (don't delete yet) the old key → wait one backup cycle → delete.

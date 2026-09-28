@@ -8,8 +8,5 @@ dependencies:
 - name: alloy
   repository: https://grafana.github.io/helm-charts
   version: 1.13.0
-- name: cnpg
-  repository: file://../../charts/cnpg
-  version: 0.3.0
-digest: sha256:4eed7555f0779d1eb5c13523cc380438c2ce640f4dbcb3174bd663c8c77ab008
-generated: "2026-09-27T22:01:13.285087972-05:00"
+digest: sha256:190107f3744a1865a5ce03bbbf5ab5f84849137e4e24529044b754dd8f1c7417
+generated: "2026-09-28T00:54:16.851335033-05:00"

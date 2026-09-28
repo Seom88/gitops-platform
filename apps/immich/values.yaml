@@ -4,30 +4,26 @@ ciliumNetworkPolicy:
 developmentApp:
   enabled: false
 
-# CloudNativePG Barman backups to SeaweedFS S3 (immich-seaweedfs-backups).
-# Credentials live in Secret backup.secretName, created at sync time by the
-# backup-init hook — never committed to Git.
+# CloudNativePG Barman backups to shared RustFS bucket (cnpg-db-backups).
+# Manual model: bucket + key `cnpg-backup` created once in RustFS console
+# (see docs/rustfs-iam.md). Same key material lives as a namespace-local
+# Secret in every consumer namespace (CNPG ObjectStore requires it local):
+# immich/cnpg-backup-s3-credentials (this app) + monitoring/cnpg-backup-s3-credentials.
+# No hook, no IAM provisioning from the cluster.
 backup:
   enabled: true
-  endpoint: http://seaweedfs-s3.seaweedfs.svc:8333
+  endpoint: https://rustfs.lonk-mirfak.ts.net
   region: us-east-1
-  bucket: immich-db-backups
-  iamUser: immich-backup
-  secretName: immich-backup-s3-credentials # pragma: allowlist secret
+  bucket: cnpg-db-backups
+  prefix: immich
+  secretName: cnpg-backup-s3-credentials # pragma: allowlist secret
   # 04:00 UTC daily, matching Longhorn default-daily-backup (retain 3).
   schedule: "0 4 * * *"
   # Recovery-window retention. The plugin CRD only accepts `<n>[dwm]`, so the
   # "3 backup points" policy is expressed as 3d (one backup/day ≈ 3 points).
   retentionPolicy: "3d"
 
-# Naming contract for the cnpg library chart
-# (charts/cnpg). All other backup settings stay in `backup`
-# above; the library fills image/waves/seaweedfs defaults.
-cnpgBackup:
-  app: immich
-  cluster: immich-database
-
-# Shared CNPG Cluster contract (charts/cnpg cnpg.cluster).
+# Shared CNPG Cluster contract (direct manifests in templates/pg-immich.yaml).
 # Single source for instances/image/storage/database/owner; templates render it.
 cnpg:
   instances: 2
