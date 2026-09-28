@@ -10,6 +10,6 @@ dependencies:
   version: 1.13.0
 - name: cnpg-seaweedfs-backup
   repository: file://../../charts/cnpg-seaweedfs-backup
-  version: 0.1.0
-digest: sha256:3d9ccd61239b2ba5009523f0cbf0ea6082e02cb17d5b8af07db49081f99fcc13
-generated: "2026-09-27T02:58:38.793861755Z"
+  version: 0.2.0
+digest: sha256:bfc3e8fe86261ef422f52cf5fb5657071e1436ffa14c2acdccbaf3287ba5f52e
+generated: "2026-09-27T21:45:09.605958764-05:00"

@@ -1,36 +1,4 @@
-# CNPG PodMonitor mirror managed by this chart.
-# The CNPG operator auto-creates PodMonitor `grafana-database` (port `metrics`,
-# selector cnpg.io/cluster + podRole=instance) but without the
-# `release: monitoring` label that kube-prometheus-stack requires, so
-# Prometheus ignores it and zero cnpg_* series exist. This mirror carries the
-# same selector with the release label.
-# NOTE: deliberately named *-mirror — same name+namespace as the operator's
-# object would collide with it. Prometheus merges by selector, the operator's
-# copy is unselected, so there is no double scrape.
----
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: grafana-database-mirror
-  namespace: monitoring
-  annotations:
-    # Wave -1 with the rest of the DB set.
-    argocd.argoproj.io/sync-wave: "-1"
-  labels:
-    release: monitoring
-    app.kubernetes.io/name: grafana-database
-    app.kubernetes.io/part-of: monitoring
-spec:
-  jobLabel: cnpg.io/cluster
-  namespaceSelector:
-    matchNames:
-      - monitoring
-  selector:
-    matchLabels:
-      cnpg.io/cluster: grafana-database
-      cnpg.io/podRole: instance
-  podMetricsEndpoints:
-    - port: metrics
-      scheme: http
-      interval: 60s
-      scrapeTimeout: 10s
+# CNPG PodMonitor mirror (wave -1 with the DB set; release label for
+# kube-prometheus-stack). Shared spec lives in the cnpg-seaweedfs-backup
+# library (cnpg-backup.podmonitor).
+{{ include "cnpg-backup.podmonitor" $ }}

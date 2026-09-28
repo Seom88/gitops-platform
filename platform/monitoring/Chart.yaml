@@ -23,5 +23,5 @@ dependencies:
     version: 1.13.0
     repository: https://grafana.github.io/helm-charts
   - name: cnpg-seaweedfs-backup
-    version: 0.1.0
+    version: 0.2.0
     repository: file://../../charts/cnpg-seaweedfs-backup
