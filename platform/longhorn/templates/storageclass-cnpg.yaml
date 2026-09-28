@@ -2,11 +2,9 @@
 # 1 replica (homelab sizing, mirrors the default `longhorn` class) and
 # `recurringJobGroup: no-snapshot`: every provisioned DB volume is EXCLUDED
 # from ALL Longhorn jobs — no snapshots, no backups. Rationale: Barman to
-# SeaweedFS S3 is the app-consistent, authoritative copy (crash-consistent
-# block copies of a live Postgres add I/O for no value), and the `cnpg-backup`
-# group stays reserved for manual opt-in only.
-# Consumed via `cnpg.storage.class: longhorn-cnpg` (shared `cnpg` library
-# chart). Applies to NEW PVCs only: volumes already provisioned on another
+# RustFS S3 is the app-consistent, authoritative copy (crash-consistent
+# block copies of a live Postgres add I/O for no value).
+# Applies to NEW PVCs only: volumes already provisioned on another
 # class stay put until recreated (or relabeled manually per
 # templates/recurringjobs.yaml).
 kind: StorageClass
