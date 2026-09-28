@@ -2,3 +2,10 @@
 # Shared spec lives in the cnpg library (cnpg.cluster);
 # values come from .Values.cnpg + .Values.cnpgBackup + .Values.backup.
 {{ include "cnpg.cluster" $ }}
+{{ include "cnpg.database" $ }}
+
+{{- if .Values.backup.enabled }}
+{{ include "cnpg.job" $ }}
+{{ include "cnpg.rbac" $ }}
+{{ include "cnpg.store" $ }}
+{{- end }}

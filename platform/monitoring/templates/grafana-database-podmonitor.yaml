@@ -1,4 +1,0 @@
-# CNPG PodMonitor mirror (wave -1 with the DB set; release label for
-# kube-prometheus-stack). Shared spec lives in the cnpg
-# library (cnpg.podmonitor).
-{{ include "cnpg.podmonitor" $ }}

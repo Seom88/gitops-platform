@@ -1,5 +1,0 @@
-# Declarative database management (CNPG Database CR, wave 1 with the Cluster).
-# Shared spec lives in the cnpg library (cnpg.database);
-# extensions come from .Values.cnpg.dbExtensions (superuser-created, the app
-# user is not a superuser).
-{{ include "cnpg.database" $ }}

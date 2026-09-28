@@ -4,3 +4,11 @@
 # (cnpg.cluster); values come from .Values.cnpg + .Values.cnpgBackup +
 # .Values.backup. No extensions, no Database CR: Grafana uses plain tables.
 {{ include "cnpg.cluster" $ }}
+{{ include "cnpg.podmonitor" $ }}
+
+{{- if .Values.backup.enabled }}
+{{ include "cnpg.job" $ }}
+{{ include "cnpg.rbac" $ }}
+{{ include "cnpg.store" $ }}
+{{- end }}
+
