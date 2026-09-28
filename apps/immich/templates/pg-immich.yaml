@@ -1,4 +1,4 @@
 # Immich CNPG Cluster (wave 1, after the backup-init hook).
-# Shared spec lives in the cnpg-seaweedfs-backup library (cnpg-backup.cluster);
+# Shared spec lives in the cnpg library (cnpg.cluster);
 # values come from .Values.cnpg + .Values.cnpgBackup + .Values.backup.
-{{ include "cnpg-backup.cluster" $ }}
+{{ include "cnpg.cluster" $ }}

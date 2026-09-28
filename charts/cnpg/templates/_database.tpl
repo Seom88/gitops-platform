@@ -1,8 +1,8 @@
 {{/*
-cnpg-backup.database — declarative CNPG Database CR (extensions as superuser).
+cnpg.database — declarative CNPG Database CR (extensions as superuser).
 Wrapper (in the consuming app):
 
-  {{ include "cnpg-backup.database" $ }}
+  {{ include "cnpg.database" $ }}
 
 Renders nothing when .Values.cnpg.dbExtensions is empty (e.g. Grafana uses
 plain tables, no Database CR needed). Otherwise creates <cluster>-<database>
@@ -11,9 +11,9 @@ before the app Deployment starts.
 Reads .Values.cnpg.{database,owner,dbExtensions} and
 .Values.cnpgBackup.{cluster,waves}.
 */}}
-{{- define "cnpg-backup.database" -}}
+{{- define "cnpg.database" -}}
 {{- $n := .Values.cnpg -}}
-{{- $c := include "cnpg-backup.cfg" $ | fromYaml -}}
+{{- $c := include "cnpg.cfg" $ | fromYaml -}}
 {{- if $n.dbExtensions }}
 {{- $wave := $c.waves.resources | default "1" -}}
 ---

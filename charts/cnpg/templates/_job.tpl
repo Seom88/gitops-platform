@@ -1,9 +1,9 @@
 {{/*
-cnpg-backup.job — idempotent SeaweedFS IAM identity + bucket bootstrap Job.
+cnpg.job — idempotent SeaweedFS IAM identity + bucket bootstrap Job.
 Wrapper (in the consuming app):
 
   {{- if .Values.backup.enabled }}
-  {{- include "cnpg-backup.job" $ }}
+  {{- include "cnpg.job" $ }}
   {{- end }}
 
 Argo CD Sync hook, local wave 0: after RBAC (wave -1), before the Cluster,
@@ -32,9 +32,9 @@ Reads .Values.backup.{endpoint,region,bucket,iamUser,secretName} and
 ttlSecondsAfterFinished,activeDeadlineSeconds,seaweedfs,waves}.
 Needs the caller root ($) for .Release.Namespace (Secret lookup scope).
 */}}
-{{- define "cnpg-backup.job" -}}
+{{- define "cnpg.job" -}}
 {{- $b := .Values.backup -}}
-{{- $c := include "cnpg-backup.cfg" $ | fromYaml -}}
+{{- $c := include "cnpg.cfg" $ | fromYaml -}}
 {{- $app := $c.app -}}
 {{- $job := printf "%s-backup-init" $app -}}
 {{- $wave := $c.waves.hook | default "0" -}}

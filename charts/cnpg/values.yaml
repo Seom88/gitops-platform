@@ -1,9 +1,9 @@
-# Default contract for the cnpg-seaweedfs-backup library chart.
+# Default contract for the cnpg library chart.
 # A consuming app sets `backup` (store identity) + `cnpgBackup` (naming) in its
 # own values and adds three thin wrappers, e.g. apps/immich/templates/pg-backup.yaml:
 #
 #   {{- if .Values.backup.enabled }}
-#   {{- include "cnpg-backup.store" $ }}
+#   {{- include "cnpg.store" $ }}
 #   {{- end }}
 #
 # plus the rbac/job/cilium wrappers (see templates/*.tpl headers).

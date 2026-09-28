@@ -1,9 +1,9 @@
 {{/*
-cnpg-backup.rbac — least-privilege RBAC for the backup-init Sync hook.
+cnpg.rbac — least-privilege RBAC for the backup-init Sync hook.
 Wrapper (in the consuming app):
 
   {{- if .Values.backup.enabled }}
-  {{- include "cnpg-backup.rbac" $ }}
+  {{- include "cnpg.rbac" $ }}
   {{- end }}
 
 Local wave -1: before the hook (wave 0). The hook's ServiceAccount may only:
@@ -13,9 +13,9 @@ Local wave -1: before the hook (wave 0). The hook's ServiceAccount may only:
 Reads .Values.backup.secretName and .Values.cnpgBackup.{app,seaweedfs,waves}.
 Needs the caller root ($) for .Release.Namespace.
 */}}
-{{- define "cnpg-backup.rbac" -}}
+{{- define "cnpg.rbac" -}}
 {{- $b := .Values.backup -}}
-{{- $c := include "cnpg-backup.cfg" $ | fromYaml -}}
+{{- $c := include "cnpg.cfg" $ | fromYaml -}}
 {{- $job := printf "%s-backup-init" $c.app -}}
 {{- $wave := $c.waves.rbac | default "-1" -}}
 {{- $swNs := $c.seaweedfs.namespace | default "seaweedfs" -}}

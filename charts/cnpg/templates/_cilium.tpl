@@ -1,17 +1,17 @@
 {{/*
-cnpg-backup.ciliumEgress — Cilium egress from the CNPG instance pods and the
+cnpg.ciliumEgress — Cilium egress from the CNPG instance pods and the
 backup-init hook pods to the SeaweedFS S3 data plane, narrowed to the S3 pods
 on the S3 port only. Emit inside the app's Cilium gate, e.g.:
 
   {{- if .Values.backup.enabled }}
-  {{- include "cnpg-backup.ciliumEgress" $ | nindent 0 }}
+  {{- include "cnpg.ciliumEgress" $ | nindent 0 }}
   {{- end }}
 
 Reads .Values.cnpgBackup.{app,cluster,namespace,seaweedfs}.
 Namespace defaults to the app slug (repo convention namespace == app).
 */}}
-{{- define "cnpg-backup.ciliumEgress" -}}
-{{- $c := include "cnpg-backup.cfg" $ | fromYaml -}}
+{{- define "cnpg.ciliumEgress" -}}
+{{- $c := include "cnpg.cfg" $ | fromYaml -}}
 {{- $job := printf "%s-backup-init" $c.app -}}
 {{- $swNs := $c.seaweedfs.namespace | default "seaweedfs" -}}
 {{- $swComp := $c.seaweedfs.s3Component | default "s3" -}}

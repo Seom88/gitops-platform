@@ -1,8 +1,8 @@
 {{/*
-cnpg-backup.cluster — shared CloudNativePG Cluster.
+cnpg.cluster — shared CloudNativePG Cluster.
 Wrapper (in the consuming app):
 
-  {{ include "cnpg-backup.cluster" $ }}
+  {{ include "cnpg.cluster" $ }}
 
 Reads .Values.backup.enabled, .Values.cnpgBackup.{app,cluster,storeName,waves}
 and .Values.cnpg.{instances,imageName,storage,database,owner,postgresql}.
@@ -12,9 +12,9 @@ ObjectStore uses (<app>-backup-store unless storeName is overridden).
 Sync wave defaults to waves.resources so the Cluster applies alongside the
 ObjectStore/ScheduledBackup.
 */}}
-{{- define "cnpg-backup.cluster" -}}
+{{- define "cnpg.cluster" -}}
 {{- $b := .Values.backup -}}
-{{- $c := include "cnpg-backup.cfg" $ | fromYaml -}}
+{{- $c := include "cnpg.cfg" $ | fromYaml -}}
 {{- $n := .Values.cnpg -}}
 {{- $store := $c.storeName | default (printf "%s-backup-store" $c.app) -}}
 {{- $wave := $c.waves.resources | default "1" -}}
@@ -32,7 +32,7 @@ spec:
   imageName: {{ $n.imageName }}
 {{- if $b.enabled }}
   # WAL archiving via the plugin-barman-cloud CNPG-I plugin (ObjectStore
-  # {{ $store }}, see cnpg-backup.store). No legacy .spec.backup section:
+  # {{ $store }}, see cnpg.store). No legacy .spec.backup section:
   # retention lives on the ObjectStore (.spec.retentionPolicy).
   plugins:
     - name: barman-cloud.cloudnative-pg.io
@@ -52,5 +52,8 @@ spec:
       owner: {{ $n.owner }}
 
   storage:
+{{- if $n.storage.class }}
+    storageClass: {{ $n.storage.class }}
+{{- end }}
     size: {{ $n.storage.size }}
 {{- end -}}

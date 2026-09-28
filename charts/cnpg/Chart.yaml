@@ -1,0 +1,8 @@
+apiVersion: v2
+name: cnpg
+description: "Shared CloudNativePG stack (Cluster, Database, PodMonitor, Barman backups on SeaweedFS S3, RBAC, backup-init hook, Cilium egress). Library chart — only named templates, no manifests of its own."
+type: library
+version: 0.3.0
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88

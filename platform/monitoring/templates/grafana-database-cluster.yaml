@@ -1,6 +1,6 @@
 # Shared Postgres for Grafana (wave -1 with the DB set, before the Grafana
 # Deployment at wave 2 that consumes the CNPG-generated grafana-database-app
-# Secret). Shared spec lives in the cnpg-seaweedfs-backup library
-# (cnpg-backup.cluster); values come from .Values.cnpg + .Values.cnpgBackup +
+# Secret). Shared spec lives in the cnpg library
+# (cnpg.cluster); values come from .Values.cnpg + .Values.cnpgBackup +
 # .Values.backup. No extensions, no Database CR: Grafana uses plain tables.
-{{ include "cnpg-backup.cluster" $ }}
+{{ include "cnpg.cluster" $ }}

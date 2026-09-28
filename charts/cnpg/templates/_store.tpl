@@ -1,17 +1,17 @@
 {{/*
-cnpg-backup.store — ObjectStore + ScheduledBackup (plugin-barman-cloud).
+cnpg.store — ObjectStore + ScheduledBackup (plugin-barman-cloud).
 Wrapper (in the consuming app):
 
   {{- if .Values.backup.enabled }}
-  {{- include "cnpg-backup.store" $ }}
+  {{- include "cnpg.store" $ }}
   {{- end }}
 
 Reads .Values.backup.{bucket,endpoint,secretName,retentionPolicy,schedule}
 and .Values.cnpgBackup.{app,cluster,storeName,waves}.
 */}}
-{{- define "cnpg-backup.store" -}}
+{{- define "cnpg.store" -}}
 {{- $b := .Values.backup -}}
-{{- $c := include "cnpg-backup.cfg" $ | fromYaml -}}
+{{- $c := include "cnpg.cfg" $ | fromYaml -}}
 {{- $store := $c.storeName | default (printf "%s-backup-store" $c.app) -}}
 # CloudNativePG Barman backup store (plugin-barman-cloud API:
 # barmancloud.cnpg.io/v1 ObjectStore, declarative backups with method: plugin).

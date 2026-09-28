@@ -1,8 +1,8 @@
 {{/*
-cnpg-backup.podmonitor — PodMonitor mirror for the CNPG operator metrics.
+cnpg.podmonitor — PodMonitor mirror for the CNPG operator metrics.
 Wrapper (in the consuming app):
 
-  {{ include "cnpg-backup.podmonitor" $ }}
+  {{ include "cnpg.podmonitor" $ }}
 
 The operator auto-creates a PodMonitor named <cluster> without the
 `release: <monitorRelease>` label that kube-prometheus-stack requires, so
@@ -14,8 +14,8 @@ charts without one keep their current behavior.
 Reads .Values.cnpgBackup.{app,cluster,namespace,waves,monitorRelease}.
 Namespace defaults to the app slug (repo convention namespace == app).
 */}}
-{{- define "cnpg-backup.podmonitor" -}}
-{{- $c := include "cnpg-backup.cfg" $ | fromYaml -}}
+{{- define "cnpg.podmonitor" -}}
+{{- $c := include "cnpg.cfg" $ | fromYaml -}}
 {{- $ns := $c.namespace | default $c.app -}}
 {{- $release := $c.monitorRelease | default "monitoring" -}}
 ---

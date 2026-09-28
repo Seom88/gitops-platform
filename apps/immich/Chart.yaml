@@ -10,7 +10,7 @@ dependencies:
   - name: immich
     version: 0.13.2
     repository: oci://ghcr.io/immich-app/immich-charts
-  - name: cnpg-seaweedfs-backup
-    version: 0.2.0
-    repository: file://../../charts/cnpg-seaweedfs-backup
+  - name: cnpg
+    version: 0.3.0
+    repository: file://../../charts/cnpg
 

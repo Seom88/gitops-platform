@@ -1,3 +1,3 @@
 # CNPG PodMonitor mirror (release label for kube-prometheus-stack).
-# Shared spec lives in the cnpg-seaweedfs-backup library (cnpg-backup.podmonitor).
-{{ include "cnpg-backup.podmonitor" $ }}
+# Shared spec lives in the cnpg library (cnpg.podmonitor).
+{{ include "cnpg.podmonitor" $ }}

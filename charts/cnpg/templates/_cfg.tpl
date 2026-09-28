@@ -1,9 +1,9 @@
 {{/*
-cnpg-backup.defaults — baseline values. A library chart's own values.yaml is
+cnpg.defaults — baseline values. A library chart's own values.yaml is
 never merged into the consumer, so every template builds its config through
-"cnpg-backup.cfg" (deep-merged defaults + .Values.cnpgBackup).
+"cnpg.cfg" (deep-merged defaults + .Values.cnpgBackup).
 */}}
-{{- define "cnpg-backup.defaults" -}}
+{{- define "cnpg.defaults" -}}
 app: ""
 cluster: ""
 storeName: ""
@@ -25,11 +25,11 @@ waves:
 {{- end -}}
 
 {{/*
-cnpg-backup.cfg — merged config dict (defaults overwritten by the consumer's
-.Values.cnpgBackup). Usage inside other cnpg-backup.* templates:
+cnpg.cfg — merged config dict (defaults overwritten by the consumer's
+.Values.cnpgBackup). Usage inside other cnpg.* templates:
 
-  {{- $c := include "cnpg-backup.cfg" $ | fromYaml -}}
+  {{- $c := include "cnpg.cfg" $ | fromYaml -}}
 */}}
-{{- define "cnpg-backup.cfg" -}}
-{{- mergeOverwrite (include "cnpg-backup.defaults" $ | fromYaml) (.Values.cnpgBackup | default dict) | toYaml -}}
+{{- define "cnpg.cfg" -}}
+{{- mergeOverwrite (include "cnpg.defaults" $ | fromYaml) (.Values.cnpgBackup | default dict) | toYaml -}}
 {{- end -}}

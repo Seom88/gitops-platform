@@ -20,19 +20,20 @@ backup:
   # "3 backup points" policy is expressed as 3d (one backup/day ≈ 3 points).
   retentionPolicy: "3d"
 
-# Naming contract for the cnpg-seaweedfs-backup library chart
-# (charts/cnpg-seaweedfs-backup). All other backup settings stay in `backup`
+# Naming contract for the cnpg library chart
+# (charts/cnpg). All other backup settings stay in `backup`
 # above; the library fills image/waves/seaweedfs defaults.
 cnpgBackup:
   app: immich
   cluster: immich-database
 
-# Shared CNPG Cluster contract (charts/cnpg-seaweedfs-backup cnpg-backup.cluster).
+# Shared CNPG Cluster contract (charts/cnpg cnpg.cluster).
 # Single source for instances/image/storage/database/owner; templates render it.
 cnpg:
   instances: 2
   imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
   storage:
+    class: longhorn-cnpg
     size: 2Gi
   database: immich
   owner: immich

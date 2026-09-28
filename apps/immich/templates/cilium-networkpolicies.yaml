@@ -153,8 +153,8 @@ spec:
             - port: "3003"
               protocol: TCP
 ---
-# CNPG backup data plane -> SeaweedFS S3 (library: cnpg-backup.ciliumEgress).
+# CNPG backup data plane -> SeaweedFS S3 (library: cnpg.ciliumEgress).
 {{- if .Values.backup.enabled }}
-{{ include "cnpg-backup.ciliumEgress" $ }}
+{{ include "cnpg.ciliumEgress" $ }}
 {{- end }}
 {{- end }}
