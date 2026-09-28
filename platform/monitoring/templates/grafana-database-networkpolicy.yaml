@@ -40,6 +40,17 @@ spec:
               protocol: TCP
             - port: "8000"
               protocol: TCP
+    # Intra-cluster streaming replication: replica -> primary 5432.
+    # Without this, scaling past 1 instance hangs the join pod with
+    # dial tcp ...:5432 i/o timeout (Cilium drop, not Postgres auth).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:cnpg.io/cluster: grafana-database
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
     # Prometheus scraping from monitoring -> CNPG metrics 8000/9187
     - fromEndpoints:
         - matchLabels:
@@ -69,6 +80,30 @@ spec:
       app.kubernetes.io/name: grafana
   egress:
     # Grafana pods -> postgres 5432 on the grafana-database pods
+    - toEndpoints:
+        - matchLabels:
+            k8s:cnpg.io/cluster: grafana-database
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+---
+# Egress twin of the replication rule above. monitoring-allow-egress selects
+# every pod in the namespace but carries no 5432, so without this the
+# replica's SYNs never leave the pod (same i/o timeout symptom).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana-database-intra-egress
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: grafana-database
+  egress:
     - toEndpoints:
         - matchLabels:
             k8s:cnpg.io/cluster: grafana-database
