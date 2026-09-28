@@ -12,7 +12,7 @@ Restore path for this cluster: Velero for PVC/PV + file data, Barman for Postgre
 
 Two S3 backends. Everything that must survive cluster loss is on external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Velero → `velero-homelab`, Barman → `cnpg-db-backups`. Loki is the only consumer of in-cluster SeaweedFS S3 (`loki-chunks`/`loki-ruler`).
 
-**ArgoCD is reinstalled, never restored.** `daily-full` excludes `argocd` and `kube-system` (`platform/velero/values.yaml:108-125`); every `Application` already lives in Git under `gitops/templates/`.
+**ArgoCD is reinstalled, never restored.** `daily-full` excludes `argocd` and `kube-system` (`platform/velero/values.yaml:138-155`); every `Application` already lives in Git under `gitops/templates/`.
 
 ## 1. Velero state
 
@@ -41,6 +41,7 @@ Long-lived pods resolve the FQDN through the `ts.net:53` CoreDNS stub reconciled
 | `excludedNamespaces` | `velero`, `kube-system`, `kube-public`, `kube-node-lease`, `longhorn-system`, `vault`, `argocd` |
 | `excludedResources` | Longhorn replicas/engines/nodes, ArgoCD Applications/AppProjects/ApplicationSets, Cilium identities/endpoints, events, endpointslices, controllerrevisions, cert-manager ACME objects, Velero's own objects |
 | `defaultVolumesToFsBackup` | `true` (node-agent; `snapshotVolumes: false`, no CSI snapshots) |
+| `resourcePolicy` | skips the data of every volume on StorageClass `longhorn-cnpg` — Barman owns databases (§2.7) |
 | `restoreOnlyMode` | `false` (`values.yaml:69`) |
 
 `pods` is in the allowlist on purpose: without it the node-agent never discovers volumes, and the backup carries no data.
@@ -74,7 +75,7 @@ velero backup get
 | | In-place (lost PVCs) | Cross-cluster (new bare metal) |
 |---|---|---|
 | Cilium / ArgoCD | Untouched | Reinstall first |
-| Longhorn | Already Healthy | Install, then `job-auto-restore` |
+| Longhorn | Already Healthy | Install |
 | ArgoCD freeze | Required | Required if data lands before the app-of-apps reaches those waves |
 | `--existing-resource-policy` | `update` | `update` |
 
@@ -87,7 +88,7 @@ Velero is installed *by* GitOps, so GitOps must be healthy before any restore ca
 ./bootstrap/init-gitops.sh prod
 ```
 
-`init-sops.sh` must run first: SOPS is the live secrets path (ESO is off), and it is what creates the S3 credentials §6 needs. `init-gitops.sh` creates the three platform bootstrap Secrets and runs `helm upgrade --install gitops`.
+`init-sops.sh` must run first: SOPS is the live secrets path (ESO is off), and it is what creates the S3 credentials §6 needs. `init-gitops.sh` creates the two platform bootstrap Secrets (Tailscale `operator-oauth`, Velero `cloud-credentials`) and runs `helm upgrade --install gitops`.
 
 ```bash
 kubectl -n argocd get applications
@@ -98,7 +99,7 @@ kubectl -n velero get backupstoragelocation default -o jsonpath='{.status.phase}
 
 ### 2.3 Freeze GitOps
 
-Every `Application` runs `automated: {prune: true, selfHeal: true}`. Left enabled, `selfHeal` reverts whatever the restore writes. Freeze everything except the two that must stay live to perform the restore — Velero (running the restore) and Longhorn (its `job-auto-restore` hook must be free):
+Every `Application` runs `automated: {prune: true, selfHeal: true}`. Left enabled, `selfHeal` reverts whatever the restore writes. Freeze everything except the two that must stay live to perform the restore — Velero (running the restore) and Longhorn (its CSI provisioner must bind the restored PVCs to the restored PVs):
 
 ```bash
 kubectl -n argocd get applications -o name | cut -d/ -f2 \
@@ -243,11 +244,9 @@ kubectl -n immich get cluster immich-database -o jsonpath='{.status.phase}{"\n"}
 # Cluster in healthy state
 ```
 
-Postgres volumes use StorageClass `longhorn-cnpg` (`recurringJobGroup: no-snapshot`), so they are excluded from every Longhorn RecurringJob by design.
+Postgres volumes use StorageClass `longhorn-cnpg`, so they are excluded twice: from every Longhorn RecurringJob by its `recurringJobGroup: no-snapshot`, and from the Velero backup by the `resourcePolicy` on `daily-full` (`platform/velero/values.yaml`), which skips the data of every volume on that class. The PVC and PV objects still come back, so the volume mounts empty and Barman fills it.
 
-### 2.8 Rebind Longhorn, then unfreeze
-
-`platform/longhorn/templates/job-auto-restore.yaml` recreates Longhorn `Volume` CRs from the last `backup=daily` Completed backup, but its own header (`:25-27`) scopes it to Volume CRs only: PV/PVC rebind is a documented phase-2 manual step and restored volumes come back `Detached`.
+### 2.8 Unfreeze
 
 Release GitOps in dependency order — the databases must be primary before the apps that consume them:
 
@@ -290,7 +289,7 @@ kubectl get pvc -A                                    # Bound, not Detached
 | Symptom | Fix |
 |---|---|
 | Restore `PartiallyFailed` | `velero restore describe <name>`; pre-existing objects are skipped unless `--existing-resource-policy update` was set |
-| Restore completes, volumes empty | Source pods should carry `velero.io/volume-snapshot-sources`. The restore controller creates the `PodVolumeRestore` itself, so an empty volume means the backup had no FSB data for that PVC (`velero backup describe --details`, look for `podvolumebackups`), or the PV/PVC rebind in §2.8 was skipped |
+| Restore completes, volumes empty | Expected for databases — the `resourcePolicy` skips their data and Barman fills the volume (§2.7). For any other volume, source pods should carry `velero.io/volume-snapshot-sources`; the restore controller creates the `PodVolumeRestore` itself, so an empty volume means the backup had no FSB data for that PVC (`velero backup describe --details`, look for `podvolumebackups`) |
 | ArgoCD reverts restored objects | The `gitops` root app was not frozen (§2.3) — it re-asserts `automated` on every child |
 | Workloads do not come back | Expected — ArgoCD owns them |
 | `BSL not Ready` after unfreeze | The `ReadOnly` patch in §2.4 was not reverted |
