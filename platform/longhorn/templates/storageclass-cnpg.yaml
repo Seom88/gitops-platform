@@ -1,13 +1,14 @@
 # Dedicated StorageClass for CloudNativePG data volumes.
 # 1 replica (homelab sizing, mirrors the default `longhorn` class) and
-# `recurringJobGroup: cnpg-backup`: every provisioned DB volume auto-enrolls
-# in the backup-only `cnpg-daily-backup` RecurringJob (06:00, retain 3, S3 on
-# RustFS) and gets NO snapshots — Barman to SeaweedFS S3 is the app-consistent
-# copy, the Longhorn S3 copy is the SeaweedFS-independent off-site copy.
+# `recurringJobGroup: no-snapshot`: every provisioned DB volume is EXCLUDED
+# from ALL Longhorn jobs — no snapshots, no backups. Rationale: Barman to
+# SeaweedFS S3 is the app-consistent, authoritative copy (crash-consistent
+# block copies of a live Postgres add I/O for no value), and the `cnpg-backup`
+# group stays reserved for manual opt-in only.
 # Consumed via `cnpg.storage.class: longhorn-cnpg` (shared `cnpg` library
 # chart). Applies to NEW PVCs only: volumes already provisioned on another
-# class stay put until recreated (or relabeled manually per the
-# `cnpg-backup` group docs in templates/recurringjobs.yaml).
+# class stay put until recreated (or relabeled manually per
+# templates/recurringjobs.yaml).
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -18,4 +19,4 @@ provisioner: driver.longhorn.io
 allowVolumeExpansion: true
 parameters:
   numberOfReplicas: "1"
-  recurringJobGroup: "cnpg-backup"
+  recurringJobGroup: "no-snapshot"

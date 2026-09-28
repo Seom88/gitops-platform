@@ -25,12 +25,14 @@
 #                     (reproducible / S3-backed data). Label:
 #                       kubectl -n longhorn-system label volume <mon-volume> \
 #                         recurring-job-group.longhorn.io/monitoring-backup=enabled
-#   - cnpg-backup -> backup-only daily 06:00, retain 3. CNPG clusters already
-#                     have app-consistent Barman backups to SeaweedFS S3
-#                     (immich-db-backups, grafana-db-backups); Longhorn 2h
-#                     crash-consistent snapshots add I/O for little value, but
-#                     the daily Longhorn S3 copy stays as the SeaweedFS-
-#                     independent off-site copy. Label DB data volumes:
+#   - cnpg-backup -> backup-only daily 06:00, retain 3. OPT-IN ONLY: CNPG
+#                     database volumes are EXCLUDED from all Longhorn jobs by
+#                     default (StorageClass `longhorn-cnpg` auto-assigns the
+#                     `no-snapshot` group at provision; Barman to SeaweedFS S3
+#                     is the authoritative copy). Use this group only for a
+#                     manual off-site copy of a specific DB volume:
+#                       kubectl -n longhorn-system label volume <db-volume> \
+#                         recurring-job-group.longhorn.io/no-snapshot- \
 #                       kubectl -n longhorn-system label volume <db-volume> \
 #                         recurring-job-group.longhorn.io/cnpg-backup=enabled
 #                     IMPORTANT: moving a volume OUT of snapshots requires
@@ -38,10 +40,12 @@
 #                     both jobs):
 #                       kubectl -n longhorn-system label volume <vol> \
 #                         recurring-job-group.longhorn.io/default-
-#   - no-snapshot  -> LEGACY MARKER, no RecurringJob bound. Kept only for
-#                     volumes intentionally excluded from ALL jobs. Do NOT use
-#                     for SeaweedFS/monitoring anymore — relabel them to the
-#                     backup groups above (remove no-snapshot, add new label).
+#   - no-snapshot  -> marker group, no RecurringJob bound. Auto-assigned at
+#                     provision by StorageClass `longhorn-cnpg` (all CNPG DB
+#                     volumes: excluded from snapshots AND backups, Barman
+#                     owns recovery). Also usable as a manual opt-out for any
+#                     volume: label it `no-snapshot` (and remove any other
+#                     group label) to leave every job.
 #
 # IMPORTANT: the label must live on the Longhorn Volume CR in `longhorn-system`,
 # NOT on the PVC — the CSI provisioner does not copy PVC labels to Volume CRs,
