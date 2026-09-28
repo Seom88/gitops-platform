@@ -1,33 +1,3 @@
-# CNPG PodMonitor mirror managed by monitoring chart.
-# The CNPG operator auto-creates PodMonitor `immich-database` (port `metrics`,
-# selector cnpg.io/cluster + podRole=instance) but without the
-# `release: monitoring` label that kube-prometheus-stack requires, so
-# Prometheus ignores it and zero cnpg_* series exist. This mirror carries the
-# same selector with the release label.
-# NOTE: deliberately named *-mirror — same name+namespace as the operator's
-# object would collide with it. Prometheus merges by selector, the operator's
-# copy is unselected, so there is no double scrape.
----
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: immich-database-mirror
-  namespace: immich
-  labels:
-    release: monitoring
-    app.kubernetes.io/name: immich-database
-    app.kubernetes.io/part-of: immich
-spec:
-  jobLabel: cnpg.io/cluster
-  namespaceSelector:
-    matchNames:
-      - immich
-  selector:
-    matchLabels:
-      cnpg.io/cluster: immich-database
-      cnpg.io/podRole: instance
-  podMetricsEndpoints:
-    - port: metrics
-      scheme: http
-      interval: 60s
-      scrapeTimeout: 10s
+# CNPG PodMonitor mirror (release label for kube-prometheus-stack).
+# Shared spec lives in the cnpg-seaweedfs-backup library (cnpg-backup.podmonitor).
+{{ include "cnpg-backup.podmonitor" $ }}

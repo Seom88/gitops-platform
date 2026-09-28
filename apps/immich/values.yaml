@@ -27,6 +27,39 @@ cnpgBackup:
   app: immich
   cluster: immich-database
 
+# Shared CNPG Cluster contract (charts/cnpg-seaweedfs-backup cnpg-backup.cluster).
+# Single source for instances/image/storage/database/owner; templates render it.
+cnpg:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
+  storage:
+    size: 2Gi
+  database: immich
+  owner: immich
+  postgresql:
+    shared_preload_libraries:
+      - "vchord.so"
+    extensions:
+      - name: vchord
+        image:
+          reference: ghcr.io/tensorchord/vchord-scratch:pg18-v1.1.1
+        dynamic_library_path:
+          - /usr/lib/postgresql/18/lib
+        extension_control_path:
+          - /usr/share/postgresql/18/
+  # Extensions created inside the `immich` database as superuser via the
+  # Database CR (the app user is not a superuser). Order: vector first
+  # (vchord CASCADEs onto it).
+  dbExtensions:
+    - name: vector
+      ensure: present
+    - name: vchord
+      ensure: present
+    - name: earthdistance
+      ensure: present
+    - name: cube
+      ensure: present
+
 immich:
   immich:
     metrics:
