@@ -87,6 +87,36 @@ velero:
   nodeAgent:
     enabled: true
 
+  # Resource policies — ConfigMaps holding a Velero resource-policy document,
+  # referenced by `spec.template.resourcePolicy` on a schedule below.
+  # The chart prefixes each object name with `velero.fullname`, so
+  # `db-volume-policy` renders as `velero-db-volume-policy`.
+  configMaps:
+    db-volume-policy:
+      data:
+        db-volume-policy: |
+          # Database volumes are Barman's, not Velero's. Barman PITR is the
+          # only recovery path for Postgres: a Velero FsBackup of a live
+          # instance is crash-consistent, not a valid PITR source, so copying
+          # PGDATA would buy a corrupt copy of the same bytes.
+          #
+          # `skip` is a hard skip: VolumePolicy outranks the FSB opt-in/opt-out
+          # annotations and `snapshotVolumes`, so the volume is NOT retried as a
+          # CSI snapshot. The PVC and PV objects still ride along via
+          # `includedResources` — only the data is skipped — so a restore yields
+          # an empty volume that Barman fills.
+          #
+          # `longhorn-cnpg` is the StorageClass from
+          # platform/longhorn/templates/storageclass-cnpg.yaml; every CNPG data
+          # volume lands on it.
+          version: v1
+          volumePolicies:
+            - conditions:
+                storageClass:
+                  - longhorn-cnpg
+              action:
+                type: skip
+
   # Schedules — default Schedules installed at deploy time.
   # ArgoCD prune protection: Backups created by these Schedules are extraneous
   # for ArgoCD (velero.io group) — annotations propagate Schedule -> Backup
@@ -163,6 +193,15 @@ velero:
           - backups.velero.io
           - restores.velero.io
           - schedules.velero.io
+        # Resource policy — skip the DATA of every volume on StorageClass
+        # `longhorn-cnpg` (all CNPG Postgres data volumes). Barman PITR is the
+        # only recovery path for databases, so PGDATA is not copied here.
+        # `name` must match the rendered ConfigMap: the chart prefixes
+        # `configMaps.<key>` with `velero.fullname`, which resolves to `velero`
+        # under the ArgoCD release name `velero` -> `velero-db-volume-policy`.
+        resourcePolicy:
+          kind: ConfigMap
+          name: velero-db-volume-policy
         storageLocation: default
         volumeSnapshotLocations:
           - default
