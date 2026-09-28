@@ -284,7 +284,7 @@ If you're evaluating DevOps/Platform Engineering talent:
 - **[Features Deep Dive](./docs/features-deep-dive.md)** — System design and detailed explanations of each feature
 - **[Networking](./docs/networking.md)** — Cilium eBPF, Gateway API & policies
 - **[SOPS + age](./docs/sops.md)** — Default secrets workflow (Vault paused)
-- **[Velero + RustFS](./docs/velero.md)** — Backup & restore ([cluster restore runbook](./docs/velero.md#6-restore-runbook), [RustFS IAM](./docs/rustfs-iam.md))
+- **[Cluster recovery](./docs/cluster-recovery.md)** — Backup & restore ([restore runbook](./docs/cluster-recovery.md#2-restore-runbook), [RustFS IAM](./docs/rustfs-iam.md))
 - **[Skills Demonstrated](./docs/skills-demonstrated.md)** — What this proves you can build
 - **[Roadmap](./docs/roadmap.md)** — Phases, status, and v2.0 vision
 - **[Architecture Decision Records](./docs/adrs/)** — Why key decisions were made

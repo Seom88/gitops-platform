@@ -18,7 +18,7 @@ Decision: freeze `platform/vault/` in place, disable Vault/ESO via flags, and sh
    - `gitops/templates/platform/01-vault.yaml` → `{{ if and .Values.platformApps.enabled .Values.vault.enabled }}`
    - `gitops/templates/platform/00-external-secrets.yaml` → `{{ if and .Values.platformApps.enabled .Values.eso.enabled }}`
    - `gitops/values.yaml` + `gitops/values-dev.yaml` → `vault.enabled: false`, `eso.enabled: false` (default off in both envs).
-   - Re-entry is a flag flip + `raft snapshot restore` from the frozen archive, per the golden rule in [ADR-009](009-vault-dr-and-velero-backup.md) §Decision 1. (The runbook that used to document it was deleted 2026-09-28 — see that ADR's addendum.) No long-lived diverge branch.
+   - Re-entry is a flag flip + `raft snapshot restore` from the frozen archive, per the golden rule in [ADR-009](009-vault-dr-and-velero-backup.md) §Decision 1. No long-lived diverge branch.
 
 2. **SOPS + age is the default** for all app and platform secrets. Encrypted files (`*.enc.yaml`) live in git under `<chart>/sops/` (never inside `templates/`, enforced by `init-sops.sh`). Recipients in `.sops.yaml` (`platform/*/sops/*.enc.yaml` → single age recipient).
 
@@ -34,7 +34,7 @@ Decision: freeze `platform/vault/` in place, disable Vault/ESO via flags, and sh
 
 - Velocity restored: secret change = edit + `sops encrypt` + commit + PR, with Git diffs and rollback.
 - DR honest: `git clone` + 1 age key + RustFS bootstrap prefix recovers secrets without a running cluster.
-- Vault knowledge preserved: code, ADR-002/009, and the frozen archive under `s3://secrets-homelab` stay searchable. The Vault-specific `docs/runbook-vault-restore.md` was deleted on 2026-09-28; ADR-009 keeps the golden rule that mattered, and the cluster restore procedure lives in [`docs/velero.md` §6](../velero.md#6-restore-runbook).
+- Vault knowledge preserved: code, ADR-002/009, and the frozen archive under `s3://secrets-homelab` stay searchable. The cluster restore procedure lives in [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook).
 
 ### Negative
 
@@ -70,6 +70,6 @@ Decision: freeze `platform/vault/` in place, disable Vault/ESO via flags, and sh
 - ADR-002: Vault config decentralization (per-service ESO stores)
 - ADR-004: Tailscale OAuth seed strategy (bootstrap Secret outside Vault — same chicken-egg precedent)
 - ADR-009: Vault DR — single-leader restore + raft snapshot golden rule
-- Runbook: `docs/runbook-vault-restore.md` (deleted 2026-09-28; golden rule in [ADR-009](009-vault-dr-and-velero-backup.md) §Decision 1, cluster restore procedure in [`docs/velero.md` §6](../velero.md#6-restore-runbook))
-- Velero: `docs/velero.md`, `platform/velero/values.yaml`
+- Runbook: `docs/runbook-vault-restore.md` (deleted; golden rule in [ADR-009](009-vault-dr-and-velero-backup.md) §Decision 1, cluster restore procedure in [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook))
+- Velero: `docs/cluster-recovery.md`, `platform/velero/values.yaml`
 - SOPS: https://github.com/mozilla/sops — age: https://github.com/FiloSottile/age

@@ -3,11 +3,9 @@
 **Status:** Accepted · **Date:** 2026-09-01
 
 > [!NOTE]
-> **Addendum 2026-09-28 — runbook deleted, golden rule retained.** The canonical runbook this ADR pointed to (`docs/runbook-vault-restore.md`, 377 lines) has been **deleted**. It documented a 3-VM Proxmox Raft topology that no longer exists: [ADR-019](019-single-node-bare-metal-migration.md) moved the cluster to one bare-metal node and reduced Vault to `server.ha.replicas: 1` with Longhorn `defaultReplicaCount: 1`; commit `b43d1f4` replaced the autounseal `CronJob` with a `Deployment`; [ADR-017](017-vault-paused-sops-default.md) then paused Vault itself. Every procedure in it was therefore unrunnable as written.
+> **Addendum.** The dedicated Vault runbook this ADR pointed to has been deleted: it described a multi-VM Raft topology that no longer exists ([ADR-019](019-single-node-bare-metal-migration.md), and Vault is now paused per [ADR-017](017-vault-paused-sops-default.md)), so every procedure in it was unrunnable as written.
 >
-> **What survives:** the decision itself. §Decision 1 — never restore divergent Raft logs, and use `vault operator raft snapshot save/restore` for atomic point-in-time recovery — is unchanged and, on a single replica, reduces to: **restore the last `raft-*.snap` from the frozen archive; never attempt a VM-level replay.** §Decision 3 (Velero as an external-RustFS complement) is likewise unchanged; the cluster-wide restore path that replaced the runbook is [`docs/velero.md` §6](../velero.md#6-restore-runbook).
->
-> **What does not survive:** the version pins and wave numbers in the body below (Velero `9.0.2` → wrapper chart `12.2.0` / app `1.18.1`, AWS plugin `v1.10.2` → `v1.14.3`, `aws-cli:2.15.0` → `2.37.4`, `velero-bucket-init` wave `-1` → `Sync` hook at wave `0`, `vault-hourly` schedule retired and `disabled: true`). These are left as written because an ADR is a point-in-time record — read them as history, not as current state.
+> §Decision 1 survives and still governs: never restore divergent Raft logs, and use `vault operator raft snapshot save/restore` for atomic point-in-time recovery — on a single replica, restore the last `raft-*.snap` from the frozen archive and never attempt a VM-level replay. §Decision 3 (Velero as an external-RustFS complement) is likewise unchanged. The restore procedure is [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook). The version pins and wave numbers in the body are history, not current state.
 
 ## Context
 
@@ -92,7 +90,7 @@ Velero is wave `0` (with `longhorn`), before `vault` wave `1` — guarantees `Ba
 
 ## Decision
 
-1. **Golden rule for Vault DR:** restore **only `vault-2`** at Proxmox VM level, delete `data-vault-0`/`data-vault-1` PVCs, `kubectl delete pod vault-0 vault-1`, let followers re-join empty. Never restore all 3 VMs from vzdump. Use `vault operator raft snapshot save/restore` for atomic point-in-time restores (off-cluster storage). Documented in `docs/runbook-vault-restore.md` — **deleted 2026-09-28**, see addendum; this decision is the surviving record.
+1. **Golden rule for Vault DR:** restore **only `vault-2`** at Proxmox VM level, delete `data-vault-0`/`data-vault-1` PVCs, `kubectl delete pod vault-0 vault-1`, let followers re-join empty. Never restore all 3 VMs from vzdump. Use `vault operator raft snapshot save/restore` for atomic point-in-time restores (off-cluster storage). See addendum.
 
 2. **Autounseal hardening:** `vault-autounseal` CronJob `schedule: "*/2 * * * *"` (was `*/15`), `platform/vault/templates/unseal/configmap-autounseal.yaml` script with Raft recovery: validates `vault-tls` CA, reads `key1..keyN` dynamically (supports 3 or 5), selects healthy leader (prefers `vault-2`), for each pod does `raft remove-peer` if `CrashLoop`/`not Running`, `raft join https://<leader>.vault-internal.vault.svc.cluster.local:8200` if `initialized=false`, `operator unseal` with all keys if `sealed=true` (TLS-aware, retry 3, timeout 20). `CronJob` image `bitnami/kubectl:latest`, `concurrencyPolicy: Forbid`, `activeDeadlineSeconds: 300`.
 
@@ -100,7 +98,7 @@ Velero is wave `0` (with `longhorn`), before `vault` wave `1` — guarantees `Ba
 
 4. **Bucket init:** wave `-1` Job `velero-bucket-init` idempotently creates `velero-homelab` before Velero chart; `Prune=false`.
 
-5. **Runbook location (superseded 2026-09-28):** canonical `docs/runbook-vault-restore.md` (moved from `platform/vault/scripts/`). A stub at the previous vault scripts location with `Moved → ../../docs/runbook-vault-restore.md` was kept for backward links. Both are now **deleted** — the stub never existed, and the runbook is replaced by the cluster restore procedure in `docs/velero.md` §6. All inbound references were repointed there.
+5. **Runbook location:** superseded. The dedicated Vault runbook described a multi-VM topology that no longer exists; the procedure now lives in [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook) and §Decision 1 above remains the rule it enforced.
 
 ## Consequences
 
@@ -140,15 +138,15 @@ Velero is wave `0` (with `longhorn`), before `vault` wave `1` — guarantees `Ba
 | Updated | `bootstrap/init-gitops.sh:ensureVeleroCredentials()` — creates `ns velero` + `Secret cloud-credentials` from `VELERO_AWS_*` fallback `AWS_*`, idempotent |
 | Updated | `platform/vault/templates/unseal/configmap-autounseal.yaml` — `unseal.sh` with `*/2` raft recovery (`remove-peer`/`join`/`unseal`, CA validation, dynamic keys, parse helpers, retry 3) |
 | Updated | `platform/vault/templates/unseal/cronjob-autounseal.yaml` — `schedule: "*/2 * * * *"` (was `*/15`), `concurrencyPolicy: Forbid`, `activeDeadlineSeconds: 300` |
-| Moved (later deleted) | `docs/runbook-vault-restore.md` (canonical, previously under `platform/vault/scripts/`) — golden rule, procedures A/B/C, verification, troubleshooting; previous path now a stub `Moved → ../../docs/runbook-vault-restore.md`. **Removed 2026-09-28** — the stub claim was already false and the procedures targeted a retired 3-VM topology. |
-| Updated (later repointed) | `docs/velero.md`, `platform/velero/README.md` — references now point to `docs/runbook-vault-restore.md` (relative `runbook-vault-restore.md` / `../../docs/runbook-vault-restore.md`). **Repointed 2026-09-28** to `docs/velero.md` §6 and ADR-009 §Decision 1. |
+| Deleted | `docs/runbook-vault-restore.md` — see addendum |
+| Updated | `docs/cluster-recovery.md` (renamed from `docs/velero.md`), `platform/velero/README.md` |
 | Updated | `docs/ci-cd.md` §Velero bootstrap — summary of `ensureVeleroCredentials()` + wave `-1` Job |
 | Created | `docs/adrs/009-vault-dr-and-velero-backup.md` — this ADR |
 
 ## References
 
-- Runbook: `docs/runbook-vault-restore.md` — single-leader Proxmox restore + Raft snapshot + Velero complement, `vault-autounseal` `*/2` — **deleted 2026-09-28; golden rule retained in §Decision 1, cluster restore procedure in [`docs/velero.md` §6](../velero.md#6-restore-runbook)**
-- Deep-dive Velero: `docs/velero.md` — chicken-egg, bootstrap flow, wave ordering, Job spec, secrets/CI, verification, troubleshooting
+- Runbook: `docs/runbook-vault-restore.md` — single-leader Proxmox restore + Raft snapshot + Velero complement. Deleted; see §Decision 1 and [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook)**
+- Deep-dive Velero: `docs/cluster-recovery.md` (renamed from `docs/velero.md`) — chicken-egg, bootstrap flow, wave ordering, Job spec, secrets/CI, verification, troubleshooting
 - CI/CD: `docs/ci-cd.md` — `validate.yaml`/`deploy.yaml`, `ensureVeleroCredentials()` summary
 - Precedent: `docs/adrs/004-tailscale-oauth-seed-strategy.md` option A — bootstrap Secret outside Vault/ESO
 - SeaweedFS diff: `docs/adrs/008-seaweedfs-statefulset-volumeclaimtemplates-diff.md` — format reference for this ADR

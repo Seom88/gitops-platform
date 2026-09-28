@@ -83,7 +83,7 @@ env:
    chmod +x bootstrap/init-gitops.sh platform/vault/scripts/bootstrap-vault.sh
    ./bootstrap/init-gitops.sh "$ENV" $FORCE
    ```
-   `init-gitops.sh` is idempotent: `helm upgrade --install gitops`, Longhorn CSI gate (wave 0), `ensureVeleroCredentials()` (see [Velero](./velero.md)), `bootstrap-vault.sh`, status verifier. See [Getting Started](./getting-started.md).
+   `init-gitops.sh` is idempotent: `helm upgrade --install gitops`, Longhorn CSI gate (wave 0), `ensureVeleroCredentials()` (see [Velero](./cluster-recovery.md)), `bootstrap-vault.sh`, status verifier. See [Getting Started](./getting-started.md).
   11. `cleanup kubeconfig` (`if: always()`) — `shred -u /tmp/kubeconfig.yaml || rm -f /tmp/kubeconfig.yaml /tmp/tfstate.json`
 
 > `deploy.yaml` never runs `terraform apply` — infra is owned by `infra-talos-homelab`. This repo only fetches kubeconfig and delegates to `bootstrap/init-gitops.sh`, which in turn applies the ArgoCD App-of-Apps (`gitops/` chart, wave-ordered).
@@ -232,10 +232,10 @@ Regex managers also cover hardcoded images (`platform/*/templates`, `apps/*/temp
 
 ## Velero bootstrap
 
-Velero lives outside Vault/ESO (chicken-egg: it backs up Vault). Credentials come primarily from SOPS (`platform/velero/sops/cloud-credentials.enc.yaml`, dedicated keys — see [Velero](./velero.md) and [RustFS IAM](./rustfs-iam.md)), applied by `bootstrap/init-sops.sh`. `bootstrap/init-gitops.sh:ensureVeleroCredentials()` only creates an ephemeral `Secret velero/cloud-credentials` from `AWS_*` when the Secret is missing (reuses the S3 creds already injected by `deploy.yaml`). The chart consumes it via `credentials.existingSecret: cloud-credentials` and a `Job velero-bucket-init` creates the `velero-homelab` bucket idempotently: ArgoCD `Sync` hook at sync-wave `0` with `hook-weight: "-1"`, so it runs first *within* wave `0` (ahead of the chart's own resources, which have no hook-weight) and never blocks itself.
+Velero lives outside Vault/ESO (chicken-egg: it backs up Vault). Credentials come primarily from SOPS (`platform/velero/sops/cloud-credentials.enc.yaml`, dedicated keys — see [Velero](./cluster-recovery.md) and [RustFS IAM](./rustfs-iam.md)), applied by `bootstrap/init-sops.sh`. `bootstrap/init-gitops.sh:ensureVeleroCredentials()` only creates an ephemeral `Secret velero/cloud-credentials` from `AWS_*` when the Secret is missing (reuses the S3 creds already injected by `deploy.yaml`). The chart consumes it via `credentials.existingSecret: cloud-credentials` and a `Job velero-bucket-init` creates the `velero-homelab` bucket idempotently: ArgoCD `Sync` hook at sync-wave `0` with `hook-weight: "-1"`, so it runs first *within* wave `0` (ahead of the chart's own resources, which have no hook-weight) and never blocks itself.
 
-Details, bucket creation, verification, and troubleshooting: **[Velero →](./velero.md)**.
+Details, bucket creation, verification, and troubleshooting: **[Velero →](./cluster-recovery.md)**.
 
 ---
 
-Next: [Getting Started →](./getting-started.md) · [Features →](./features-deep-dive.md) · [ADRs →](./adrs/) · [Velero →](./velero.md)
+Next: [Getting Started →](./getting-started.md) · [Features →](./features-deep-dive.md) · [ADRs →](./adrs/) · [Velero →](./cluster-recovery.md)
