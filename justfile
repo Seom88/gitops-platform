@@ -3,7 +3,7 @@
 # ──────────────────────────────────────────────
 
 # Auto-load .env if present — secrets for k8s (see .env.example)
-# .env is gitignored; every recipe inherits K8S_TS_OAUTH_* / AWS_* / LONGHORN_AWS_*
+# .env is gitignored; every recipe inherits K8S_TS_OAUTH_* / AWS_*
 set dotenv-load
 
 # ── Default ───────────────────────────────────
@@ -88,7 +88,6 @@ secrets-check:
 # Load .env → k8s Secrets (idempotent, re-runnable)
 #   tailscale/operator-oauth  {client_id, client_secret}  <- K8S_TS_OAUTH_*
 # velero/cloud-credentials  {cloud: "[default]\\naws_access_key_id=..."} <- AWS_* (SOPS owns dedicated keys; this is fallback only)
-# longhorn-system/longhorn-backup-secret {AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINTS} <- LONGHORN_AWS_*
 secrets-apply:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -144,34 +143,6 @@ secrets-apply:
           --from-literal=cloud="$CLOUD_CONTENT" \
           --dry-run=client -o yaml | kubectl apply -f - >/dev/null
         echo "  ✅ Velero: Secret velero/cloud-credentials listo"
-      fi
-    fi
-
-    # ── Longhorn backup target (RustFS S3) ─────────
-    # Same SOPS-wins rule as Velero above: imperative creation is fallback only.
-    if kubectl get secret longhorn-backup-secret -n longhorn-system >/dev/null 2>&1; then
-      echo "  💾 Longhorn: Secret longhorn-system/longhorn-backup-secret exists (SOPS-managed) — skipping"
-    else
-      LONGHORN_ID="${LONGHORN_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
-      LONGHORN_SECRET_VAL="${LONGHORN_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
-      if [ -z "$LONGHORN_ID" ] || [ -z "$LONGHORN_SECRET_VAL" ] || [ "$LONGHORN_ID" = "..." ] || [ "$LONGHORN_SECRET_VAL" = "..." ]; then
-        echo "  ⏭️  Longhorn: no valid S3 credentials (LONGHORN_AWS_ACCESS_KEY_ID / LONGHORN_AWS_SECRET_ACCESS_KEY) — skipping"
-      else
-        # Endpoint single source: sharedS3.tailnetFqdn literal in gitops/values.yaml (same FQDN in values-dev.yaml).
-        LONGHORN_ENDPOINT="${LONGHORN_S3_ENDPOINTS:-}"
-        if [ -z "$LONGHORN_ENDPOINT" ]; then
-          LH_FQDN="$(awk -F'"' '/tailnetFqdn:/{print $2; exit}' gitops/values.yaml 2>/dev/null || true)"
-          LONGHORN_ENDPOINT="https://${LH_FQDN}"
-        fi
-        echo "  💾 Longhorn: creando Secret longhorn-system/longhorn-backup-secret (fallback, no SOPS)..."
-        kubectl get namespace longhorn-system >/dev/null 2>&1 || kubectl create namespace longhorn-system >/dev/null 2>&1
-        kubectl create secret generic longhorn-backup-secret \
-          --namespace longhorn-system \
-          --from-literal=AWS_ACCESS_KEY_ID="$LONGHORN_ID" \
-          --from-literal=AWS_SECRET_ACCESS_KEY="$LONGHORN_SECRET_VAL" \
-          --from-literal=AWS_ENDPOINTS="$LONGHORN_ENDPOINT" \
-          --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-        echo "  ✅ Longhorn: Secret longhorn-system/longhorn-backup-secret listo"
       fi
     fi
 
@@ -337,9 +308,9 @@ validate-platform:
         # Use update to handle out-of-sync Chart.lock (e.g. vault)
         helm dependency update "$dir" 2>&1 || helm dependency build "$dir" 2>&1 || echo "   no deps / already built for $dir"
         echo "==> helm lint $dir"
-        # Velero/Longhorn s3.tailnetFqdn is required (CI-supplied) — lint with a test value.
+        # Velero s3.tailnetFqdn is required (CI-supplied) — lint with a test value.
         extra=""
-        if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/longhorn/" ]; then
+        if [ "$dir" = "platform/velero/" ]; then
           extra="--set s3.tailnetFqdn=s3-validate.invalid"
         fi
         if ! helm lint $extra "$dir"; then
@@ -478,9 +449,9 @@ scan:
       if [ ! -f "${dir}Chart.yaml" ]; then continue; fi
       name="$(basename "$dir")"
       helm dependency update "$dir" >/dev/null 2>&1 || helm dependency build "$dir" >/dev/null 2>&1 || true
-      # Velero/Longhorn s3.tailnetFqdn is required (CI-supplied) — render with a test value.
+      # Velero s3.tailnetFqdn is required (CI-supplied) — render with a test value.
       extra=""
-      if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/longhorn/" ]; then
+      if [ "$dir" = "platform/velero/" ]; then
         extra="--set s3.tailnetFqdn=s3-validate.invalid"
       fi
       # shellcheck disable=SC2086

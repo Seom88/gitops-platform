@@ -1,39 +1,12 @@
 ciliumNetworkPolicy:
   enabled: true
 
-# Shared S3 endpoint — single source for the URL: gitops/values.yaml
-# sharedS3.tailnetFqdn (literal) -> gitops/templates/platform/00-longhorn.yaml
-# helm.parameter s3.tailnetFqdn -> here (Cilium egress + bucket-init Job).
-# tailnetFqdn is REQUIRED (empty on purpose — NO fallback literal).
-# bucket/region mirror velero-homelab conventions (us-east-1, path-style).
-s3:
-  tailnetFqdn: ""
-  bucket: longhorn-homelab
-  region: us-east-1
-
-# Auto-restore data volumes from S3 backups on (re)start — idempotent
-# ArgoCD Sync-hook Job (platform/longhorn/templates/job-auto-restore.yaml,
-# local wave 2, after bucket-init wave 0 and csi-wait wave 1).
-# Restores every backup labeled backup=daily (default-daily-backup plus the
-# seaweedfs/monitoring/cnpg backup-only groups); vault-hourly is snapshot-only
-# and legacy no-snapshot volumes produce no Backup CRs, so Vault and fully
-# excluded volumes are never touched.
-autoRestore:
-  enabled: true
-  # Must mirror longhorn.defaultSettings.defaultReplicaCount (single-zone homelab).
-  numberOfReplicas: 1
+# No backup target and no S3 egress. Velero owns 100% of off-site volume data
+# (platform/velero, schedule `daily-full` with defaultVolumesToFsBackup: true).
+# The RecurringJobs in this chart are local snapshots only — see
+# templates/recurringjobs.yaml.
 
 longhorn:
-  # Default backup target (RustFS S3-compatible). Endpoint + credentials come
-  # from the bootstrap-created Secret longhorn-system/longhorn-backup-secret
-  # (bootstrap/init-gitops.sh:ensureLonghornBackupCredentials(), keys
-  # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_ENDPOINTS). No AWS_CERT:
-  # RustFS serves a public Let's Encrypt cert (verified 2026-09-21).
-  # NOTE: backupTarget is a literal — keep bucket@region in sync with s3.*
-  # above (values files are not templated).
-  defaultBackupStore:
-    backupTarget: "s3://longhorn-homelab@us-east-1/"
-    backupTargetCredentialSecret: longhorn-backup-secret  # pragma: allowlist secret
   defaultSettings:
     defaultReplicaCount: 1
     replicaSoftAntiAffinity: false

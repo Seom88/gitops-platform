@@ -158,60 +158,6 @@ aws_secret_access_key=${VELERO_SECRET}"
   echo -e "${GREEN}  [Velero] Secret velero/cloud-credentials ready.${NC}"
 }
 
-ensureLonghornBackupCredentials() {
-  echo -e "\n${BLUE}💾 Ensuring Longhorn S3 backup credentials (RustFS)...${NC}"
-
-  # Ensure namespace exists (idempotent, also created by Helm/ArgoCD but needed for Secret)
-  if ! kubectl get namespace longhorn-system >/dev/null 2>&1; then
-    echo -e "${YELLOW}  [Longhorn] Creating namespace longhorn-system...${NC}"
-    kubectl create namespace longhorn-system >/dev/null 2>&1 || true
-  else
-    echo -e "${GREEN}  [Longhorn] Namespace longhorn-system exists.${NC}"
-  fi
-
-  # SOPS owns the dedicated keys (init-sops.sh applies platform/longhorn/sops/*.enc.yaml
-  # before this script runs). Imperative creation is fallback only — never overwrite it.
-  if kubectl get secret longhorn-backup-secret -n longhorn-system >/dev/null 2>&1; then
-    echo -e "${GREEN}  [Longhorn] Secret longhorn-system/longhorn-backup-secret exists (SOPS-managed) — leaving untouched.${NC}"
-    return 0
-  fi
-
-  # Resolve credentials: prefer LONGHORN_AWS_* , fallback to AWS_* (same RustFS keys as Terraform).
-  LONGHORN_KEY_ID="${LONGHORN_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
-  LONGHORN_SECRET="${LONGHORN_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
-
-  if [ -z "$LONGHORN_KEY_ID" ] || [ -z "$LONGHORN_SECRET" ]; then
-    echo -e "${YELLOW}  [Longhorn] ⚠️  No S3 credentials in env (LONGHORN_AWS_ACCESS_KEY_ID / LONGHORN_AWS_SECRET_ACCESS_KEY or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).${NC}"
-    echo -e "${YELLOW}  [Longhorn]    Longhorn backup target will stay unavailable until you create the Secret.${NC}"
-    echo -e "${YELLOW}  [Longhorn]    Create it with: LONGHORN_AWS_ACCESS_KEY_ID=... LONGHORN_AWS_SECRET_ACCESS_KEY=... ./bootstrap/init-gitops.sh $ENV${NC}"
-    echo -e "${YELLOW}  [Longhorn]    Expected Secret: longhorn-system/longhorn-backup-secret keys AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_ENDPOINTS${NC}"
-    return 0
-  fi
-
-  # Endpoint single source: sharedS3.tailnetFqdn literal in the same values
-  # file this script deploys (gitops/values.yaml or gitops/values-dev.yaml).
-  # LONGHORN_S3_ENDPOINTS overrides it when set (trailing slash is stripped).
-  # No AWS_CERT: RustFS serves a public Let's Encrypt cert (verified 2026-09-21).
-  LONGHORN_ENDPOINT="${LONGHORN_S3_ENDPOINTS:-}"
-  if [ -z "$LONGHORN_ENDPOINT" ]; then
-    LH_FQDN="$(awk -F'"' '/tailnetFqdn:/{print $2; exit}' "$VALUES_FILE" 2>/dev/null || true)"
-    if [ -z "$LH_FQDN" ]; then
-      echo -e "${YELLOW}  [Longhorn] ⚠️  Could not parse sharedS3.tailnetFqdn from $VALUES_FILE — set LONGHORN_S3_ENDPOINTS=https://<rustfs-host> explicitly.${NC}"
-      return 0
-    fi
-    LONGHORN_ENDPOINT="https://${LH_FQDN}"
-  fi
-
-  echo -e "${YELLOW}  [Longhorn] Creating/updating Secret longhorn-system/longhorn-backup-secret (endpoint ${LONGHORN_ENDPOINT})...${NC}"
-  kubectl create secret generic longhorn-backup-secret \
-    --namespace longhorn-system \
-    --from-literal=AWS_ACCESS_KEY_ID="$LONGHORN_KEY_ID" \
-    --from-literal=AWS_SECRET_ACCESS_KEY="$LONGHORN_SECRET" \
-    --from-literal=AWS_ENDPOINTS="$LONGHORN_ENDPOINT" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  echo -e "${GREEN}  [Longhorn] Secret longhorn-system/longhorn-backup-secret ready.${NC}"
-}
-
 runStatusChecks() {
   if [ "$CHECK" = "true" ]; then
     # ---  Wait for Longhorn Storage (wave 0) ---
@@ -366,12 +312,10 @@ fi
 
 # --- STEP 1: Ensure credentials BEFORE App-of-Apps so wave -1 Secrets exist ---
 # Tailscale operator-oauth (CI-generated) must exist before wave -1 healthy gate;
-# Velero cloud-credentials must exist before wave 0 Sync hook; Longhorn
-# longhorn-backup-secret must exist before longhorn-manager reads the backup
-# target. All are idempotent and warn-only in --check (no mutations when CHECK=true).
+# Velero cloud-credentials must exist before wave 0 Sync hook. All are idempotent
+# and warn-only in --check (no mutations when CHECK=true).
 ensureTailscaleCredentials
 ensureVeleroCredentials
-ensureLonghornBackupCredentials
 
 # --- STEP 2: Install App-of-Apps (guarded) ---
 APP_EXISTS="false"

@@ -2,7 +2,7 @@
 
 > **Scope:** RustFS is an **external system** (separate VM, managed outside this repo).
 > This doc is the runbook for creating least-privilege S3 keys for cluster
-> consumers (Longhorn, Velero, CNPG shared DB backups). Cluster side (SOPS + bootstrap fallback) is
+> consumers (Velero, CNPG shared DB backups). Cluster side (SOPS + bootstrap fallback) is
 > wired here; the keys themselves are created in RustFS and never committed.
 
 ## Concepts (what matters here)
@@ -26,8 +26,8 @@
 Console → left nav **Access Keys** → **Add Access Key** (top right) →
 **Create Key** dialog:
 
-1. **Name**: `longhorn-backup` / `velero-backup` / `cnpg-backup`. **Description**: what it is
-   for (e.g. `Longhorn daily backups - homelab`, `CNPG shared DB backups - homelab`).
+1. **Name**: `velero-backup` / `cnpg-backup`. **Description**: what it is
+   for (e.g. `Velero daily backups - homelab`, `CNPG shared DB backups - homelab`).
 2. **Access Key**: leave blank to autogenerate; if Submit complains, type the
    name by hand. **Secret Key** comes pre-generated (masked).
 3. **Expiry**: set ~1 year out (e.g. `2027-09-21`). Empty = permanent;
@@ -43,39 +43,16 @@ Console → left nav **Access Keys** → **Add Access Key** (top right) →
 
 ## Scoped policies
 
-Backups need **delete** (Longhorn `retain: 3` prunes old backups; Velero
-prunes by TTL), so these allow `s3:DeleteObject` — scoped to the single
+Backups need **delete** (Velero prunes by TTL, Barman by its
+`retentionPolicy`), so these allow `s3:DeleteObject` — scoped to the single
 bucket. (A WORM/archive key would deny deletes; not our case.)
-
-### Longhorn (`longhorn-homelab`)
-
-` s3:CreateBucket` is required: the `longhorn-bucket-init` Job creates the
-bucket idempotently with the scoped key itself (scoped to this one ARN, so
-least-privilege still holds — the key cannot create or touch any other
-bucket).
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:CreateBucket"],
-      "Resource": ["arn:aws:s3:::longhorn-homelab"]
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
-      "Resource": ["arn:aws:s3:::longhorn-homelab/*"]
-    }
-  ]
-}
-```
 
 ### Velero (`velero-homelab`)
 
-Same `s3:CreateBucket` requirement as Longhorn — the `velero-bucket-init`
-Job creates the bucket with the scoped key.
+`s3:CreateBucket` is required: the `velero-bucket-init` Job creates the
+bucket idempotently with the scoped key itself (scoped to this one ARN, so
+least-privilege still holds — the key cannot create or touch any other
+bucket).
 
 Mirrors the upstream [minimal policy](https://github.com/velero-io/velero-plugin-for-aws/)
 (EC2 snapshot actions omitted — no EBS here; `GetBucketLocation` added: harmless
@@ -148,7 +125,6 @@ compliance requires isolation.
 
 1. Scaffolds already exist with `CHANGEME` placeholders — replace the values
    with the real keys (shapes below for reference):
-   `platform/longhorn/sops/backup-credentials.enc.yaml`,
    `platform/velero/sops/cloud-credentials.enc.yaml`,
    `apps/immich/sops/cnpg-backup-credentials.enc.yaml` +
    `platform/monitoring/sops/cnpg-backup-credentials.enc.yaml`
@@ -157,21 +133,6 @@ compliance requires isolation.
    namespace-local).
    Then encrypt from the repo root per [docs/sops.md](sops.md):
 2. Exact Secret shapes (no Helm templating inside `.enc.yaml` — pure YAML):
-
-   `platform/longhorn/sops/backup-credentials.enc.yaml`:
-   ```yaml
-   apiVersion: v1
-   kind: Secret
-   metadata:
-     name: longhorn-backup-secret
-     namespace: longhorn-system
-   stringData:
-     AWS_ACCESS_KEY_ID: <longhorn key>
-     AWS_SECRET_ACCESS_KEY: <longhorn secret>
-     AWS_ENDPOINTS: https://rustfs.lonk-mirfak.ts.net
-   ```
-   (Endpoint duplicates `sharedS3.tailnetFqdn` — known tradeoff, FQDN rarely
-   changes.)
 
    `platform/velero/sops/cloud-credentials.enc.yaml`:
    ```yaml
@@ -222,10 +183,10 @@ compliance requires isolation.
     chart since 2026-09-28). The bucket is pre-created manually in console;
     no bucket-init Job, no IAM provisioning from the cluster.
 3. Apply: `just secrets-apply` (decrypt + `kubectl apply`, shreds key after).
-4. `bootstrap/init-gitops.sh` (`ensureVeleroCredentials`,
-   `ensureLonghornBackupCredentials`) stays as **fallback**: if the Secret
-   already exists via SOPS and no env creds are set, it does not touch it;
-   env creds still allow bootstrap/rotation without SOPS.
+4. `bootstrap/init-gitops.sh` (`ensureVeleroCredentials`) stays as
+   **fallback**: if the Secret already exists via SOPS and no env creds are
+   set, it does not touch it; env creds still allow bootstrap/rotation
+   without SOPS.
 
 ## Automation (Terraform)
 
@@ -262,6 +223,6 @@ Short answer: possible, not recommended yet.
    for CNPG re-encrypt **both** `apps/immich/sops/cnpg-backup-credentials.enc.yaml`
    and `platform/monitoring/sops/cnpg-backup-credentials.enc.yaml` with the same
    pair),
-   `just secrets-apply`, verify consumer works (Longhorn backup target OK /
-   Velero BSL Available / CNPG `head-bucket` + one `ScheduledBackup` succeeds).
+   `just secrets-apply`, verify the consumer works (Velero BSL Available /
+   CNPG `head-bucket` + one `ScheduledBackup` succeeds).
 3. Disable (don't delete yet) the old key → wait one backup cycle → delete.

@@ -1,12 +1,12 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
-{{- $fqdn := required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
 # CiliumNetworkPolicies for longhorn-system.
 # NOTE: the upstream subchart ships K8s NetworkPolicies gated on
 # networkPolicies.restrictInternalTraffic (default true) but they are
 # Ingress-only — they never restrict EGRESS. So THESE Cilium policies own all
 # egress enforcement: keep DNS/FQDN/world coverage in sync here.
-# This adds DNS-aware egress (incl. S3 backup target), Hubble, and explicit
-# intra-longhorn allowlists to match Cilium identity semantics.
+# This adds DNS-aware egress, Hubble, and explicit intra-longhorn allowlists to
+# match Cilium identity semantics. No off-site egress: Longhorn sends no volume
+# data anywhere (Velero owns the off-site copy).
 
 # 1) DNS
 ---
@@ -53,27 +53,6 @@ spec:
               protocol: TCP
             - port: "6443"
               protocol: TCP
-    # S3 backup target (RustFS at {{ $fqdn }}:443, from sharedS3.tailnetFqdn) —
-    # longhorn-manager uploads volume backups here. Mirrors velero's S3 egress:
-    # FQDN + tailnet wildcard with DNS rules, world 443, and the tailscale
-    # namespace (MagicDNS via shared s3-egress proxy path).
-    - toFQDNs:
-        - matchName: {{ $fqdn }}
-        - matchPattern: "*.lonk-mirfak.ts.net"
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-          rules:
-            dns:
-              - matchPattern: "*.ts.net"
-              - matchPattern: "*.lonk-mirfak.ts.net"
-    - toEntities:
-        - world
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
@@ -85,8 +64,7 @@ spec:
               protocol: TCP
             - port: "443"
               protocol: TCP
-    # Tailscale gateway -> longhorn-frontend (80) is ingress direction; other
-    # egress from longhorn to world is not needed beyond S3 above.
+    # Tailscale gateway -> longhorn-frontend (80) is ingress direction.
     # Hubble observability
     - toEndpoints:
         - matchLabels:
