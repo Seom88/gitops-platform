@@ -91,6 +91,6 @@ velero backup get
 
 ## References
 
-- [docs/velero.md](../../docs/velero.md) — detailed flow and wave ordering
-- [docs/runbook-vault-restore.md](../../docs/runbook-vault-restore.md) — Vault DR procedure
+- [docs/velero.md](../../docs/velero.md) — detailed flow, wave ordering, and the [cluster restore runbook](../../docs/velero.md#6-restore-runbook)
+- [ADR-009](../../docs/adrs/009-vault-dr-and-velero-backup.md) — Vault DR golden rule (its Vault-specific runbook was deleted on 2026-09-28)
 - [ADR-004](../../docs/adrs/004-tailscale-oauth-seed-strategy.md) — bootstrap secret precedent

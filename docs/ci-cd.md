@@ -232,7 +232,7 @@ Regex managers also cover hardcoded images (`platform/*/templates`, `apps/*/temp
 
 ## Velero bootstrap
 
-Velero lives outside Vault/ESO (chicken-egg: it backs up Vault). Credentials come primarily from SOPS (`platform/velero/sops/cloud-credentials.enc.yaml`, dedicated keys — see [Velero](./velero.md) and [RustFS IAM](./rustfs-iam.md)), applied by `bootstrap/init-sops.sh`. `bootstrap/init-gitops.sh:ensureVeleroCredentials()` only creates an ephemeral `Secret velero/cloud-credentials` from `AWS_*` when the Secret is missing (reuses the S3 creds already injected by `deploy.yaml`). The chart consumes it via `credentials.existingSecret: cloud-credentials` and a wave `-1` `Job velero-bucket-init` creates the `velero-homelab` bucket idempotently before wave `0`.
+Velero lives outside Vault/ESO (chicken-egg: it backs up Vault). Credentials come primarily from SOPS (`platform/velero/sops/cloud-credentials.enc.yaml`, dedicated keys — see [Velero](./velero.md) and [RustFS IAM](./rustfs-iam.md)), applied by `bootstrap/init-sops.sh`. `bootstrap/init-gitops.sh:ensureVeleroCredentials()` only creates an ephemeral `Secret velero/cloud-credentials` from `AWS_*` when the Secret is missing (reuses the S3 creds already injected by `deploy.yaml`). The chart consumes it via `credentials.existingSecret: cloud-credentials` and a `Job velero-bucket-init` creates the `velero-homelab` bucket idempotently: ArgoCD `Sync` hook at sync-wave `0` with `hook-weight: "-1"`, so it runs first *within* wave `0` (ahead of the chart's own resources, which have no hook-weight) and never blocks itself.
 
 Details, bucket creation, verification, and troubleshooting: **[Velero →](./velero.md)**.
 
