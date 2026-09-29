@@ -9,7 +9,7 @@ allowVolumeExpansion: true
 parameters:
   numberOfReplicas: "1"
   encrypted: "true"
-  recurringJobGroup: "default" # enroll every encrypted volume in default-daily-backup (remote, RustFS)
+  recurringJobGroup: "default" # enroll every encrypted volume in default-2h-snapshot (local copy-on-write, retain 12)
   csi.storage.k8s.io/provisioner-secret-name: "longhorn-crypto"
   csi.storage.k8s.io/provisioner-secret-namespace: "longhorn-system"
   csi.storage.k8s.io/node-publish-secret-name: "longhorn-crypto"
