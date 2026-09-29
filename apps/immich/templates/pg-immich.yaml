@@ -36,6 +36,10 @@ spec:
     storageClass: {{ .Values.cnpg.storage.class }}
     {{- end }}
     size: {{ .Values.cnpg.storage.size }}
+  {{- with .Values.cnpg.inheritedMetadata }}
+  inheritedMetadata:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: Database

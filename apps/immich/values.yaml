@@ -35,6 +35,17 @@ cnpg:
   storage:
     class: longhorn-cnpg
     size: 2Gi
+  # Velero opt-out for the CNPG extension image volume. CNPG materialises
+  # `postgresql.extensions[].image` as an Image Volume named `ext-<name>`, and
+  # the kubelet bind-mounts it straight from the containerd snapshotter overlay.
+  # There is no path under /var/lib/kubelet/pods/<uid>/volumes for it, so the
+  # Velero node-agent's PodVolumeBackup fails to resolve it on every run
+  # (PartiallyFailed). Excluding it by name is the only mechanism that works:
+  # resource/volume policies match PVC/PV objects by storageClass or labels, and
+  # an image volume has neither.
+  inheritedMetadata:
+    annotations:
+      backup.velero.io/backup-volumes-excludes: ext-vchord
   database: immich
   owner: immich
   postgresql:
