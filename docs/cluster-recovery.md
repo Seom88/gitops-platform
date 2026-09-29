@@ -162,15 +162,15 @@ Velero's FsBackup of a live Postgres is crash-consistent, not a valid recovery p
 
 | Cluster (namespace) | ObjectStore | Destination | Schedule | Retention |
 |---|---|---|---|---|
-| `immich-database` (`immich`) | `immich-backup-store` | `s3://cnpg-db-backups/immich/` | `0 4 * * *` | `3d` |
-| `grafana-database` (`monitoring`) | `grafana-backup-store` | `s3://cnpg-db-backups/grafana/` | `0 4 * * *` | `3d` |
+| `immich-database` (`immich`) | `immich-backup-store` | `s3://cnpg-db-backups/immich/` | `55 1 * * *` | `30d` |
+| `grafana-database` (`monitoring`) | `grafana-backup-store` | `s3://cnpg-db-backups/grafana/` | `55 1 * * *` | `30d` |
 
 Both Git manifests render only `bootstrap.initdb` (`apps/immich/templates/pg-immich.yaml:30-33`, `platform/monitoring/templates/grafana-database-cluster.yaml:26-29`) — no `recovery:` stanza, so the recovery manifest below is hand-applied while the app stays frozen (§2.3). Unfreezing is safe afterwards: `bootstrap`/`recovery` only run on empty PGDATA, so Git reconciles over the live object without touching data.
 
 Prerequisites:
 
 1. **S3 Secret in the namespace.** `cnpg-backup-s3-credentials` (keys `ACCESS_KEY_ID` / `SECRET_ACCESS_KEY`) is namespace-local and comes from SOPS (`apps/immich/sops/cnpg-backup-credentials.enc.yaml`, plus the copy in `monitoring/`). §2.2 already applied it. `daily-full` does not back up Secrets.
-2. **Know your target.** Omitting `recoveryTarget` replays to the latest WAL. For PITR, `targetTime` needs an explicit timezone (RFC 3339) and must fall inside the `3d` retention:
+2. **Know your target.** Omitting `recoveryTarget` replays to the latest WAL. For PITR, `targetTime` needs an explicit timezone (RFC 3339) and must fall inside the `30d` retention:
    ```bash
    kubectl -n immich get backup
    kubectl -n immich get scheduledbackup immich-database-daily -o yaml
@@ -194,7 +194,7 @@ spec:
       source: barman-recovery
       # Omit recoveryTarget for latest-WAL recovery; or pin PITR:
       # recoveryTarget:
-      #   targetTime: "2026-09-27T04:00:00Z"
+      #   targetTime: "2026-09-27T01:55:00Z"
       database: immich
       owner: immich
       # No `secret:` — passwords stay as in the backup, so the app
@@ -296,7 +296,7 @@ kubectl get pvc -A                                    # Bound, not Detached
 | Postgres restored but inconsistent | Use Barman, not Velero (§2.7) |
 | Recovery stuck `Setting up primary` + `Expected empty archive` | The manifest kept the `plugins:` archiver section — remove it, re-apply (§2.7) |
 | WAL replay fails on `vchord` | The manifest dropped `spec.postgresql` — copy it verbatim from Git (§2.7) |
-| PITR target never reached | `targetTime` outside the `3d` retention or missing timezone (§2.7) |
+| PITR target never reached | `targetTime` outside the `30d` retention or missing timezone (§2.7) |
 | Apps CrashLoop after unfreeze, DBs healthy | Both clusters must be primary before their apps (§2.8 step 2) |
 | `NoSuchBucket` or `velero` unreachable | RustFS is gone — see [RustFS IAM](./rustfs-iam.md) |
 

@@ -17,11 +17,15 @@ backup:
   bucket: cnpg-db-backups
   prefix: immich
   secretName: cnpg-backup-s3-credentials # pragma: allowlist secret
-  # 04:00 UTC daily, matching Longhorn default-daily-backup (retain 3).
-  schedule: "0 4 * * *"
+  # 01:55 UTC daily, ahead of Velero `daily-full` (02:00). Nothing coordinates
+  # the two backups, so the gap between them is only safe in one direction:
+  # Barman first leaves an orphaned file recoverable on disk; Velero first
+  # captures the database row without the file, and the bytes are gone.
+  schedule: "55 1 * * *"
   # Recovery-window retention. The plugin CRD only accepts `<n>[dwm]`, so the
-  # "3 backup points" policy is expressed as 3d (one backup/day ≈ 3 points).
-  retentionPolicy: "3d"
+  # window is written as 30d — the same 30d Velero keeps, so both layers reach
+  # back the same distance on restore.
+  retentionPolicy: "30d"
 
 # Shared CNPG Cluster contract (direct manifests in templates/pg-immich.yaml).
 # Single source for instances/image/storage/database/owner; templates render it.
