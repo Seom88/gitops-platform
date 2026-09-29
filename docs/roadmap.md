@@ -10,12 +10,13 @@ This document tracks what is currently deployed in the cluster, what is required
 
 ## What blocks v1.0.0
 
-Two items. Everything else in the v1 scope is deployed.
+One item. Everything else in the v1 scope is deployed.
 
 | # | Blocker | What is true today | What closes it |
 |---|---------|--------------------|----------------|
-| 1 | **Velero restore drill has never been run** | Backup is proven and running (Velero deployed, `daily-full` + `vault-hourly` schedules to RustFS S3 `velero-homelab`). Restore is **undrilled** — no recovery from a Velero backup has ever been executed. | Restore into a clean cluster with evidence captured per [`docs/restore-verification.md`](./restore-verification.md), and [`docs/cluster-recovery.md` §2](./cluster-recovery.md#2-restore-runbook) updated with what the drill actually showed. |
-| 2 | **No egress control for `argocd` and `external-secrets`** | 9 of 10 first-party charts render gated `CiliumNetworkPolicy` (see [Policy coverage](#policy-coverage-adr-014)). The `argocd` namespace and the upstream `external-secrets` workload have none. These are the two highest-blast-radius workloads in the stack: ArgoCD holds the repository credentials, and ESO can write any secret in the cluster. | Either write the missing policies, or record an explicit, signed-off acceptance of the gap. **Not closed by this document.** |
+| 1 | **Velero restore drill has never been run** | Backup is running (Velero deployed, `daily-full` to S3-compatible RustFS, bucket `velero-homelab`). Restore is **undrilled** — no recovery from a Velero backup has ever been executed. | Restore into a clean cluster with evidence captured per [`docs/restore-verification.md`](./restore-verification.md), and [`docs/cluster-recovery.md` §2](./cluster-recovery.md#2-restore-runbook) updated with what the drill actually showed. |
+
+**Namespace ownership is a boundary, not a gap.** This repository deploys workloads into exactly nine namespaces and renders a gated `CiliumNetworkPolicy` for each. It deploys nothing at runtime into `argocd` — the ArgoCD `Application` objects under `gitops/` are consumed by the pre-installed cluster prerequisite, and the only other thing this repo places there is the `ts-operator`-owned `argocd` Ingress, which lives in `namespace: tailscale` and selects *toward* `argocd`, not inside it. `external-secrets` is the upstream chart `charts.external-secrets.io` and is **disabled** (`eso.enabled: false`). Neither has a first-party chart here, so there is no template to add; their policy belongs to the provisioning layer and to the upstream chart respectively. Full reasoning in [Policy coverage](#policy-coverage-adr-014). This is a disclosure for the release notes, not a deliverable of this release.
 
 Nothing else gates v1.0.0. The **substrate** (Talos today; single-node bare-metal cutover planned per [ADR-019](./adrs/019-single-node-bare-metal-migration.md)) is an operational concern of the maintainer's, **not** a v1 gate — it is tracked in [`odd/tasks/ci-kubeconfig-k3s.md`](../odd/tasks/ci-kubeconfig-k3s.md) and outside this release's scope.
 
@@ -86,14 +87,14 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 - [x] Longhorn — distributed block storage
 - [x] SeaweedFS — S3-compatible object storage
 - [x] Loki → SeaweedFS integration for centralized logging (SingleBinary + gateway, buckets `loki-chunks`/`loki-ruler`)
-- [x] Velero — **automated backup** (Wave 0, RustFS S3 `velero-homelab` at `https://rustfs.lonk-mirfak.ts.net`, schedules `daily-full` (02:00, all namespaces, 30d TTL) + `vault-hourly` (hourly, vault only, 7d TTL); chart `12.2.0` / app `1.18.2`) — deployed and running. **Restore is not verified**: no drill has been run. See [What blocks v1.0.0](#what-blocks-v100).
+- [x] Velero — **automated backup** (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 02:00, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`) — deployed and running. Vault is excluded by policy; its hourly protection is the Longhorn `vault-hourly-snapshot` RecurringJob, not a Velero schedule. **Restore is not verified**: no drill has been run. See [What blocks v1.0.0](#what-blocks-v100).
 
 ### Phase 4 — Hardening & Developer Experience (in progress, v1.0)
 
 Remaining scope for v1.0.0. The Cilium CNI (breaking change at the infrastructure layer) is already deployed.
 
 **CNI (v1.0.0):**
-- [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) — NetworkPolicy enforcement, Hubble observability, eBPF kubeProxyReplacement. Policy coverage is **9 of 10** first-party charts, not complete: see [Policy coverage](#policy-coverage-adr-014).
+- [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) — NetworkPolicy enforcement, Hubble observability, eBPF kubeProxyReplacement. Every namespace this repo deploys a workload into has a gated policy; namespaces owned by the provisioning layer do not: see [Policy coverage](#policy-coverage-adr-014).
 
 **Security hardening (requires Cilium, planned for v1.0.0):**
 - [x] Container image vulnerability scanning (Trivy) integrated into CI — fail-closed `Security` workflow (digest-pinned first-party images block on HIGH/CRITICAL outside `.trivyignore`; upstream subchart images advisory; deploy gated on Security + Validate)
@@ -164,7 +165,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 ### Compliance & policy
 
 - Pod Security Admission `restricted` rollout — 6 infra namespaces stay `privileged` by exception (Longhorn, monitoring, etc.); homepage is restricted-ready pilot — moved from v1, requires full project to validate
-- NetworkPolicy gap-closing & hardening — per-namespace allows exist for **9** of 10 first-party charts ([Policy coverage](#policy-coverage-adr-014)); the `argocd` / `external-secrets` gap is a **v1.0.0 blocker** (see [What blocks v1.0.0](#what-blocks-v100)), and the remaining hardening work — Vault Raft 8201 audit, tightening broad allows — stays here. Must re-validate with every new app.
+- NetworkPolicy gap-closing & hardening — per-namespace allows exist for every namespace this repo deploys a workload into ([Policy coverage](#policy-coverage-adr-014)); the remaining hardening work — Vault Raft 8201 audit, tightening broad allows — stays here. Must re-validate with every new app.
 - Security architecture documentation (minimal threat model, attack surface, incident response) — moved from v1
 - Kyverno — admission-time policy enforcement (policy-as-code)
 - CIS Benchmark — automated Kubernetes security validation
@@ -219,10 +220,9 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 
 This is the same set as [What blocks v1.0.0](#what-blocks-v100), repeated here for checklist readers. It is deliberately short and deliberately non-empty.
 
-- [ ] **Velero restore drill (RTO/RPO validation).** Backup is proven; restore has never been executed. This item moved here from v2.0 — it was claimed for v1 while being planned for v2. Evidence per [`docs/restore-verification.md`](./restore-verification.md).
-- [ ] **Egress policy for `argocd` and `external-secrets`.** 9 of 10 first-party charts have gated `CiliumNetworkPolicy`; these two highest-blast-radius workloads have none. See [Policy coverage](#policy-coverage-adr-014). Either write the policies or record an explicit acceptance of the gap.
+- [ ] **Velero restore drill (RTO/RPO validation).** Backup is running; restore has never been executed. This item moved here from v2.0 — it was claimed for v1 while being planned for v2. Evidence per [`docs/restore-verification.md`](./restore-verification.md).
 
-Nothing on this list is a claim of work done. Both items are open.
+Nothing on this list is a claim of work done. The one item is open.
 
 **Planned for v2.0:**
 - [ ] Vault return — re-enable Vault/ESO under ADR-017 (flag flip + restore from the frozen archive)
