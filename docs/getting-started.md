@@ -1,10 +1,10 @@
 # Getting Started
 
-This guide provides the steps to initialize the Homelab GitOps environment, including the setup of HashiCorp Vault for secret management. **ArgoCD is installed by the companion [infra repo](https://github.com/Seom88/infra-talos-homelab)** (`platform/` layer) — it is **NOT** installed here. **Longhorn** is deployed by this repo itself as a wave -1 platform app with a CSI readiness gate, so no storage needs to be pre-installed.
+This guide provides the steps to initialize the Homelab GitOps environment, including the setup of HashiCorp Vault for secret management. **ArgoCD is NOT installed here** — it is a cluster prerequisite. **Longhorn** is deployed by this repo itself as a wave -1 platform app with a CSI readiness gate, so no storage needs to be pre-installed.
 
 ## Prerequisites
 
-- A running Kubernetes cluster with **ArgoCD** already installed — see the infra repo's [`platform/`](https://github.com/Seom88/infra-talos-homelab) layer for the install flow.
+- A running Kubernetes cluster with **ArgoCD** already installed.
 - `kubectl` configured to point to your cluster.
 - `helm` installed locally.
 - `jq` installed locally.
@@ -26,10 +26,10 @@ just init-dev
 > The raw scripts are also available at `./bootstrap/01-init-gitops.sh [prod|dev]` if you prefer running them directly.
 
 > [!IMPORTANT]
-> The cluster must have **ArgoCD** installed **before** running the bootstrap. The companion infra repo's `platform/` layer installs it (order: nodes ready → ArgoCD). Longhorn is deployed by this repo as a wave -1 App-of-Apps app with a CSI readiness gate — the bootstrap script does not install ArgoCD or any storage component.
+> The cluster must have **ArgoCD** installed **before** running the bootstrap. Longhorn is deployed by this repo as a wave -1 App-of-Apps app with a CSI readiness gate — the bootstrap script does not install ArgoCD or any storage component.
 
 > [!NOTE]
-> **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/apps/` ordered by `argocd.argoproj.io/sync-wave`: `00` cert-manager/external-secrets/longhorn (wave 0) → `01` vault (wave 1) → `02` seaweedfs (wave 2) → `03` monitoring (wave 3, `sync-only`) → `04` tailscale (wave 4, `sync-only`, always last). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua in the infra repo's `modules/platform/values/argocd/values.yaml`), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` and `tailscale` are `sync-only` leaves, Tailscale still exposes other apps even if monitoring is degraded.
+> **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/apps/` ordered by `argocd.argoproj.io/sync-wave`: `00` cert-manager/external-secrets/longhorn (wave 0) → `01` vault (wave 1) → `02` seaweedfs (wave 2) → `03` monitoring (wave 3, `sync-only`) → `04` tailscale (wave 4, `sync-only`, always last). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua, ADR-006), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` and `tailscale` are `sync-only` leaves, Tailscale still exposes other apps even if monitoring is degraded.
 
 ## 2. Configure Vault
 
@@ -70,7 +70,7 @@ Access the UI at [localhost:8080](http://localhost:8080) with user `admin`.
 
 ## 4. Connectivity via Tailscale
 
-> **Prerequisite:** Cilium CNI must be Ready (`infra-talos-homelab` provisions Cilium 1.20.1 with `kubeProxyReplacement: strict`). Verify before bootstrapping:
+> **Prerequisite:** Cilium CNI 1.20.1 must be installed and Ready (`kubeProxyReplacement: strict`) before this repo's `CiliumNetworkPolicy` rules are enforced. Verify before bootstrapping:
 > ```bash
 > kubectl -n kube-system get pods -l k8s-app=cilium
 > cilium status

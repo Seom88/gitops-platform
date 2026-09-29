@@ -73,7 +73,7 @@ You understand GitOps as a paradigm, not just a tool. Sync-wave ordering and hea
 ## 🌐 Zero-Trust Networking & Observability
 
 **Skills:**
-- Cilium eBPF CNI (kubeProxyReplacement strict, KubePrism 7445) + Gateway API 1.2.3
+- Cilium eBPF CNI (kubeProxyReplacement strict) + Gateway API 1.2.3
 - Identity-aware CiliumNetworkPolicy (endpointSelector default-deny, toFQDNs/rules.dns, toEntities)
 - Hubble observability (relay 4244/4245, `hubble observe`)
 - Tailscale Operator integration
@@ -87,7 +87,7 @@ You understand GitOps as a paradigm, not just a tool. Sync-wave ordering and hea
 **Evidence:**
 - **Tailscale Integration** — Mesh VPN operator (wave `-1`) + per-app Ingresses owned by each chart via `tailscaleIngress` values (one MagicDNS device per app, each at `/` root). See [`platform/ts-operator/`](../platform/ts-operator/) and ADRs 001/018
 - **Platform Ingress Templates** — Per-chart Ingress pattern (each chart renders its own `tailscale-ingress.yaml` → own device; orphan `argocd`/`hubble` live in `ts-operator/templates/infra/`). See [`platform/vault/templates/tailscale-ingress.yaml`](../platform/vault/templates/tailscale-ingress.yaml)
-- **Network Policies** — Identity-aware `CiliumNetworkPolicy` (`cilium.io/v2`) across 9 charts with allow-dns / allow-egress / allow-ingress (eBPF, kubeProxyReplacement strict, Hubble 4244/4245). See [`platform/*/templates/cilium-networkpolicies.yaml`](../platform/vault/templates/cilium-networkpolicies.yaml) (9 charts, gated by `ciliumNetworkPolicy.enabled=true`) + infra `modules/platform/values/cilium/values.yaml` (Cilium 1.20.1, Gateway API 1.2.3). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` retained for non-Cilium clusters
+- **Network Policies** — Identity-aware `CiliumNetworkPolicy` (`cilium.io/v2`) across 9 charts with allow-dns / allow-egress / allow-ingress (eBPF, kubeProxyReplacement strict, Hubble 4244/4245). See [`platform/*/templates/cilium-networkpolicies.yaml`](../platform/vault/templates/cilium-networkpolicies.yaml) (9 charts, gated by `ciliumNetworkPolicy.enabled=true`; Cilium 1.20.1, Gateway API 1.2.3). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` retained for non-Cilium clusters
 - **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (SingleBinary + S3/SeaweedFS + gateway) + Alloy (stateless DaemonSet log collector via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`; no PVC, RBAC auto-created; replaces Promtail — deprecated). See [`platform/monitoring/`](../platform/monitoring/) and [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) (`loki` + `alloy` blocks, chart `alloy:1.12.1`)
 - **Vault Metrics Export** — Prometheus endpoints for Vault health, sealed state, replication status
 - **Log Aggregation** — Loki with S3 backend (SeaweedFS) for centralized logging, shipped by Alloy. Grafana Explore + LogQL and dashboard Logs panels. See [`platform/monitoring/templates/loki-datasource.yaml`](../platform/monitoring/templates/loki-datasource.yaml)
@@ -109,7 +109,7 @@ Zero-trust isn't just a buzzword for you — you've implemented it. Metrics coll
 
 **Evidence:**
 - **Longhorn Deployment** — Wave -1 app with CSI readiness gates. See [`gitops/templates/platform/-1-longhorn.yaml`](../gitops/templates/platform/-1-longhorn.yaml) and ADR-005
-- **Longhorn Node Prep** — Companion repo provisions iscsi-tools extensions and kubelet extraMounts. See companion `infra-talos-homelab` repo
+- **Longhorn Node Prep** — Nodes provide `iscsi-tools` and kubelet extraMounts for `/var/lib/longhorn`
 - **SeaweedFS S3** — Object storage with Vault-injected credentials. See [`platform/seaweedfs/`](../platform/seaweedfs/)
 - **Vault Raft HA** — 3-node consensus for high-availability secrets. See [`platform/vault/templates/statefulset.yaml`](../platform/vault/templates/statefulset.yaml)
 - **Persistent Volume Management** — Applications using Longhorn PVCs for state. See Vault StatefulSet configuration
@@ -145,7 +145,7 @@ You know how to build safe, testable deployment pipelines. Guarded deployments a
 ## 🛠️ Infrastructure-as-Code & Modularity
 
 **Skills:**
-- Terraform/Helm code organization (DRY, reusable modules)
+- Helm chart code organization (DRY, reusable charts)
 - Chart templating and Helm best practices
 - YAML structure and conventions
 - Configuration management across environments
@@ -156,7 +156,6 @@ You know how to build safe, testable deployment pipelines. Guarded deployments a
 - **Kustomization** — Values-driven templating for env-specific overrides. See `values.yaml` vs `values-dev.yaml`
 - **Reusable Templates** — Ingress pattern, certificate templates, NetworkPolicy templates reused across apps
 - **ADR Documentation** — Each architectural decision documented with rationale. See [`docs/adrs/`](./adrs/)
-- **Companion Module** — Terraform modules in companion repo show IaC best practices (multi-provider, DRY, validation)
 
 **What Recruiters See:**
 You write code that's maintainable and reusable. This isn't spaghetti configuration.
@@ -207,7 +206,7 @@ This isn't a one-off project. You're building for growth and learning continuous
 
 ## � Project Maturity & Roadmap
 
-**Current Status:** v1.0-beta · Phases 1-4 complete and tested in dev environment
+**Current Status:** v1.0.0 is **not tagged**. Phases 1-4 are deployed; the v1 gate is not yet met. The authoritative release state — including the two open items that block v1.0.0 — is in [`docs/roadmap.md` § What blocks v1.0.0](./roadmap.md#what-blocks-v100). This file does not carry its own version string.
 
 **What's Planned Next:**
 - **Phase 5 (v2.0)** — Python ops layer: CLI automation, infrastructure tests, custom metrics, image security scanning

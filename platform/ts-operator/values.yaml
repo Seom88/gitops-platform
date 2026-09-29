@@ -38,7 +38,7 @@ tailscale-operator:
     defaultTags: "tag:k8s"
 
 # Orphan-app Tailscale Ingresses (moved from platform/ts-ingress, ADR-018):
-# argocd + hubble-ui live in the infra repo, so their Ingresses ship here
+# argocd + hubble-ui Apps are not declared here, so their Ingresses ship here
 tailscaleIngress:
   argocd:
     enabled: true

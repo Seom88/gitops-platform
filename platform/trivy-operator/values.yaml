@@ -17,11 +17,11 @@ trivy-operator:
   operator:
     scanJobsConcurrentLimit: 2
     scanJobTimeout: 15m
-    # Disabled: node-collector relies on mutable host rootfs, incompatible with Talos immutable OS.
+    # Disabled: node-collector needs a mutable host rootfs, which immutable host OS layouts break.
     infraAssessmentScannerEnabled: false
     # Built-in server caches trivy-db (113MiB) on a Longhorn PVC so every
     # scan Job uses ClientServer mode instead of re-downloading from mirror.gcr.io.
-    # Eliminates per-Job EOF flakes and rate-limit pressure on small Talos nodes.
+    # Eliminates per-Job EOF flakes and rate-limit pressure on small nodes.
     builtInTrivyServer: true
   trivy:
     # Show only vulnerabilities with a known fix (same policy as
@@ -46,9 +46,8 @@ trivy-operator:
           ephemeral-storage: 2Gi
     resources:
       requests:
-        # Talos has immutable dirs (/etc, /var read-only overlays) and
-        # kubelet ephemeral-storage eviction; explicit requests/limits
-        # prevent 0-storage scheduling and eviction on small nodes.
+        # Explicit requests/limits prevent 0-storage scheduling and
+        # kubelet ephemeral-storage eviction on small nodes.
         cpu: 100m
         memory: 256Mi
         ephemeralStorage: 512Mi

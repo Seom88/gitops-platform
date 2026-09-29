@@ -307,7 +307,7 @@ if [ "$ENV" = "dev" ]; then
   echo -e "${YELLOW}⚠️  Dev mode ON - using values-dev.yaml${NC}"
 fi
 
-# Prerequisites: ArgoCD must already be installed (infra-talos-homelab platform layer).
+# Prerequisites: ArgoCD must already be installed on the cluster.
 # Longhorn is now wave-0 of this repo, not a prerequisite.
 
 # --- STEP 1: Ensure credentials BEFORE App-of-Apps so wave -1 Secrets exist ---

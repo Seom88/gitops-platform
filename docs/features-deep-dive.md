@@ -94,7 +94,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 - Operator deployment: [`platform/ts-operator/Chart.yaml`](../platform/ts-operator/Chart.yaml) (wave `-1`)
 - Per-app Ingresses: each chart renders its own `tailscale-ingress.yaml` (one Ingress + device per app)
   - `homepage`, `monitoring` (`grafana` + `prometheus`), `longhorn`, `seaweedfs` (`s3` + `admin`), `vault` — hostnames via `tailscaleIngress` values (`-dev` in dev)
-  - Orphans owned by the infra repo (`argocd`, `hubble`) ship from [`platform/ts-operator/templates/infra/`](../platform/ts-operator/templates/infra/)
+  - Orphans (`argocd`, `hubble`) ship from [`platform/ts-operator/templates/infra/`](../platform/ts-operator/templates/infra/)
 - Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress` (managed-proxy selector); no `ts-ingress` chart remains
 - ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-018: Per-App Tailscale Ingresses](./adrs/018-per-app-tailscale-ingress.md) (supersedes ADR-012), [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
 
@@ -113,7 +113,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 
 ### How It Works
 
-1. **eBPF Datapath vs iptables** — Cilium replaces kube-proxy (`kubeProxyReplacement: strict`) with eBPF programs attached to the kernel. Talos nodes run with `cni: none` + `proxy.disabled: true`; the infra DAG installs `gateway_api 1.2.3 → cilium 1.20.1 → wait_nodes → argocd`. KubePrism provides HA API access at `localhost:7445` (`ipam: kubernetes`, `k8sServiceHost: localhost`, `k8sServicePort: 7445`).
+1. **eBPF Datapath vs iptables** — Cilium replaces kube-proxy (`kubeProxyReplacement: strict`) with eBPF programs attached to the kernel. With `ipam: kubernetes`, Cilium owns pod address allocation and service routing end to end.
 2. **Policy Lifecycle — 3-Rule Template per Namespace** — Each chart renders `platform/*/templates/cilium-networkpolicies.yaml` (gated by `ciliumNetworkPolicy.enabled`):
    - `allow-dns` — `endpointSelector: {}` + `toEndpoints: {k8s-app: kube-dns, k8s:io.kubernetes.pod.namespace: kube-system}` on port 53 (UDP/TCP) with `toFQDNs: [{matchPattern: "*"}]` and `rules.dns`.
    - `allow-egress` — kube-apiserver (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (e.g., Vault Raft, Longhorn/SeaweedFS storage ports).
@@ -126,7 +126,6 @@ open https://prometheus.lonk-mirfak.ts.net/
 
 - Fallback (non-Cilium clusters): `platform/*/templates/networkpolicy.yaml` (`networking.k8s.io/v1`) — retained for non-Cilium clusters, not enforced when Cilium is active
 - Cilium (enforced): `platform/*/templates/cilium-networkpolicies.yaml` (9 charts, gated by `ciliumNetworkPolicy.enabled=true`) + `platform/*/values.yaml` (`ciliumNetworkPolicy.enabled: true` default)
-- Infra substrate: `infra-talos-homelab` `modules/platform/values/cilium/values.yaml` (Helm values: `kubeProxyReplacement: strict`, `socketLB.hostNamespaceOnly`, `cgroup.hostRoot`, `k8sServiceHost: localhost:7445`, `ipam: kubernetes`, `gatewayAPI.enabled: true`), DAG `gateway_api 1.2.3 → cilium 1.20.1 → wait_nodes → argocd`
 - ADRs: [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md) · [Networking guide](./networking.md)
 
 ---
@@ -275,7 +274,7 @@ Includes:
 - CSI integration — applications claim storage via PVCs
 
 **How it works:**
-1. **Node Preparation** — Companion repo installs `iscsi-tools` extensions on Talos nodes
+1. **Node Preparation** — Every node must provide `iscsi-tools` and a kubelet mount for `/var/lib/longhorn`
 2. **Disk Assignment** — Each node has a `longhorn-disk` directory
 3. **Replication** — Longhorn creates replicas across nodes (default 3)
 4. **PVC Binding** — Applications claim storage via `PersistentVolumeClaim`
@@ -461,21 +460,17 @@ just fmt
 
 ---
 
-## 🔗 Integration Points with Companion Repo
+## 🔗 Integration Points
 
-**This repo assumes:**
-- Kubernetes cluster running (from `infra-talos-homelab`)
-- ArgoCD already installed as platform layer (from `infra-talos-homelab`)
-- Longhorn node prerequisites satisfied (iscsi-tools, kubelet mounts from `infra-talos-homelab`)
+**This repo assumes a cluster that provides:**
+- A running Kubernetes cluster
+- ArgoCD already installed
+- Longhorn node prerequisites satisfied (`iscsi-tools`, kubelet mounts)
 
-**Separation of concerns:**
-- **`infra-talos-homelab`** → Builds the cluster substrate (VMs, networking, Talos bootstrap, ArgoCD)
-- **`secured-gitops-tailscale-homelab`** → Declares everything that runs on the cluster
-
-This separation allows:
+This repository declares everything that runs on the cluster. It allows:
 - Cluster upgrades without app redeployment
 - Team division — infrastructure team vs. platform/apps team
-- Reusability — apply same GitOps layer to any Kubernetes cluster
+- Reusability — apply the same GitOps layer to any Kubernetes cluster
 
 ---
 

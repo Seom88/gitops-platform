@@ -2,11 +2,11 @@
 
 This guide will walk you through the steps required to personalize this homelab after forking the repository. Since GitOps relies on declarative state, you need to update several references to point to your own infrastructure and repository.
 
-> **Two-repo setup:** This project is the GitOps layer. Cluster provisioning and **ArgoCD** (GitOps engine) live in a separate [infra repo](https://github.com/Seom88/infra-talos-homelab) (`platform/` layer, ArgoCD only). Longhorn is deployed by this repo as a wave -1 platform app with a CSI readiness gate. If you fork both, update the infra repo references too — including its platform Terraform configuration and Helm values.
+> **GitOps layer only:** This project does not provision the cluster. Your cluster must provide **ArgoCD** (the GitOps engine) before bootstrapping. **Longhorn** is deployed by this repo as a wave -1 platform app with a CSI readiness gate.
 
 ## 1. Update Repository References
 
-> **Prerequisites:** Before bootstrapping this repo, your cluster must provide **ArgoCD**. If you fork the infra repo, its `platform/` layer installs it (`just tf_env=<env> tf-platform-apply` from the infra repo); otherwise, provide it through your own provisioning. Longhorn is not a prerequisite: this repo deploys it as a wave -1 app. The GitOps bootstrap does not install ArgoCD.
+> **Prerequisites:** Before bootstrapping this repo, your cluster must provide **ArgoCD**; how that install is produced is a cluster-provisioning concern, outside this repository. Longhorn is not a prerequisite: this repo deploys it as a wave -1 app. The GitOps bootstrap does not install ArgoCD.
 
 ArgoCD needs to know where its source of truth is. This project uses an **App-of-Apps** pattern driven by Helm values.
 
@@ -26,7 +26,7 @@ To add a new ordered app, create a new `gitops/templates/platform/0N-name.yaml` 
 This homelab integrates with Tailscale for secure networking:
 
 1.  **Auth Credentials**: Tailscale credentials are seeded into Vault and consumed by the Tailscale Operator — see the [Secrets Structure guide](secrets-structure.md) for the expected secret layout. The bootstrap script does not prompt for them.
-2.  **Operator**: The Tailscale Operator is managed as a platform app in `platform/ts-operator/` (wave `-1`). Platform exposure is **one Ingress per app, owned by each chart** via `tailscaleIngress` values (each app its own MagicDNS device on `*.lonk-mirfak.ts.net`, served at `/` root) — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). To expose a new UI, add a `tailscale-ingress.yaml` in the owning chart following the existing pattern (or `platform/ts-operator/templates/infra/` if the app lives in the infra repo). No distro-specific setup is required here — any cluster with ArgoCD (installed by the infra platform layer) works; Longhorn is deployed by this repo as a wave -1 app. Requires Cilium 1.20.1 (eBPF, kubeProxyReplacement strict). Policies are gated by `ciliumNetworkPolicy.enabled=true`; set to `false` for non-Cilium clusters where policies are not enforced.
+2.  **Operator**: The Tailscale Operator is managed as a platform app in `platform/ts-operator/` (wave `-1`). Platform exposure is **one Ingress per app, owned by each chart** via `tailscaleIngress` values (each app its own MagicDNS device on `*.lonk-mirfak.ts.net`, served at `/` root) — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). To expose a new UI, add a `tailscale-ingress.yaml` in the owning chart following the existing pattern (or `platform/ts-operator/templates/infra/` for control-plane apps). No distro-specific setup is required here — any cluster with ArgoCD works; Longhorn is deployed by this repo as a wave -1 app. Requires Cilium 1.20.1 (eBPF, kubeProxyReplacement strict). Policies are gated by `ciliumNetworkPolicy.enabled=true`; set to `false` for non-Cilium clusters where policies are not enforced.
 
 
 ## 3. Secrets Management (SOPS default, Vault paused)

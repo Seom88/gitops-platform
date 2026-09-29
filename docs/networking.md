@@ -1,10 +1,10 @@
 # Networking — Cilium eBPF, Gateway API & Policies
 
-> **Single source of truth for Cilium networking.** Cilium 1.20.1 (eBPF, strict kubeProxyReplacement) + Gateway API 1.2.3 + Hubble on `infra-talos-homelab` substrate; 9 charts with gated `CiliumNetworkPolicy` (ADR-014). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` is retained for non-Cilium fallback (Flannel) but not enforced.
+> **Single source of truth for Cilium networking.** Cilium 1.20.1 (eBPF, strict kubeProxyReplacement) + Gateway API 1.2.3 + Hubble; 9 charts with gated `CiliumNetworkPolicy` (ADR-014). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` is retained for non-Cilium fallback (Flannel) but not enforced.
 
 ## Quick path
 
-1. **Verify CNI is Ready** (after `infra-talos-homelab` `tf-platform-apply`):
+1. **Verify CNI is Ready** — Cilium and the Gateway API CRDs are cluster prerequisites, so they must already be installed before this repo's policies are enforced:
    ```bash
    kubectl -n kube-system get pods -l k8s-app=cilium
    cilium status
@@ -17,38 +17,25 @@
 
 | Component | Version | Where |
 |-----------|---------|-------|
-| Cilium CNI | `1.20.1` | `infra-talos-homelab` `modules/platform/values/cilium/values.yaml` |
-| Gateway API CRDs | `1.2.3` | `infra-talos-homelab` DAG `gateway_api` before Cilium |
-| KubePrism | `localhost:7445` | Talos `k8sServiceHost: localhost`, `k8sServicePort: 7445` |
+| Cilium CNI | `1.20.1` | Cluster prerequisite — installed before this repo syncs |
+| Gateway API CRDs | `1.2.3` | Cluster prerequisite — installed before Cilium |
 | Hubble relay | `4244` (gRPC) / `4245` (UI/health) | Cilium + per-chart Tailscale Ingress |
 | Policy API | `cilium.io/v2` (`CiliumNetworkPolicy`) | `platform/*/templates/cilium-networkpolicies.yaml` (9 charts) |
 
-## Substrate (Sidero / Talos)
+## Cluster prerequisites
 
-Talos nodes are provisioned with **CNI none** and **proxy disabled** so Cilium owns the datapath:
-
-```yaml
-# Talos machine config (infra repo)
-cni: none
-proxy.disabled: true
-```
-
-Helm values for Cilium (`modules/platform/values/cilium/values.yaml`):
+This repository does not install the CNI. The policy model below assumes a Cilium install with the following settings, which the `CiliumNetworkPolicy` rules and the `allow-dns` / `allow-egress` allows are written against:
 
 ```yaml
 ipam: kubernetes
 kubeProxyReplacement: strict
 socketLB:
   hostNamespaceOnly: true
-cgroup:
-  hostRoot: /sys/fs/cgroup
 gatewayAPI:
   enabled: true
-k8sServiceHost: localhost
-k8sServicePort: 7445  # KubePrism
 ```
 
-**DAG order** in `infra-talos-homelab` platform layer: `gateway_api (1.2.3) → cilium (1.20.1) → wait_nodes → argocd`. Upgrading Cilium or Gateway API requires infra apply before GitOps sync.
+Gateway API CRDs must be present before Cilium starts, otherwise the Gateway resources rendered by platform charts fail to apply.
 
 ## Policy model
 
@@ -87,7 +74,7 @@ When `false`, the `CiliumNetworkPolicy` resources are not rendered; legacy `netw
 ## Tailscale integration
 
 - **Control plane / DERP / STUN:** Tailscale clients and `tailscale-operator` need egress to DERP and STUN. Policies allow UDP `1-65535` + TCP `80/443` for Tailscale control plane where required; MagicDNS (`*.ts.net`) is covered by the `allow-dns` FQDN rule (not a broad egress hole).
-- **Per-app Tailscale ingress:** each chart renders its own `Ingress` via `tailscaleIngress` values (`ingressClassName: tailscale`), each creating its own MagicDNS device (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` hostnames in dev). Orphan apps owned by the infra repo (`argocd`, `hubble-ui`) ship from `platform/ts-operator/templates/infra/`. Every app is served at `/` root — no subpath routing — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress`.
+- **Per-app Tailscale ingress:** each chart renders its own `Ingress` via `tailscaleIngress` values (`ingressClassName: tailscale`), each creating its own MagicDNS device (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` hostnames in dev). Orphan apps (`argocd`, `hubble-ui`) ship from `platform/ts-operator/templates/infra/`. Every app is served at `/` root — no subpath routing — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress`.
 
 ## Hubble
 
@@ -105,7 +92,7 @@ hubble observe --pod vault/vault-0 --follow
 
 # Quick health
 hubble status
-cilium connectivity test  # full mesh test (run after infra changes)
+cilium connectivity test  # full mesh test (run after CNI changes)
 ```
 
 All dashboards remain behind Tailscale; each app has its own per-app Ingress device.
@@ -133,8 +120,11 @@ cilium status
 cilium connectivity test --test-namespace cilium-test
 
 # Helm render check (no cluster needed)
-helm template platform/vault --set ciliumNetworkPolicy.enabled=true | grep -A2 "kind: CiliumNetworkPolicy"
-helm template platform/vault --set ciliumNetworkPolicy.enabled=false | grep -c "CiliumNetworkPolicy"  # → 0
+# Two-argument form: helm template <release-name> <chart-path>.
+# The single-argument form is not portable — Helm 3 reads a lone positional
+# argument as the release name and then has no chart to render.
+helm template vault platform/vault --set ciliumNetworkPolicy.enabled=true | grep -A2 "kind: CiliumNetworkPolicy"
+helm template vault platform/vault --set ciliumNetworkPolicy.enabled=false | grep -c "CiliumNetworkPolicy"  # → 0
 
 # Tailscale per-app Ingresses
 kubectl -n tailscale get ingress -o wide  # argocd, grafana, prometheus, longhorn, seaweedfs-*, homepage, hubble, vault
@@ -147,16 +137,15 @@ Cilium denies are **silent** (no RST, just `DROP` verdict). Use Hubble before pa
 
 1. `hubble observe --verdict DROPPED --since 2m` — shows dropped flow, source/dest identity, port, DNS name, and denying policy.
 2. Check the caller's `allow-egress` / callee's `allow-ingress` for missing `toFQDNs`, `toEntities`, or service ports.
-3. Common fixes: add `toFQDNs.matchPattern` for new external FQDN, add `toEntities: {kube-apiserver}` for API access, allow `4244/4245` for Hubble, add a `tailscale-ingress.yaml` in the owning chart (or `ts-operator/templates/infra/` for infra-owned apps) for a new UI route.
+3. Common fixes: add `toFQDNs.matchPattern` for new external FQDN, add `toEntities: {kube-apiserver}` for API access, allow `4244/4245` for Hubble, add a `tailscale-ingress.yaml` in the owning chart (or `ts-operator/templates/infra/` for control-plane apps) for a new UI route.
 4. Temporarily set `ciliumNetworkPolicy.enabled=false` for the chart to confirm policy vs app bug, then re-enable with fix.
 
 ## Renovate & upgrades
 
-`renovate.json` groups non-critical charts and auto-merges patch/minor updates; **Cilium, Gateway API, Vault, Longhorn, cert-manager** are labeled for manual review. Cilium major bumps (e.g., `1.20 → 1.21`) require infra repo apply + `cilium connectivity test` before merging GitOps changes.
+`renovate.json` groups non-critical charts and auto-merges patch/minor updates; **Cilium, Gateway API, Vault, Longhorn, cert-manager** are labeled for manual review. Cilium major bumps (e.g., `1.20 → 1.21`) require a `cilium connectivity test` before merging GitOps changes.
 
 ## References
 
 - ADR-014: [Cilium CNI and Identity-Aware NetworkPolicies](adrs/014-cilium-cni-and-identity-networkpolicies.md)
 - ADR-018: [Per-App Tailscale Ingresses](adrs/018-per-app-tailscale-ingress.md) (supersedes ADR-012)
-- Infra values: `infra-talos-homelab` `modules/platform/values/cilium/values.yaml`
 - Features deep dive: [eBPF Networking & Security](features-deep-dive.md#-ebpf-networking--security-with-cilium)

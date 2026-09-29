@@ -2,8 +2,8 @@
 # Cilium ServiceMonitors managed by monitoring chart.
 # This eliminates the chicken-and-egg dependency where Cilium cannot install
 # ServiceMonitors before Prometheus Operator CRDs are applied by the monitoring chart.
-# Decoupled from infra-talos-homelab/modules/platform/values/cilium/values.yaml where
-# all 5 serviceMonitor.enabled are now false:
+# Decoupled from the cluster's Cilium install, where all 5
+# serviceMonitor.enabled are false:
 #   - operator.prometheus.serviceMonitor.enabled (9963)
 #   - prometheus.serviceMonitor.enabled (9962)
 #   - envoy.prometheus.serviceMonitor.enabled (9964)
@@ -12,7 +12,7 @@
 # All intervals right-sized to 60s (upstream Cilium default is 30s): halves
 # scrape load on 3x4cpu/6GB workers and matches the 60s scrapeInterval /
 # 1m Grafana min_refresh. Timeouts untouched (chart defaults apply).
-# Selectors/ports/endpoints replicate Cilium 1.18.0 Helm chart templates exactly
+# Selectors/ports/endpoints replicate Cilium 1.20.1 Helm chart templates exactly
 # (verified via: helm template cilium/cilium --set trustCRDsExist=true):
 #   - cilium-agent: selector app.kubernetes.io/name=cilium-agent, port metrics (9962)
 #   - cilium-operator: selector io.cilium/app=operator,name=cilium-operator, port metrics (9963)

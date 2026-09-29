@@ -6,12 +6,28 @@
 
 ## Workflows
 
-Both workflows (`ci.yaml`, `deploy.yaml`) live in `.github/workflows/` and are distro-agnostic — no Terraform, no cluster required for validation. `deploy.yaml` is the only workflow that touches the cluster (via Tailscale + kubeconfig from infra state) and delegates all logic to `bootstrap/init-gitops.sh`.
+Both workflows (`ci.yaml`, `deploy.yaml`) live in `.github/workflows/` and are distro-agnostic — no Terraform, no cluster required for validation. `deploy.yaml` is the only workflow that touches the cluster (via Tailscale + kubeconfig from the provisioning repo's Terraform state) and delegates all logic to `bootstrap/init-gitops.sh`.
+
+> ### ⚠️ Pending revision — the Terraform kubeconfig path in `deploy.yaml`
+>
+> **Everything this page says about `deploy.yaml` obtaining a kubeconfig is pending revision and should not be treated as a working, supported path.** The maintainer reports that Terraform-based cluster provisioning is **disabled**. The source of truth for CI kubeconfig is an **open decision** — it is deliberately not resolved here.
+>
+> | Element | State |
+> |---------|-------|
+> | `terraform init` / `terraform output -raw kubeconfig` (`:163`, `:177`) | Pending removal — no state file, no `output` under the current provisioning model |
+> | S3 fallback `aws s3api get-object …/terraform.tfstate` + `jq '.outputs.kubeconfig.value'` (`:183-190`) | Pending revision — key path tied to the Terraform layout |
+> | `hashicorp/setup-terraform@v4` (`:111-114`) | Pending removal — installed only to serve that one `output` call |
+> | Provisioning-repo checkout `path: infra` (`:85`) | Pending removal — checked out only to read Terraform |
+> | `S3_BUCKET: terraform-homelab` (`:45`) | Pending revision — bucket named for Terraform state |
+>
+> **This section is annotated, not rewritten.** The workflow still contains this code and still behaves this way; no replacement is documented because none has been chosen. The open options (A: keep the S3 pattern; B: repository/environment secret), the trade-off, and the implementation tasks are tracked in [`odd/tasks/ci-kubeconfig-k3s.md`](../odd/tasks/ci-kubeconfig-k3s.md). Two invariants in the current job are correct and must survive that change: the fail-closed kubeconfig check and the `shred -u` of the credential on exit.
+>
+> What does **not** change: `ci.yaml` needs no cluster and no credentials, and the Tailscale step already puts the runner on the tailnet, so a kubeconfig with a tailnet-reachable `server:` address works regardless of which option is chosen.
 
 | Workflow | Trigger | Needs cluster | What it does |
 |----------|---------|---------------|--------------|
 | `ci.yaml` | `push` + `pull_request` + weekly cron (`0 4 * * 1`) + manual | No | Validate job (Helm lint/template, platform lint, shellcheck, YAML/JSON sanity) + security jobs (Trivy images + config, SARIF; fail-closed for pinned images) — one run, one gate signal |
-| `deploy.yaml` | `workflow_run` (CI on `main`) + `workflow_dispatch` (manual) | Yes | Gate on CI green → restore kubeconfig from infra state → `bootstrap/init-gitops.sh` |
+| `deploy.yaml` | `workflow_run` (CI on `main`) + `workflow_dispatch` (manual) | Yes | Gate on CI green → restore kubeconfig from Terraform state → `bootstrap/init-gitops.sh` *(kubeconfig mechanism pending revision — see the callout above)* |
 
 ### `deploy.yaml` — Deploy GitOps (gated auto + manual)
 
@@ -45,21 +61,23 @@ env:
   S3_BUCKET: terraform-homelab
 ```
 
+> `S3_BUCKET: terraform-homelab` exists to hold Terraform state. It is part of the pending-revision kubeconfig path (see the callout above) — the bucket name itself is not a decision.
+
 | Job | Runs | What it does |
 |-----|------|--------------|
 | `gate` | auto (`workflow_run`) + manual | For `push` events: require the latest `CI` run on the head SHA to be `success` (via `gh api`, `actions: read`); skipped for cron events (never deploy on schedule) and manual dispatch (explicit operator action) |
-| `deploy` | manual (`workflow_dispatch`) + auto when `gate` passes | Restore kubeconfig from infra S3 state + Tailscale, run `bootstrap/init-gitops.sh` |
+| `deploy` | manual (`workflow_dispatch`) + auto when `gate` passes | Restore kubeconfig from S3 Terraform state + Tailscale, run `bootstrap/init-gitops.sh` |
 
 **Deploy job** (`runs-on: ubuntu-latest`, `timeout-minutes: 15`, `environment: ${{ inputs.environment || 'prod' }}`):
 
 1. `checkout` secure repo — `actions/checkout@v7` with `persist-credentials: false`
-2. `checkout` infra repo — `actions/checkout@v7` with `repository: Seom88/infra-talos-homelab`, `path: infra`, `token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}`, `persist-credentials: false` (needs `GH_PAT` to read the private infra state repo)
-3. `setup-terraform` — `hashicorp/setup-terraform@v4` with `terraform_wrapper: false` (only for `terraform output` to fetch kubeconfig; no apply)
+2. `checkout` provisioning repo — `actions/checkout@v7` with `path: infra`, `token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}`, `persist-credentials: false` (needs `GH_PAT` to read the private provisioning state repo)
+3. `setup-terraform` — `hashicorp/setup-terraform@v4` with `terraform_wrapper: false` (only for `terraform output` to fetch kubeconfig; no apply) ⚠️ *pending removal — see the pending-revision callout above*
 4. `setup-kubectl` — `azure/setup-kubectl@v5`
 5. `setup-helm` — `azure/setup-helm@v5` with `version: ${{ env.HELM_VERSION }}` (`v3.18.4`)
 6. `install jq / yq` — `jq --version` + `wget mikefarah/yq` if `yq` missing, `yq --version`
-7. `tailscale/github-action@v4` with `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` (`tags: tag:terraform`, `use-cache: 'true'`) — subnet-route reachability to the cluster (Tailscale mesh, no exposed ports)
-8. `restore kubeconfig from infra state` (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`):
+7. `tailscale/github-action@v4` with `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` (`tags: tag:terraform`, `use-cache: 'true'`) — subnet-route reachability to the cluster (Tailscale mesh, no exposed ports). **This step is not part of the pending revision** — the runner still needs to be on the tailnet whichever kubeconfig mechanism is chosen.
+8. `restore kubeconfig from infra state` (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) ⚠️ *the mechanism below is pending revision — see the callout above; it is reproduced here as it exists in `deploy.yaml` today, not as a recommendation*:
    ```bash
    ENV="${{ inputs.environment || 'prod' }}"
    TF_DIR="infra/environments/proxmox/${ENV}"
@@ -86,7 +104,7 @@ env:
    `init-gitops.sh` is idempotent: `helm upgrade --install gitops`, Longhorn CSI gate (wave 0), `ensureVeleroCredentials()` (see [Velero](./cluster-recovery.md)), `bootstrap-vault.sh`, status verifier. See [Getting Started](./getting-started.md).
   11. `cleanup kubeconfig` (`if: always()`) — `shred -u /tmp/kubeconfig.yaml || rm -f /tmp/kubeconfig.yaml /tmp/tfstate.json`
 
-> `deploy.yaml` never runs `terraform apply` — infra is owned by `infra-talos-homelab`. This repo only fetches kubeconfig and delegates to `bootstrap/init-gitops.sh`, which in turn applies the ArgoCD App-of-Apps (`gitops/` chart, wave-ordered).
+> `deploy.yaml` never runs `terraform apply` — cluster provisioning is owned elsewhere. This repo only fetches kubeconfig and delegates to `bootstrap/init-gitops.sh`, which in turn applies the ArgoCD App-of-Apps (`gitops/` chart, wave-ordered). The *no-apply* property is correct and permanent; **how** the kubeconfig is fetched is the pending revision flagged above.
 
 **Required GitHub secrets:**
 
@@ -94,12 +112,14 @@ env:
 |--------|----------|-------|
 | `TS_OAUTH_CLIENT_ID` | yes | Tailscale OAuth client ID (`tag:terraform`, scopes `devices:core:write` + `auth_keys:write`) |
 | `TS_OAUTH_SECRET` | yes | Tailscale OAuth client secret |
-| `GH_PAT` | yes (private infra) | GitHub PAT with `repo` read to `Seom88/infra-talos-homelab` (`checkout infra` step); falls back to `GITHUB_TOKEN` if infra is public |
+| `GH_PAT` | yes (private provisioning repo) | GitHub PAT with `repo` read to the provisioning repository (`checkout infra` step); falls back to `GITHUB_TOKEN` if that repo is public |
 | `AWS_ACCESS_KEY_ID` | yes | RustFS S3 access key (bucket `terraform-homelab`, path-style, `S3_ENDPOINT`) |
 | `AWS_SECRET_ACCESS_KEY` | yes | RustFS S3 secret key |
-| `PROXMOX_API_TOKEN` | no | Not used in this repo (infra repo owns Proxmox); listed only if you fork both repos with shared secrets |
+| `PROXMOX_API_TOKEN` | no | Not used in this repo (cluster provisioning owns Proxmox); listed only if you share secrets across repositories |
 
-To use from a fork, configure `tagOwners` / `acls` for `tag:terraform → tag:pve` in your Tailscale ACL and set `GH_PAT` so the workflow can clone the (private) infra repo. The `S3_ENDPOINT` / `S3_BUCKET` envs point at RustFS (`https://rustfs.lonk-mirfak.ts.net`).
+To use from a fork, configure `tagOwners` / `acls` for `tag:terraform → tag:pve` in your Tailscale ACL and set `GH_PAT` so the workflow can clone the (private) provisioning repo. The `S3_ENDPOINT` / `S3_BUCKET` envs point at RustFS (`https://rustfs.lonk-mirfak.ts.net`).
+
+> ⚠️ `GH_PAT`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` exist **only** to serve the pending-revision Terraform kubeconfig path — `GH_PAT` to clone the provisioning repo for its Terraform, the `AWS_*` pair to read the S3-hosted state. Their required-ness may change with the option chosen in [`odd/tasks/ci-kubeconfig-k3s.md`](../odd/tasks/ci-kubeconfig-k3s.md). `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` are unaffected.
 
 ### `ci.yaml` — Validate + Security (fast feedback, no cluster)
 

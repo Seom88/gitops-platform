@@ -147,8 +147,8 @@ velero:
           # initialized==false, unseal, kv-v2 + k8s auth) + secret rotation.
           # Hourly crash-consistency comes from Longhorn local snapshots.
           - vault
-          # GitOps control-plane (other repo: infra-talos-homelab,
-          # argocd_namespace=argocd, cilium_namespace=kube-system).
+          # GitOps control-plane (argocd_namespace=argocd,
+          # cilium_namespace=kube-system).
           # ArgoCD is source-of-truth in Git — reinstall, never restore.
           # Cilium CNI lives in kube-system (already excluded) but its
           # cluster-scoped runtime CRDs need excludedResources below.

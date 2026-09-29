@@ -26,7 +26,7 @@ trivy-operator:
           ephemeral-storage: 2Gi
     resources:
       requests:
-        # Talos immutable OS needs explicit ephemeral-storage (see values.yaml).
+        # Explicit ephemeral-storage is required here too (see values.yaml).
         cpu: 100m
         memory: 256Mi
         ephemeralStorage: 512Mi

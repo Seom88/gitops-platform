@@ -4,7 +4,7 @@ Restore path for this cluster: Velero for PVC/PV + file data, Barman for Postgre
 
 | Layer | Restored by |
 |---|---|
-| Cilium, ArgoCD | Reinstall from `infra-talos-homelab` |
+| Cilium, ArgoCD | Reinstall from cluster provisioning |
 | Workload manifests | ArgoCD auto-sync from Git |
 | PVC/PV + file data | Velero (`velero restore create`) |
 | Postgres (CNPG) | Barman PITR (§6.7) |
@@ -274,22 +274,25 @@ kubectl -n velero patch backupstoragelocation default --type merge \
 
 ### 2.9 Validate
 
+First, the mechanical preconditions. A restore that did not reach `Completed` is not a candidate for validation, and `Bound` PVCs prove nothing on their own — a PVC can be `Bound` on an empty volume with every application running happily over it.
+
 ```bash
 velero restore get
-velero restore describe dr-<timestamp>
+velero restore describe dr-<timestamp> --details | grep -E 'Phase|Items restored|Errors'
 velero restore logs dr-<timestamp> | grep 'level=error'
 kubectl -n immich get cluster immich-database         # healthy, 2 instances
 kubectl -n monitoring get cluster grafana-database    # healthy, 2 instances
 kubectl -n argocd get applications                    # Synced / Healthy
-kubectl get pvc -A                                    # Bound, not Detached
 ```
+
+Then verify the data itself — **[Restore verification](./restore-verification.md)**. Two application-level signals, each one reading data that cannot exist unless the restore returned real content: historical metrics, and an Immich image uploaded before the disaster.
 
 ### 2.10 Restore troubleshooting
 
 | Symptom | Fix |
 |---|---|
 | Restore `PartiallyFailed` | `velero restore describe <name>`; pre-existing objects are skipped unless `--existing-resource-policy update` was set |
-| Restore completes, volumes empty | Expected for databases — the `resourcePolicy` skips their data and Barman fills the volume (§2.7). For any other volume, source pods should carry `velero.io/volume-snapshot-sources`; the restore controller creates the `PodVolumeRestore` itself, so an empty volume means the backup had no FSB data for that PVC (`velero backup describe --details`, look for `podvolumebackups`) |
+| Restore completes, volumes empty | Expected for databases — the `resourcePolicy` skips their data and Barman fills the volume (§2.7). For any other volume, confirm the backup actually carried FSB data: `velero backup describe <name> --details` and look for the PVC under `Pod Volume Backups - kopia`. An empty volume with no FSB entry in the backup was never backed up, not lost in transit. |
 | ArgoCD reverts restored objects | The `gitops` root app was not frozen (§2.3) — it re-asserts `automated` on every child |
 | Workloads do not come back | Expected — ArgoCD owns them |
 | `BSL not Ready` after unfreeze | The `ReadOnly` patch in §2.4 was not reverted |
@@ -314,6 +317,7 @@ kubectl get pvc -A                                    # Bound, not Detached
 
 - ADR-004 option A (bootstrap Secret outside Vault), ADR-009 (Vault DR), ADR-011 (DNS/NetworkPolicy), ADR-017 (SOPS as the secrets path)
 - Restore: [Velero disaster-recovery docs](https://velero.io/docs/main/disaster-case) and [Red Hat — OADP + OpenShift GitOps DR](https://www.redhat.com/en/blog/oadp-openshift-gitops-an-approach-to-implementing-application-disaster-recovery)
+- Proving the restore worked: [Restore verification](./restore-verification.md)
 - Postgres: [CNPG 1.29 — Recovery](https://cloudnative-pg.io/docs/1.29/recovery), [Barman Cloud Plugin — Main Concepts](https://cloudnative-pg.io/plugin-barman-cloud/docs/concepts/)
 - Chart and values: `platform/velero/Chart.yaml`, `platform/velero/values.yaml`
 - Barman ObjectStores: `apps/immich/templates/pg-immich.yaml:56-73`, `platform/monitoring/templates/grafana-database-cluster.yaml:64-81`
