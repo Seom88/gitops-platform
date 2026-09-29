@@ -25,8 +25,8 @@ spec:
       # sharedS3.tailnetFqdn (literal in git, so repo-server renders without
       # any --set side-channel). `required` fails the sync loudly instead of
       # deploying a stale hardcoded URL. One parameter is enough: Service,
-      # enough: Service, bucket-init Job, CiliumNetworkPolicy and the
-      # wrapper-owned BackupStorageLocation all derive from s3.tailnetFqdn.
+      # bucket-init Job, CiliumNetworkPolicy and the wrapper-owned
+      # BackupStorageLocation all derive from s3.tailnetFqdn.
       parameters:
         - name: s3.tailnetFqdn
           value: {{ required "sharedS3.tailnetFqdn is required (set gitops/values.yaml)" .Values.sharedS3.tailnetFqdn | quote }}

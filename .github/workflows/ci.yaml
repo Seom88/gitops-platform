@@ -106,9 +106,9 @@ jobs:
           for dir in platform/*/; do
             if [ -f "${dir}Chart.yaml" ]; then
               echo "::group::helm lint $dir"
-              # Velero, Longhorn, and ts-operator require s3.tailnetFqdn (CI-supplied).
+              # Velero and ts-operator require s3.tailnetFqdn (CI-supplied) — lint with a test value.
               extra=()
-              if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/longhorn/" ] || [ "$dir" = "platform/ts-operator/" ]; then
+              if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/ts-operator/" ]; then
                 extra=(--set s3.tailnetFqdn=s3-validate.invalid)
               fi
               if ! helm lint "$dir" "${extra[@]}"; then
@@ -264,9 +264,9 @@ jobs:
             if [ ! -f "${dir}Chart.yaml" ]; then continue; fi
             name="$(basename "$dir")"
             helm dependency update "$dir" >/dev/null 2>&1 || helm dependency build "$dir" >/dev/null 2>&1 || true
-            # Velero, Longhorn, and ts-operator require s3.tailnetFqdn (CI-supplied).
+            # Velero and ts-operator require s3.tailnetFqdn (CI-supplied) — render with a test value.
             extra=""
-            if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/longhorn/" ] || [ "$dir" = "platform/ts-operator/" ]; then
+            if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/ts-operator/" ]; then
               extra="--set s3.tailnetFqdn=s3-validate.invalid"
             fi
             # shellcheck disable=SC2086

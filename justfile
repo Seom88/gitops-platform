@@ -308,9 +308,9 @@ validate-platform:
         # Use update to handle out-of-sync Chart.lock (e.g. vault)
         helm dependency update "$dir" 2>&1 || helm dependency build "$dir" 2>&1 || echo "   no deps / already built for $dir"
         echo "==> helm lint $dir"
-        # Velero s3.tailnetFqdn is required (CI-supplied) — lint with a test value.
+        # Velero and ts-operator require s3.tailnetFqdn (CI-supplied) — lint with a test value.
         extra=""
-        if [ "$dir" = "platform/velero/" ]; then
+        if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/ts-operator/" ]; then
           extra="--set s3.tailnetFqdn=s3-validate.invalid"
         fi
         if ! helm lint $extra "$dir"; then
@@ -449,9 +449,9 @@ scan:
       if [ ! -f "${dir}Chart.yaml" ]; then continue; fi
       name="$(basename "$dir")"
       helm dependency update "$dir" >/dev/null 2>&1 || helm dependency build "$dir" >/dev/null 2>&1 || true
-      # Velero s3.tailnetFqdn is required (CI-supplied) — render with a test value.
+      # Velero and ts-operator require s3.tailnetFqdn (CI-supplied) — render with a test value.
       extra=""
-      if [ "$dir" = "platform/velero/" ]; then
+      if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/ts-operator/" ]; then
         extra="--set s3.tailnetFqdn=s3-validate.invalid"
       fi
       # shellcheck disable=SC2086

@@ -16,7 +16,7 @@ Two S3 backends. Everything that must survive cluster loss is on external RustFS
 
 ## 1. Velero state
 
-Chart `platform/velero` — `vmware-tanzu/velero 12.2.0`, app `1.18.1`, AWS plugin `v1.14.3` (digest-pinned). Namespace `velero`, wave `0`.
+Chart `platform/velero` — `vmware-tanzu/velero 12.2.0`, app `1.18.2`, AWS plugin `v1.14.3` (digest-pinned). Namespace `velero`, wave `0`.
 
 BackupStorageLocation `default` (`platform/velero/templates/backupstoragelocation.yaml`): RustFS, bucket `velero-homelab`, prefix `velero/`, `us-east-1`, `s3ForcePathStyle: true`, `insecureSkipTLSVerify: true`. The endpoint FQDN is a Git literal — `gitops/values.yaml` → `s3.tailnetFqdn` — and is `required`, so a missing value fails the sync instead of pointing at a dead host.
 
