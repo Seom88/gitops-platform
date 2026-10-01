@@ -124,7 +124,8 @@ ensureVeleroCredentials() {
   fi
 
   # SOPS owns the dedicated keys (init-sops.sh applies platform/velero/sops/*.enc.yaml
-  # before this script runs). Imperative creation is fallback only — never overwrite it.
+  # after this script runs — it needs the namespaces GitOps creates).
+  # Imperative creation is fallback only — never overwrite it.
   if kubectl get secret cloud-credentials -n velero >/dev/null 2>&1; then
     echo -e "${GREEN}  [Velero] Secret velero/cloud-credentials exists (SOPS-managed) — leaving untouched.${NC}"
     return 0

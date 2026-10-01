@@ -91,8 +91,6 @@ secrets-check:
 secrets-apply:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Install secrets
-    ./bootstrap/init-sops.sh
 
     # Explicit .env load in case just is invoked with --no-dotenv or outside just
     if [ -f .env ]; then
@@ -101,6 +99,8 @@ secrets-apply:
     if [ ! -f .env ]; then
       echo "⚠️  .env not found — using shell / CI env (GitHub Secrets)" >&2
     fi
+    # Install secrets
+    ./bootstrap/init-sops.sh
     echo "==> secrets-apply (.env → k8s)"
 
     # ── Tailscale ──────────────────────────────────
@@ -123,8 +123,9 @@ secrets-apply:
     fi
 
     # ── Velero (RustFS S3) ─────────────────────────
-    # SOPS owns the dedicated keys (./bootstrap/init-sops.sh runs first in this
-    # recipe). Imperative creation is fallback only — never overwrite an existing Secret.
+    # SOPS owns the dedicated keys (init-sops.sh runs after init-gitops.sh on a
+    # bare cluster — the target namespaces must exist first). Imperative
+    # creation is fallback only — never overwrite an existing Secret.
     if kubectl get secret cloud-credentials -n velero >/dev/null 2>&1; then
       echo "  🛡️  Velero: Secret velero/cloud-credentials exists (SOPS-managed) — skipping"
     else

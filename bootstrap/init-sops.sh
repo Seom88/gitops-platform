@@ -20,9 +20,31 @@ if find platform apps -path '*/templates/*' -name '*.enc.yaml' | grep -q .; then
   exit 1
 fi
 
-find platform apps -name '*.enc.yaml' -not -path '*/templates/*' | sort | while read -r f; do
+mapfile -t files < <(find platform apps -name '*.enc.yaml' -not -path '*/templates/*' | sort)
+
+# Velero first: on a bare cluster the restore path (BSL credentials) must land
+# before anything else, and the velero namespace is guaranteed by init-gitops.sh.
+# Every other file ensures its own namespace exists, so this script no longer
+# dies with "namespaces ... not found" when ArgoCD hasn't synced yet.
+velero=()
+rest=()
+for f in "${files[@]}"; do
+  case "$f" in
+    platform/velero/sops/*) velero+=("$f") ;;
+    *) rest+=("$f") ;;
+  esac
+done
+
+for f in "${velero[@]}" "${rest[@]}"; do
   echo "→ applying $f"
-  sops decrypt "$f" | kubectl apply -f -
+  tmp=$(mktemp)
+  sops decrypt "$f" > "$tmp"
+  ns=$(awk '/^metadata:/{inmeta=1; next} /^[^ ]/{inmeta=0} inmeta && /^  namespace: *[^ ]/{print $2; exit}' "$tmp")
+  if [ -n "${ns:-}" ]; then
+    kubectl get namespace "$ns" >/dev/null 2>&1 || kubectl create namespace "$ns"
+  fi
+  kubectl apply -f "$tmp"
+  rm -f "$tmp"
 done
 
 shred -u "$SOPS_AGE_KEY_FILE" || rm -f "$SOPS_AGE_KEY_FILE"

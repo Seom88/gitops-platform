@@ -175,20 +175,6 @@ jobs:
             kubectl rollout restart deployment/operator -n tailscale 2>/dev/null || true
           echo "Tailscale operator Secret ready."
 
-      - name: Restore SOPS age key and apply encrypted secrets
-        env:
-          KUBECONFIG: /tmp/kubeconfig.yaml
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: us-east-1
-          AWS_ENDPOINT_URL_S3: ${{ env.S3_ENDPOINT }}
-          AWS_S3_FORCE_PATH_STYLE: "true"
-          AWS_EC2_METADATA_DISABLED: "true"
-          SOPS_AGE_KEY_FILE: /tmp/age-keys.txt
-        run: |
-          chmod +x bootstrap/init-sops.sh
-          ./bootstrap/init-sops.sh
-
       - name: Bootstrap (delegates to init-gitops.sh — single source of truth)
         env:
           KUBECONFIG: /tmp/kubeconfig.yaml
@@ -207,6 +193,23 @@ jobs:
 
           chmod +x bootstrap/init-gitops.sh
           ./bootstrap/init-gitops.sh "$ENV" $FORCE
+
+      # Runs AFTER Bootstrap: init-sops.sh kubectl-applies decrypted Secrets
+      # into namespaces that only exist once GitOps has synced. On a bare
+      # cluster the reverse order fails with "namespaces not found".
+      - name: Restore SOPS age key and apply encrypted secrets
+        env:
+          KUBECONFIG: /tmp/kubeconfig.yaml
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+          AWS_ENDPOINT_URL_S3: ${{ env.S3_ENDPOINT }}
+          AWS_S3_FORCE_PATH_STYLE: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
+          SOPS_AGE_KEY_FILE: /tmp/age-keys.txt
+        run: |
+          chmod +x bootstrap/init-sops.sh
+          ./bootstrap/init-sops.sh
 
       - name: Cleanup kubeconfig
         if: always()

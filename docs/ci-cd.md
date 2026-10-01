@@ -98,8 +98,14 @@ env:
    chmod +x bootstrap/init-gitops.sh platform/vault/scripts/bootstrap-vault.sh
    ./bootstrap/init-gitops.sh "$ENV" $FORCE
    ```
-   `init-gitops.sh` is idempotent: `helm upgrade --install gitops`, Longhorn CSI gate (wave 0), `ensureVeleroCredentials()` (see [Velero](./cluster-recovery.md)), `bootstrap-vault.sh`, status verifier. See [Getting Started](./getting-started.md).
-  10. `cleanup kubeconfig` (`if: always()`) — `shred -u /tmp/kubeconfig.yaml || rm -f /tmp/kubeconfig.yaml`
+    `init-gitops.sh` is idempotent: `helm upgrade --install gitops`, Longhorn CSI gate (wave 0), `ensureVeleroCredentials()` (see [Velero](./cluster-recovery.md)), `bootstrap-vault.sh`, status verifier. See [Getting Started](./getting-started.md).
+   10. `restore SOPS age key + apply encrypted secrets` (`KUBECONFIG=/tmp/kubeconfig.yaml`, `SOPS_AGE_KEY_FILE=/tmp/age-keys.txt`):
+    ```bash
+    chmod +x bootstrap/init-sops.sh
+    ./bootstrap/init-sops.sh
+    ```
+    Runs **after** Bootstrap on purpose: `init-sops.sh` applies decrypted Secrets into namespaces that only exist once GitOps has synced — the reverse order fails on a bare cluster. SOPS overwrites the ephemeral fallback Secrets with the SOPS-owned keys.
+   11. `cleanup kubeconfig` (`if: always()`) — `shred -u /tmp/kubeconfig.yaml || rm -f /tmp/kubeconfig.yaml`
 
 > `deploy.yaml` never runs `terraform apply` — cluster provisioning is owned elsewhere. This repo restores kubeconfig from the Environment Secret and delegates to `bootstrap/init-gitops.sh`, which in turn applies the ArgoCD App-of-Apps (`gitops/` chart, wave-ordered).
 

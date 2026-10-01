@@ -84,11 +84,19 @@ velero backup get
 Velero is installed *by* GitOps, so GitOps must be healthy before any restore can be issued. Do not hand-install Velero.
 
 ```bash
-./bootstrap/init-sops.sh      # age key from RustFS, then decrypt+apply every sops/*.enc.yaml
 ./bootstrap/init-gitops.sh prod
+./bootstrap/init-sops.sh      # age key from RustFS, then decrypt+apply every sops/*.enc.yaml
 ```
 
-`init-sops.sh` must run first: SOPS is the live secrets path (ESO is off), and it is what creates the S3 credentials §6 needs. `init-gitops.sh` creates the two platform bootstrap Secrets (Tailscale `operator-oauth`, Velero `cloud-credentials`) and runs `helm upgrade --install gitops`.
+Order matters: GitOps first, SOPS second. `init-gitops.sh` installs ArgoCD and creates the bootstrap namespaces; `init-sops.sh` then applies `platform/velero/sops/*.enc.yaml` first and creates any other missing target namespace itself, so a bare-cluster run no longer dies with "namespace not found". SOPS is still the live secrets path (ESO is off): it overwrites the ephemeral fallback Secrets with the SOPS-owned keys, and it is what creates the S3 credentials §6 needs.
+
+Local alternative (no CI): `just secrets-apply` loads `.env` and runs the same `init-sops.sh`, plus the Tailscale `operator-oauth` and Velero fallback Secrets. It needs a kubeconfig pointing at the target cluster and the RustFS/SOPS vars present (see `.env.example`: `S3_ENDPOINT`, `AWS_*`, `SOPS_AGE_KEY_FILE`, `K8S_TS_OAUTH_*`):
+
+```bash
+KUBECONFIG=/tmp/kubeconfig.yaml just secrets-apply
+```
+
+If a recipe fails with `Permission denied` on a script under `bootstrap/`, the executable bit was lost — restore it with `chmod +x bootstrap/*.sh` and re-run.
 
 ```bash
 kubectl -n argocd get applications
@@ -103,7 +111,7 @@ Every `Application` runs `automated: {prune: true, selfHeal: true}`. Left enable
 
 ```bash
 kubectl -n argocd get applications -o name | cut -d/ -f2 \
-  | grep -vE '^(velero|longhorn)$' > /tmp/frozen-apps.txt
+  | grep -vE '^(velero|longhorn|ts-operator)$' > /tmp/frozen-apps.txt
 cat /tmp/frozen-apps.txt
 
 while read -r app; do
