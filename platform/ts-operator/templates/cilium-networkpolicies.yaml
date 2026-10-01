@@ -9,6 +9,8 @@ kind: CiliumNetworkPolicy
 metadata:
   name: ts-operator-allow-dns
   namespace: tailscale
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   endpointSelector: {}
   egress:
@@ -25,6 +27,17 @@ spec:
           rules:
             dns:
               - matchPattern: "*"
+    # k3s hardening: ClusterIP (10.43.0.10) via kube-proxy iptables path —
+    # toEndpoints alone does not cover it when kube-proxy is still alive
+    # alongside Cilium strict. L4-only, no L7 dns rule here.
+    - toEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
 ---
 # 2) Egress — kube-apiserver + Tailscale control plane (443) + DNS + webhook to kubelets
 apiVersion: cilium.io/v2
@@ -32,6 +45,8 @@ kind: CiliumNetworkPolicy
 metadata:
   name: ts-operator-allow-egress
   namespace: tailscale
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   endpointSelector: {}
   egress:
@@ -118,6 +133,8 @@ kind: CiliumNetworkPolicy
 metadata:
   name: ts-operator-allow-ingress
   namespace: tailscale
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   endpointSelector: {}
   ingress:
@@ -170,11 +187,41 @@ kind: CiliumNetworkPolicy
 metadata:
   name: ts-operator-proxy-egress
   namespace: tailscale
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   endpointSelector:
     matchLabels:
       k8s:tailscale.com/managed: "true"
   egress:
+    # Self-sufficient DNS + apiserver: proxies must not depend on union
+    # with the namespace-wide policies to resolve kubernetes.default.svc.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    - toEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: homepage
