@@ -25,7 +25,7 @@ longhorn:
     # 15% (~24Gi/disk) still covers OS + bursts; frees ~70Gi cluster-wide.
     storageReservedPercentageForDefaultDisk: 15
     # Best-practices (Longhorn 1.12.1): 25% minimal-available is the root-disk
-    # default; /var/mnt/data is a dedicated disk so 10% applies.
+    # default; /mnt/data is a dedicated disk so 10% applies.
     storageMinimalAvailablePercentage: 10
     # Best-practices (Longhorn 1.12.1): 100 is the safe upstream default;
     # 200 is only justified when volumes average ~50% fill (not observed here).
@@ -40,8 +40,8 @@ longhorn:
     # volumes detached or during a maintenance window.
     guaranteedInstanceManagerCPU: '{"v1":"4","v2":"12"}'
     nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
-    # must match UserVolumeConfig name=data -> /var/mnt/data
-    defaultDataPath: /var/mnt/data
+    # must match UserVolumeConfig name=data -> /mnt/data
+    defaultDataPath: /mnt/data
     defaultLonghornStaticStorageClass: longhorn-static
   preUpgradeChecker:
     # ArgoCD/GitOps: disable pre-upgrade hook Job (requires CRDs + ClusterRole that are

@@ -1,4 +1,4 @@
-# Deploy GitOps — fetches kubeconfig from infra state, runs bootstrap/init-gitops.sh
+# Deploy GitOps — kubeconfig from Environment Secret, runs bootstrap/init-gitops.sh
 name: Deploy GitOps
 
 on:
@@ -27,14 +27,12 @@ concurrency:
 
 env:
   HELM_VERSION: v4.3.0
-  # GitHub Vars (S3_ENDPOINT, S3_BUCKET) serve Terraform-state access only
-  # (kubeconfig restore + state fallback). NO fallbacks for Velero here —
-  # the Velero endpoint is a git literal (gitops/values.yaml sharedS3.tailnetFqdn).
+  # S3_ENDPOINT serves SOPS age-key fetch only (init-sops.sh: s3://secrets-homelab).
+  # Velero endpoint is a git literal (gitops/values.yaml sharedS3.tailnetFqdn).
   # S3_ENDPOINT must be the full URL (https://<fqdn>) of the RustFS host.
-  # NOTE: S3_BUCKET here is the Terraform-state bucket, NOT the Velero bucket
-  # (velero-homelab is chart-owned in platform/velero/values.yaml).
+  # Kubeconfig comes from Environment Secret KUBECONFIG_DATA
+  # (full k3s.yaml with server https://100.64.0.12:6443).
   S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
-  S3_BUCKET: ${{ vars.S3_BUCKET }}
 
 jobs:
   # Fail-closed gate: auto-deploy only when CI is green on the head SHA.
@@ -79,14 +77,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout infra repo (for kubeconfig)
-        uses: actions/checkout@v7
-        with:
-          repository: Seom88/infra-talos-homelab
-          path: infra
-          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
-          persist-credentials: false
-
       - name: Validate S3 configuration (fail fast)
         run: |
           fail=0
@@ -102,16 +92,11 @@ jobs:
                 ;;
             esac
           fi
-          if [ -z "$S3_BUCKET" ]; then
-            echo "::error::S3_BUCKET is empty — set GitHub repository/environment Var S3_BUCKET (Terraform-state bucket)"
-            fail=1
+          if [ -z "$S3_ENDPOINT" ]; then
+            echo "::error::S3_ENDPOINT is empty — set Var S3_ENDPOINT (https://rustfs.<tailnet>.ts.net) for SOPS age-key fetch"
+            exit 1
           fi
           exit $fail
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
-        with:
-          terraform_wrapper: false
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v5
@@ -148,61 +133,25 @@ jobs:
           tags: tag:cicd
           use-cache: 'true'
 
-      - name: Restore kubeconfig from infra state
+      - name: Restore kubeconfig from Environment Secret
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: us-east-1
-          AWS_ENDPOINT_URL_S3: ${{ env.S3_ENDPOINT }}
-          AWS_S3_FORCE_PATH_STYLE: "true"
-          AWS_EC2_METADATA_DISABLED: "true"
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_DATA }}
         run: |
-          set -e
-          ENV="${{ inputs.environment || 'prod' }}"
-          echo "Target environment: $ENV"
-          TF_DIR="infra/environments/proxmox/${ENV}"
-
-          if [ ! -d "$TF_DIR" ]; then
-            echo "::error::Terraform env dir not found: $TF_DIR"
-            ls -R infra/environments 2>&1 | head -n 80
+          set -euo pipefail
+          if [ -z "${KUBECONFIG_DATA:-}" ]; then
+            echo "::error::KUBECONFIG_DATA is empty — set Environment Secret prod KUBECONFIG_DATA (k3s.yaml with server https://100.64.0.12:6443)"
             exit 1
           fi
-
-          echo "→ terraform init -reconfigure ($TF_DIR)"
-          terraform -chdir="$TF_DIR" init -reconfigure -input=false \
-            -backend-config="endpoint=${{ env.S3_ENDPOINT }}" \
-            -backend-config="skip_s3_checksum=true"
-
-          echo "→ terraform output -raw kubeconfig"
-          if terraform -chdir="$TF_DIR" output -raw kubeconfig > /tmp/kubeconfig.yaml 2>/dev/null; then
-            echo "kubeconfig obtained via terraform output"
-          else
-            echo "::warning::terraform output failed — trying S3 fallback"
-            if command -v aws >/dev/null 2>&1; then
-              echo "Attempting aws s3api fallback..."
-              aws s3api get-object \
-                --bucket ${{ env.S3_BUCKET }} \
-                --key "proxmox/${ENV}/terraform.tfstate" \
-                --endpoint-url ${{ env.S3_ENDPOINT }} \
-                --region us-east-1 \
-                /tmp/tfstate.json 2>&1 || echo "S3 get-object failed"
-              if [ -f /tmp/tfstate.json ]; then
-                jq -r '.outputs.kubeconfig.value // empty' /tmp/tfstate.json > /tmp/kubeconfig.yaml 2>/dev/null || true
-                rm -f /tmp/tfstate.json
-              fi
-            else
-              echo "aws cli not available for fallback"
-            fi
-          fi
+          umask 077
+          printf '%s' "$KUBECONFIG_DATA" > /tmp/kubeconfig.yaml
+          chmod 600 /tmp/kubeconfig.yaml
+          unset KUBECONFIG_DATA
 
           if [ ! -s /tmp/kubeconfig.yaml ]; then
-            echo "::error::kubeconfig is missing or empty after all methods (/tmp/kubeconfig.yaml)"
-            ls -l /tmp/kubeconfig.yaml 2>&1 || true
+            echo "::error::kubeconfig is missing or empty after Environment Secret restore (/tmp/kubeconfig.yaml)"
             exit 1
           fi
 
-          chmod 600 /tmp/kubeconfig.yaml
-          echo "KUBECONFIG=/tmp/kubeconfig.yaml"
           echo "KUBECONFIG=/tmp/kubeconfig.yaml" >> "$GITHUB_ENV"
 
           echo "→ kubectl cluster-info"
@@ -262,5 +211,5 @@ jobs:
       - name: Cleanup kubeconfig
         if: always()
         run: |
-          shred -u /tmp/kubeconfig.yaml 2>/dev/null || rm -f /tmp/kubeconfig.yaml /tmp/tfstate.json 2>/dev/null || true
+          shred -u /tmp/kubeconfig.yaml 2>/dev/null || rm -f /tmp/kubeconfig.yaml 2>/dev/null || true
           echo "Kubeconfig cleaned"

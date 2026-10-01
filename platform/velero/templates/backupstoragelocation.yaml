@@ -8,8 +8,7 @@
 # SERVER-RESOLUTION GAP (follow-up, NOT solved here): the velero server pod
 # resolves this FQDN via cluster DNS with no in-job hosts-pin available —
 # the ts.net stub stays deleted and no static IP may be pinned (headless svc).
-# Bucket/prefix/region are chart-owned in s3.* (S3_BUCKET in CI is the
-# Terraform-state bucket — never the Velero bucket).
+# Bucket/prefix/region are chart-owned in s3.
 apiVersion: velero.io/v1
 kind: BackupStorageLocation
 metadata:

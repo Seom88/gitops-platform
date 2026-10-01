@@ -130,7 +130,7 @@ ensureVeleroCredentials() {
     return 0
   fi
 
-  # Resolve credentials from AWS_* (same RustFS keys as Terraform) — fallback only.
+  # Resolve credentials from AWS_* (same RustFS keys as SOPS) — fallback only.
   VELERO_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
   VELERO_SECRET="${AWS_SECRET_ACCESS_KEY:-}"
 

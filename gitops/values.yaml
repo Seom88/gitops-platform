@@ -8,7 +8,6 @@ platformApps:
 # side-channel never reaches it on re-render. The platform charts carry
 # NO fallback literal (s3.tailnetFqdn is "" + `required`): if this URL
 # changes, the old one points to no RustFS — fail loudly, never silently.
-# NOTE: the Terraform-state endpoint (CI var S3_ENDPOINT, same RustFS host)
 # is an independent source — if the RustFS host ever changes, update both.
 sharedS3:
   tailnetFqdn: "rustfs.lonk-mirfak.ts.net"
