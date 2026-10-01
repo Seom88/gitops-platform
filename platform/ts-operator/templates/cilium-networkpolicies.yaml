@@ -50,6 +50,10 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
+    # Intra-namespace allow-all: operator, proxies, patch jobs y nameserver
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -148,17 +152,9 @@ spec:
               protocol: TCP
             - port: "8080"
               protocol: TCP
-    # Operator / proxy intra-namespace — narrowed from allow-all: webhook 9443/TCP + metrics 8080/TCP only
-    # Docs: Tailscale Operator webhook 9443 required for kube-apiserver ValidatingWebhookConfiguration; 8080 is operator metrics/health (mirrors kube-apiserver->9443+8080 allow; previously validated). Both required intra-namespace; if upstream docs only list 9443, 8080 is optional but retained per prior validation.
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
-      toPorts:
-        - ports:
-            - port: "9443"
-              protocol: TCP
-            - port: "8080"
-              protocol: TCP
     - fromEntities:
         - cluster
       toPorts:

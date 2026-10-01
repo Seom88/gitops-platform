@@ -6,7 +6,7 @@ metadata:
   name: ts-operator
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "-2"
     argocd.argoproj.io/tracking-id: gitops:argoproj.io/Application:argocd/ts-operator
   labels:
     wave-policy: healthy
