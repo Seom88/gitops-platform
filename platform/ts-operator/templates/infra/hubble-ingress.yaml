@@ -4,6 +4,8 @@ kind: Ingress
 metadata:
   name: hubble
   namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   ingressClassName: tailscale
   rules:

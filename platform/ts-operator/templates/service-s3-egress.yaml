@@ -13,7 +13,7 @@ metadata:
   name: s3-egress
   namespace: tailscale
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "1"
     tailscale.com/tailnet-fqdn: {{ required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
     {{- with .Values.s3.hostname }}
     tailscale.com/hostname: {{ . }}

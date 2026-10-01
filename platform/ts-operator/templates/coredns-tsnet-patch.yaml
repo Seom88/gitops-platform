@@ -23,7 +23,7 @@ metadata:
   name: coredns-tsnet-patch-script
   namespace: tailscale
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "1"
 data:
   patch-coredns-tsnet.sh: |
     #!/bin/sh
@@ -315,7 +315,7 @@ metadata:
   annotations:
     # Ordinary wave "-1" resource on purpose: the drift healer must run on a
     # schedule, NOT as a Sync hook (see the Job above).
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   schedule: "*/5 * * * *"
   concurrencyPolicy: Forbid

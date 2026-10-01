@@ -84,26 +84,10 @@ velero backup get
 Velero is installed *by* GitOps, so GitOps must be healthy before any restore can be issued. Do not hand-install Velero.
 
 ```bash
-./bootstrap/init-gitops.sh prod
-./bootstrap/init-sops.sh      # age key from RustFS, then decrypt+apply every sops/*.enc.yaml
-```
-
-Order matters: GitOps first, SOPS second. `init-gitops.sh` installs ArgoCD and creates the bootstrap namespaces; `init-sops.sh` then applies `platform/velero/sops/*.enc.yaml` first and creates any other missing target namespace itself, so a bare-cluster run no longer dies with "namespace not found". SOPS is still the live secrets path (ESO is off): it overwrites the ephemeral fallback Secrets with the SOPS-owned keys, and it is what creates the S3 credentials §6 needs.
-
-Local alternative (no CI): `just secrets-apply` loads `.env` and runs the same `init-sops.sh`, plus the Tailscale `operator-oauth` and Velero fallback Secrets. It needs a kubeconfig pointing at the target cluster and the RustFS/SOPS vars present (see `.env.example`: `S3_ENDPOINT`, `AWS_*`, `SOPS_AGE_KEY_FILE`, `K8S_TS_OAUTH_*`):
-
-```bash
-KUBECONFIG=/tmp/kubeconfig.yaml just secrets-apply
+just init-prod # Create secrets and install apps
 ```
 
 If a recipe fails with `Permission denied` on a script under `bootstrap/`, the executable bit was lost — restore it with `chmod +x bootstrap/*.sh` and re-run.
-
-```bash
-kubectl -n argocd get applications
-kubectl -n velero get backupstoragelocation default -o jsonpath='{.status.phase}'   # Ready
-```
-
-`Ready` on the BSL also proves RustFS is reachable from inside the cluster.
 
 ### 2.3 Freeze GitOps
 
