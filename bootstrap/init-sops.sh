@@ -39,7 +39,9 @@ for f in "${velero[@]}" "${rest[@]}"; do
   echo "→ applying $f"
   tmp=$(mktemp)
   sops decrypt "$f" > "$tmp"
-  ns=$(awk '/^metadata:/{inmeta=1; next} /^[^ ]/{inmeta=0} inmeta && /^  namespace: *[^ ]/{print $2; exit}' "$tmp")
+  # Indent-agnostic (some files use 4-space indent) and quote-stripping:
+  # a quoted value would otherwise create a junk namespace literally named '"x"'.
+  ns=$(awk '/^metadata:/{inmeta=1; next} /^[^[:space:]]/{inmeta=0} inmeta && /^[[:space:]]+namespace:[[:space:]]*[^[:space:]]/{v=$2; gsub(/["\047]/, "", v); print v; exit}' "$tmp")
   if [ -n "${ns:-}" ]; then
     kubectl get namespace "$ns" >/dev/null 2>&1 || kubectl create namespace "$ns"
   fi

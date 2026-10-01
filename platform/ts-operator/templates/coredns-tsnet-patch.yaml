@@ -260,7 +260,12 @@ metadata:
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     argocd.argoproj.io/sync-options: Replace=true
-    argocd.argoproj.io/sync-wave: "-1"
+    # Wave 1 on purpose: the operator Deployment itself comes from the Helm
+    # subchart with NO wave annotation (default wave 0), so at "-1" this hook
+    # ran before the operator pod even existed and waited on a status that
+    # nothing was populating. Wave 1 runs after the operator is applied; the
+    # WAIT_SECS loop inside still covers pod startup + login + nameserver.
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   backoffLimit: 3
   activeDeadlineSeconds: 900
