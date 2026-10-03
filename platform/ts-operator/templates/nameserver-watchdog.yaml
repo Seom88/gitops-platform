@@ -1,0 +1,144 @@
+{{- if .Values.nameserverWatchdog.enabled }}
+# k8s-nameserver crashloop watchdog — ConfigMap script + CronJob sharing one
+# idempotent check. Deletes nameserver pods stuck in CrashLoopBackOff so the
+# operator-owned Deployment recreates them immediately with the kubelet
+# backoff reset to zero (a fresh pod retries at once instead of waiting out
+# the exponential 10s/20s/40s...5m cap).
+#
+# Why delete instead of tuning: the backoff is hardcoded in kubelet (no knob),
+# and the nameserver Deployment is created by the operator from DNSConfig
+# ts-dns — any direct patch is reverted on the next reconcile. Pod deletion is
+# safe: the Deployment recreates the pod on its own; nothing fights the
+# operator.
+#
+# Why MIN_RESTARTS=3: the first backoffs (10s, 20s) are already fast, so a
+# genuinely transient first crash recovers on its own. The watchdog only
+# intervenes once the exponential delay starts dominating (>=3 restarts).
+# Why name-match (*nameserver*): the operator generates Deployment/pod names
+# with random suffixes and offers no stable label contract, so resourceNames
+# scoping is impossible here AND in RBAC (see nameserver-watchdog-rbac.yaml).
+# The match is deliberately narrow: only pods whose name contains
+# "nameserver" in the tailscale namespace, AND waiting CrashLoopBackOff,
+# AND restartCount >= MIN_RESTARTS are deleted. Everything else is a
+# logged no-op with exit 0.
+#
+# Ordering: ordinary wave "1" resource on purpose (NOT a Sync hook) — it must
+# run on a schedule, including between ArgoCD syncs. RBAC ships at wave "-1"
+# so permissions exist before the first run.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nameserver-watchdog-script
+  namespace: tailscale
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+data:
+  nameserver-watchdog.sh: |
+    #!/bin/sh
+    # Delete CrashLoopBackOff k8s-nameserver pods (backoff reset to zero).
+    # Env: WATCHDOG_NAMESPACE (default tailscale), MIN_RESTARTS (default 3).
+    # Idempotent: exit 0 when nothing is crashlooping.
+    set -eu
+    NAMESPACE="${WATCHDOG_NAMESPACE:-tailscale}"
+    MIN_RESTARTS="${MIN_RESTARTS:-3}"
+    case "$MIN_RESTARTS" in
+      ''|*[!0-9]*)
+        echo "[watchdog] ERROR: MIN_RESTARTS must be a non-negative integer, got '$MIN_RESTARTS'" >&2
+        exit 1
+        ;;
+    esac
+    echo "[watchdog] scanning namespace/$NAMESPACE for crashlooping nameserver pods (min restarts: $MIN_RESTARTS)..."
+    TMP="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f $TMP" EXIT INT TERM
+    kubectl get pods -n "$NAMESPACE" -o 'jsonpath={range .items[*]}{.metadata.name} {.status.containerStatuses[0].restartCount} {.status.containerStatuses[0].state.waiting.reason}{"\n"}{end}' > "$TMP" || exit 1
+    FAILED=0
+    while read -r NAME RESTARTS REASON; do
+      case "$NAME" in
+        *nameserver*) ;;
+        *) continue ;;
+      esac
+      RESTARTS="${RESTARTS:-0}"
+      case "$RESTARTS" in
+        ''|*[!0-9]*) continue ;;
+      esac
+      if [ "$RESTARTS" -lt "$MIN_RESTARTS" ]; then
+        continue
+      fi
+      if [ "${REASON:-}" != "CrashLoopBackOff" ]; then
+        continue
+      fi
+      echo "[watchdog] deleting pod/$NAME (restarts=$RESTARTS, $REASON) - backoff reset"
+      if kubectl delete pod "$NAME" -n "$NAMESPACE" --wait=false; then
+        echo "[watchdog] deleted pod/$NAME"
+      else
+        echo "[watchdog] ERROR: failed to delete pod/$NAME" >&2
+        FAILED=1
+      fi
+    done < "$TMP"
+    if [ "$FAILED" -ne 0 ]; then
+      exit 1
+    fi
+    echo "[watchdog] done"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nameserver-watchdog
+  namespace: tailscale
+  annotations:
+    # Ordinary wave "1" resource on purpose: the watchdog must run on a
+    # schedule, NOT as a Sync hook.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  # Worst case adds ~2min of detection delay instead of up to 5min of capped
+  # kubelet backoff. Tighter (*/1) buys little: the early backoffs it would
+  # preempt are already 10-20s, and each run lists pods against the API.
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 120
+      ttlSecondsAfterFinished: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: nameserver-watchdog
+            app.kubernetes.io/component: watchdog
+        spec:
+          serviceAccountName: nameserver-watchdog
+          restartPolicy: OnFailure
+          containers:
+            - name: watchdog
+              # Digest-pinned (fail-closed Trivy gate); Renovate-tracked via the
+              # `kubectl jobs` group. Bitnami publishes only `latest` for kubectl
+              # (holds kubectl 1.37.0, image build 2026-09-03) — digest is the pin.
+              # Refresh: skopeo inspect docker://bitnami/kubectl:latest | jq -r .Digest
+              image: bitnami/kubectl:latest@sha256:ab90e1058e5a658cc94b4e7eb6d48e5758cfd6d77b5dd1869513aec3a3054673
+              imagePullPolicy: IfNotPresent
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+              env:
+                - name: WATCHDOG_NAMESPACE
+                  value: "tailscale"
+                - name: MIN_RESTARTS
+                  value: "3"
+              command: ["/bin/sh", "/scripts/nameserver-watchdog.sh"]
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: script
+              configMap:
+                name: nameserver-watchdog-script
+                defaultMode: 0755
+{{- end }}

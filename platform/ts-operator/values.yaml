@@ -14,6 +14,14 @@ ciliumNetworkPolicy:
 s3:
   tailnetFqdn: ""
 
+# Nameserver crashloop watchdog — CronJob every 2m that deletes
+# CrashLoopBackOff k8s-nameserver pods so the operator Deployment recreates
+# them immediately with the kubelet backoff reset to zero (cold-start
+# recovery in ~2min instead of ~7-10min of exponential backoff).
+# Disable (false) to render neither the CronJob nor its RBAC.
+nameserverWatchdog:
+  enabled: true
+
 # tailscale-operator subchart values — wave -1 healthy gate
 # Secret tailscale/operator-oauth is created externally via CI (deploy.yaml) and bootstrap/init-gitops.sh
 #   keys: client_id + client_secret (matches spec oauthSecretName: operator-oauth, secretKeyRef)
