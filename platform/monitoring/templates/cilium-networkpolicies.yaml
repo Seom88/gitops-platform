@@ -9,6 +9,8 @@ kind: CiliumNetworkPolicy
 metadata:
   name: monitoring-allow-dns
   namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   endpointSelector: {}
   egress:
@@ -32,6 +34,8 @@ kind: CiliumNetworkPolicy
 metadata:
   name: monitoring-allow-egress
   namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   endpointSelector: {}
   egress:
@@ -143,6 +147,8 @@ kind: CiliumNetworkPolicy
 metadata:
   name: monitoring-allow-ingress
   namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   endpointSelector: {}
   ingress:
