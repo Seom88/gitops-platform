@@ -5,7 +5,7 @@
 ![Chart](https://img.shields.io/badge/Chart-vmware--tanzu%2Fvelero_12.1.0-orange?style=flat-square)
 ![App](https://img.shields.io/badge/App-1.18.1-yellow?style=flat-square)
 
-Velero backs up cluster manifests and workload data (everything except Vault — see Vault policy below) to an external RustFS S3 bucket (`velero-homelab` at `https://rustfs.lonk-mirfak.ts.net`, from `sharedS3.tailnetFqdn`) with GitOps automation and no manual bucket setup. RustFS aborts TLS unless SNI equals its LE-cert FQDN, so every consumer dials the FQDN; the bucket-init Job keeps traffic in-cluster by resolving `s3-egress.tailscale.svc.cluster.local` via kube-dns and pinning the FQDN to those svc IPs in `/etc/hosts` at runtime (live SNI evidence 2026-09-23).
+Velero backs up cluster manifests and workload data (everything except Vault — see Vault policy below) to an external RustFS S3 bucket (`velero-homelab` at `https://rustfs.lonk-mirfak.ts.net`, from `sharedS3.tailnetFqdn`) with GitOps automation and no manual bucket setup. RustFS aborts TLS unless SNI equals its LE-cert FQDN, so every consumer dials the FQDN; the bucket-init Job resolves the FQDN directly via kube-dns → coredns-custom (`lonk-mirfak.ts.net → 100.100.100.100`) → node tailscaled with `--accept-dns`, gates on private IPs, and pins the FQDN to those IPs in `/etc/hosts` at runtime (live SNI evidence 2026-09-23).
 
 ## Why this design
 
@@ -31,7 +31,7 @@ flowchart LR
     CHART -.->|excluded| VAULT["Vault ns<br/>re-bootstrap, never restore"]
 ```
 
-Wave `-1` `tailscale-operator` (s3-egress Service, `DNSConfig ts-dns`, `ts.net:53` CoreDNS stub reconciler) → wave `0` `velero` + `longhorn` → wave `1` `vault`. The bucket-init Job resolves the in-cluster Service name via kube-dns (private-IP gate + runtime hosts-pin of the FQDN); the velero server pod resolves the FQDN via the cluster DNS `ts.net:53` stub (no separate `coredns-patch` chart — the reconciler lives in `platform/ts-operator`). Guarantees DNS and storage are ready before Vault creates PVCs.
+Wave `-1` `tailscale-operator` (tailnet DNS stub `coredns-custom` in `kube-system`: `lonk-mirfak.ts.net → 100.100.100.100`, the node tailscaled resolver with `--accept-dns`) → wave `0` `velero` + `longhorn` → wave `1` `vault`. The bucket-init Job resolves the FQDN via kube-dns (private-IP gate + runtime hosts-pin of the FQDN); the velero server pod resolves the FQDN through the same chain (pods → kube-dns → `coredns-custom` → node tailscaled). Guarantees DNS and storage are ready before Vault creates PVCs.
 
 ## Schedules
 
@@ -42,7 +42,7 @@ Wave `-1` `tailscale-operator` (s3-egress Service, `DNSConfig ts-dns`, `ts.net:5
 
 - `defaultVolumesToFsBackup: true` + `deployNodeAgent: true` + `nodeAgent.enabled: true` → Longhorn PVCs backed up via filesystem copy (no CSI snapshots). The node-agent gate and the FsBackup default must stay on together.
 - Resource guard: `resources.limits.memory: 512Mi` (chart default `128Mi` OOMKills during FsBackup on this homelab) — do not lower it.
-- Storage: `s3ForcePathStyle: true`, `s3Url: https://<FQDN>` (from `sharedS3.tailnetFqdn`; the svc name can never complete a RustFS TLS handshake — SNI must equal the LE-cert FQDN), `region: us-east-1`, `prefix: velero/`, single BSL `default`. Server-side FQDN resolution is covered by the cluster DNS `ts.net:53` stub (`DNSConfig ts-dns` + reconciler in `platform/ts-operator`, closing the former `SERVER-RESOLUTION GAP`); the bucket-init Job additionally pins FQDN→svc-IP at runtime (see `templates/job-bucket-init.yaml`).
+- Storage: `s3ForcePathStyle: true`, `s3Url: https://<FQDN>` (from `sharedS3.tailnetFqdn`; the svc name can never complete a RustFS TLS handshake — SNI must equal the LE-cert FQDN), `region: us-east-1`, `prefix: velero/`, single BSL `default`. Server-side FQDN resolution goes through kube-dns → `coredns-custom` (`lonk-mirfak.ts.net → 100.100.100.100`, node tailscaled with `--accept-dns`), closing the former `SERVER-RESOLUTION GAP`; the bucket-init Job additionally pins FQDN→resolved-IP at runtime (see `templates/job-bucket-init.yaml`).
 
 ## Vault policy — excluded, re-bootstrap + rotation
 
@@ -76,7 +76,7 @@ velero backup get
 | `secret cloud-credentials not found` | Check SOPS secret applied (`init-sops.sh`), or re-run bootstrap with `AWS_*` env vars (fallback) |
 | `NoSuchBucket` | Check `kubectl -n velero logs job/velero-bucket-init`; re-sync ArgoCD |
 | `BSL not Ready` | Verify `s3Url`/`s3ForcePathStyle` and `cloud` key format is `[default]` ini |
-| `nslookup s3-egress.tailscale.svc.cluster.local` fails | Verify the `s3-egress` Service exists in namespace `tailscale` and kube-dns is healthy (bucket-init Jobs resolve the svc, then pin the FQDN to those IPs in `/etc/hosts` — check `hosts-pin` lines in the job log) |
+| `nslookup rustfs.lonk-mirfak.ts.net` fails from a pod | Verify `coredns-custom` exists in `kube-system` (`kubectl -n kube-system get cm coredns-custom`), tailscaled runs with `--accept-dns` on the node, and kube-dns is healthy — then `kubectl run -it --rm dns-test --image=busybox --restart=Never -- nslookup rustfs.lonk-mirfak.ts.net` |
 | `TLSV1_ALERT_INTERNAL_ERROR` / EOF against RustFS | The dialed host is not the LE-cert FQDN — ENDPOINT/`s3Url` must be `https://<FQDN>` (SNI fix); `--no-verify-ssl` in trailing position is unreliable, it must be global (`aws --no-verify-ssl s3api ...`) |
 
 ## Files

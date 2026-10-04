@@ -269,7 +269,7 @@ Then the real data — **[Restore verification](./restore-verification.md)**: hi
 | PITR never arrives | `targetTime` outside the 30d window or missing timezone (step 5) |
 | Apps CrashLoop after unfreeze, DBs healthy | Both DBs must be primary before their apps (step 6.3) |
 | `NoSuchBucket` or Velero unreachable | RustFS down — [RustFS IAM](./rustfs-iam.md). If the bucket is gone: `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1` |
-| `BSL not Ready` | Check `s3Url`/`s3ForcePathStyle`, Secret `cloud-credentials` (`bootstrap/init-sops.sh`), and the `ts.net:53` stub (`DNSConfig ts-dns`, endpoints `s3-egress`) |
+| `BSL not Ready` | Check `s3Url`/`s3ForcePathStyle`, Secret `cloud-credentials` (`bootstrap/init-sops.sh`), and tailnet DNS: `coredns-custom` exists in `kube-system`, tailscaled runs with `--accept-dns` on the node, `nslookup rustfs.lonk-mirfak.ts.net` succeeds from a pod |
 | Velero OOMKilled | `512Mi` limit; `deployNodeAgent: true` mandatory with `defaultVolumesToFsBackup: true` |
 
 ## 4. Vault

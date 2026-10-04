@@ -50,7 +50,9 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Intra-namespace allow-all: operator, proxies y nameserver
+    # Intra-namespace allow-all: operator + per-Ingress proxies
+    # (operator Deployment + StatefulSets with tailscale.com/managed=true,
+    # e.g. argocd/hubble-ui from templates/infra/).
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
