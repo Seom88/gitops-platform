@@ -13,7 +13,6 @@ s3:
   bucket: velero-homelab
   prefix: velero
   region: us-east-1
-  hostname: velero-s3-egress
 
 developmentApp:
   enabled: false

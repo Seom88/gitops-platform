@@ -121,7 +121,8 @@ spec:
               protocol: TCP
 ---
 # CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
-# Same FQDN:443 pattern as Velero (RustFS needs SNI = LE-cert FQDN).
+# Same FQDN:443 pattern as Velero (RustFS needs SNI = LE-cert FQDN), resolved
+# via node MagicDNS — no in-cluster s3-egress proxy path.
 {{- if .Values.backup.enabled }}
 ---
 apiVersion: cilium.io/v2
@@ -149,13 +150,6 @@ spec:
               - matchPattern: "*.lonk-mirfak.ts.net"
     - toEntities:
         - world
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: tailscale
       toPorts:
         - ports:
             - port: "443"

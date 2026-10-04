@@ -50,7 +50,7 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Intra-namespace allow-all: operator, proxies, patch jobs y nameserver
+    # Intra-namespace allow-all: operator, proxies y nameserver
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale

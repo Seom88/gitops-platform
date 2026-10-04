@@ -26,8 +26,10 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# 2) Egress — S3 (velero-homelab bucket) + Tailscale proxy + kube-apiserver + Hubble
-# S3 backend lives behind Tailscale gateway DNS (s3.tailnetFqdn from gitops/values.yaml) on 443
+# 2) Egress — S3 (velero-homelab bucket) + kube-apiserver + Hubble
+# S3 backend lives at s3.tailnetFqdn (from gitops/values.yaml) on 443, resolved
+# via node MagicDNS (tailscaled on the host) through the default CoreDNS
+# forward chain — no in-cluster ts.net stub, no s3-egress proxy Service.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -36,7 +38,7 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # S3 via Tailscale (S3 at {{ required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}:443) — use FQDN + world with 443
+    # S3 via tailnet FQDN (S3 at {{ required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}:443) — use FQDN + world with 443
     - toFQDNs:
         - matchName: {{ required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
         - matchPattern: "*.lonk-mirfak.ts.net"
@@ -52,18 +54,6 @@ spec:
         - world
       toPorts:
         - ports:
-            - port: "443"
-              protocol: TCP
-    # Tailscale namespace (gateway + shared s3-egress proxy path)
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: tailscale
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
             - port: "443"
               protocol: TCP
     - toEntities:

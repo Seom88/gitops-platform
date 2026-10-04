@@ -69,10 +69,13 @@ spec:
                # Ensure aws-cli uses path-style addressing (S3 backend requires it)
               aws configure set default.s3.addressing_style path || true
               aws configure set default.s3.addressing_style path --profile default || true
-              # s3-egress Service: resolve SVC_HOST, gate on the resolved
-              # IPs, pin FQDN->svc-IP in /etc/hosts at runtime (below).
+              # Tailnet FQDN resolution via node MagicDNS: pods resolve $S3_FQDN
+              # through the default CoreDNS forward chain (kube-dns -> node
+              # /etc/resolv.conf -> tailscaled MagicDNS on the host). No
+              # in-cluster ts.net stub and no s3-egress proxy Service — the
+              # FQDN below is resolved directly and gated on private IPs.
               S3_FQDN="{{ $fqdn }}"
-              SVC_HOST="s3-egress.tailscale.svc.cluster.local"
+              SVC_HOST="$S3_FQDN"
               ENDPOINT="https://$S3_FQDN"
               S3_PORT="443"
               BUCKET="{{ .Values.s3.bucket }}"
@@ -82,7 +85,7 @@ spec:
                 sed 's/=.*/=***/' "$CRED_FILE" || cat "$CRED_FILE" || true
                 exit 1
               fi
-              # Wait for the in-cluster S3 egress Service DNS to be ready
+              # Wait for the tailnet FQDN to resolve via node MagicDNS
               echo "[bucket-init] Waiting for $SVC_HOST (max 120s)..."
               DNS_WAIT=0
               DNS_MAX=120
@@ -116,7 +119,7 @@ spec:
               }
               RESOLVED_IPS="$( (getent hosts "$SVC_HOST" 2>/dev/null | awk '{print $1}'; nslookup "$SVC_HOST" 2>/dev/null | awk '/^Address: /{if ($2 !~ /#/) print $2} /^Address [0-9]+:/{print $3}') | sort -u | tr '\n' ' ' || true )"
               if [ -z "$(echo "$RESOLVED_IPS" | tr -d '[:space:]')" ]; then
-                echo "[bucket-init] ERROR: no IP resolved for $SVC_HOST — refusing aws s3api call (check kube-dns and the s3-egress Service in namespace tailscale)"
+                echo "[bucket-init] ERROR: no IP resolved for $SVC_HOST — refusing aws s3api call (check kube-dns forwarding and tailscaled MagicDNS on the node)"
                 exit 1
               fi
               for RIP in $RESOLVED_IPS; do
@@ -124,7 +127,7 @@ spec:
                 if is_private_ip "$RIP"; then
                   echo "[bucket-init] $RIP is private (10/8, 100.64/10, 192.168/16, fd00::/8) — OK"
                 else
-                  echo "[bucket-init] ERROR: refusing S3 dial — $RIP is PUBLIC (outside 10/8, 100.64/10, 192.168/16, fd00::/8); expected the tailscale s3-egress ClusterIP/proxy, not MagicDNS public fallback"
+                  echo "[bucket-init] ERROR: refusing S3 dial — $RIP is PUBLIC (outside 10/8, 100.64/10, 192.168/16, fd00::/8); expected the tailnet 100.x IP from node MagicDNS, not a public fallback"
                   if command -v openssl >/dev/null 2>&1; then
                     echo "[bucket-init] TLS diagnostic (best-effort): openssl s_client -connect $RIP:$S3_PORT -servername $S3_FQDN"
                     if command -v timeout >/dev/null 2>&1; then

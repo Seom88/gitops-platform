@@ -23,28 +23,9 @@ spec:
         {{- if .Values.developmentApp.enabled }}
         - values-dev.yaml
         {{- end }}
-      # Shared S3 egress endpoint — single source: gitops/values.yaml
-      # sharedS3.tailnetFqdn (literal in git, so repo-server renders without
-      # any --set side-channel). `required` fails the sync loudly instead of
-      # deploying a stale hardcoded URL. The chart derives the shared
-      # s3-egress Service in the tailscale namespace from s3.tailnetFqdn.
-      parameters:
-        - name: s3.tailnetFqdn
-          value: {{ required "sharedS3.tailnetFqdn is required (set gitops/values.yaml)" .Values.sharedS3.tailnetFqdn | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: tailscale
-  # The Tailscale operator rewrites spec.externalName of the s3-egress
-  # Service to its MagicDNS name (ts-s3-egress-*.tailscale.svc.cluster.local).
-  # Without this, the app flaps OutOfSync forever against the `placeholder`
-  # in git (same pattern as the Job ignoreDifferences in 00-velero.yaml).
-  ignoreDifferences:
-  - group: ""
-    kind: Service
-    name: s3-egress
-    namespace: tailscale
-    jsonPointers:
-    - /spec/externalName
   syncPolicy:
     automated:
       prune: true

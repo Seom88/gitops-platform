@@ -4,16 +4,6 @@ developmentApp:
 ciliumNetworkPolicy:
   enabled: true
 
-# Shared S3 egress — single source for the URL: gitops/values.yaml
-# sharedS3.tailnetFqdn (literal) -> gitops/templates/platform/-1-ts-operator.yaml
-# helm.parameter s3.tailnetFqdn -> here.
-# tailnetFqdn is REQUIRED (empty on purpose — NO fallback literal:
-# a stale default would point to no RustFS, so the shared s3-egress Service
-# fails loudly via `required`).
-# Do NOT put a URL literal here.
-s3:
-  tailnetFqdn: ""
-
 # Nameserver crashloop watchdog — CronJob every 2m that deletes
 # CrashLoopBackOff k8s-nameserver pods so the operator Deployment recreates
 # them immediately with the kubelet backoff reset to zero (cold-start

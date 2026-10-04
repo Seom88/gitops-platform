@@ -27,7 +27,7 @@ spec:
       # repo-server renders path gitops from git (the literal in values.yaml
       # is the single source) using ONLY this Application's spec — helm
       # release --set values never reach it. Without this, `required` in
-      # 00-velero.yaml / -1-ts-operator.yaml fails every root sync. A --set sharedS3.tailnetFqdn
+      # 00-velero.yaml fails every root sync. A --set sharedS3.tailnetFqdn
       # at install time acts only as an override of the git literal.
       parameters:
         - name: sharedS3.tailnetFqdn

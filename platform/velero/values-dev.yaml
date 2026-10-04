@@ -7,7 +7,6 @@
 # bucket/region inherit from values.yaml; the BackupStorageLocation CR is built
 # by templates/backupstoragelocation.yaml from s3.* (no BSL block here).
 s3:
-  hostname: velero-s3-egress-dev
   prefix: velero
   tailnetFqdn: ""
 
