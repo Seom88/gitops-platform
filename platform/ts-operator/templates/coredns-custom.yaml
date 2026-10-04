@@ -1,0 +1,24 @@
+# Tailnet DNS stub via the k3s-supported coredns-custom ConfigMap.
+# Forwards only our tailnet suffix to the node's Tailscale DNS
+# (100.100.100.100 — the well-known tailscaled resolver, always-on while
+# tailscaled runs with --accept-dns=true on the host).
+# Replaces the deleted 5-minute coredns-tsnet-patch CronJob: zero churn,
+# zero restarts, static target. k3s mounts coredns-custom keys matching
+# *.server as additional CoreDNS server blocks (see
+# https://docs.k3s.io/advanced#coredns). One CoreDNS rollout restart is
+# needed after the first sync (the reload plugin doesn't watch imported
+# files); afterwards it is stable with no reconcilers.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+data:
+  tailnet.server: |
+    lonk-mirfak.ts.net:53 {
+      errors
+      cache 30
+      forward . 100.100.100.100
+    }
