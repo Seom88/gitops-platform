@@ -162,6 +162,17 @@ velero:
           - persistentvolumeclaims
           - persistentvolumes
           - pods
+        # Label selector — drop everything the CNPG operator manages.
+        # `DoesNotExist` needs no cluster names: any object carrying
+        # `cnpg.io/cluster` (set by the operator on its PVCs and pods) is
+        # excluded, so restores never replant empty DB shells or stale DB
+        # pods and Barman recovery starts from empty. Backups taken before
+        # this selector still contain the shells — those restores need the
+        # step 5.0 cleanup in docs/cluster-recovery.md.
+        labelSelector:
+          matchExpressions:
+            - key: cnpg.io/cluster
+              operator: DoesNotExist
         includeClusterResources: true
         excludedResources:
           - replicas.longhorn.io

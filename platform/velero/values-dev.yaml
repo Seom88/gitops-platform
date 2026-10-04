@@ -1,14 +1,24 @@
 # Dev overlay. S3 endpoint: same single source as prod
-# (gitops/values-dev.yaml sharedS3.tailnetFqdn) — intentionally empty here; required at render time. Only prefix/hostname differ
-# (bucket/region inherit from values.yaml); the BackupStorageLocation CR is built
+# (gitops/values-dev.yaml sharedS3.tailnetFqdn) — intentionally empty here; required at render time.
+#
+# VERIFY-ONLY CLUSTER (Oct 2026): dev creates no backups. Its BSL points at
+# the PROD prefix so synced prod backups can be restore-drilled here.
+# Do NOT point dev writes anywhere: restoreOnlyMode + all schedules disabled.
+# bucket/region inherit from values.yaml; the BackupStorageLocation CR is built
 # by templates/backupstoragelocation.yaml from s3.* (no BSL block here).
 s3:
   hostname: velero-s3-egress-dev
-  prefix: velero-dev
+  prefix: velero
   tailnetFqdn: ""
 
 velero:
-  # Dev sizing: full requests/limits for parallel volume backups; prod stays lean.
+  configuration:
+    # --restore-only on the server: no backups, no schedules run here.
+    restoreOnlyMode: true
+  schedules:
+    daily-full:
+      disabled: true
+  # Dev sizing: full requests/limits for parallel volume restores; prod stays lean.
   resources:
     requests: { cpu: 200m, memory: 128Mi }
     limits: { cpu: 500m, memory: 512Mi }

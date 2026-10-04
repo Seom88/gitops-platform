@@ -1,176 +1,138 @@
 # Cluster recovery
 
-Restore path for this cluster: Velero for PVC/PV + file data, Barman for Postgres, ArgoCD for manifests.
+Restore path: Velero for PVC/PV + file data, Barman for Postgres, ArgoCD for manifests.
 
 | Layer | Restored by |
 |---|---|
 | Cilium, ArgoCD | Reinstall from cluster provisioning |
-| Workload manifests | ArgoCD auto-sync from Git |
-| PVC/PV + file data | Velero (`velero restore create`) |
-| Postgres (CNPG) | Barman PITR (§6.7) |
-| Vault | Re-bootstrap (§9) |
+| Workload manifests | ArgoCD sync from Git (manual while frozen) |
+| PVC/PV + file data | Velero, step 4 |
+| Postgres (CNPG) | Barman PITR, step 5 |
+| Vault | Re-bootstrap, see Vault at the end |
 
-Two S3 backends. Everything that must survive cluster loss is on external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Velero → `velero-homelab`, Barman → `cnpg-db-backups`. Loki is the only consumer of in-cluster SeaweedFS S3 (`loki-chunks`/`loki-ruler`).
+Survival storage is external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Velero → `velero-homelab`, Barman → `cnpg-db-backups`. Loki is the only consumer of in-cluster SeaweedFS S3.
 
-**ArgoCD is reinstalled, never restored.** `daily-full` excludes `argocd` and `kube-system` (`platform/velero/values.yaml:138-155`); every `Application` already lives in Git under `gitops/templates/`.
+**ArgoCD is reinstalled, never restored.** `daily-full` excludes `argocd` and `kube-system`; every `Application` already lives in Git under `gitops/templates/`.
 
-## 1. Velero state
+## 1. What is in the backups
 
-Chart `platform/velero` — `vmware-tanzu/velero 12.2.0`, app `1.18.2`, AWS plugin `v1.14.3` (digest-pinned). Namespace `velero`, wave `0`.
+Chart `platform/velero`, namespace `velero`. BSL `default`: bucket `velero-homelab`, prefix `velero/`.
 
-BackupStorageLocation `default` (`platform/velero/templates/backupstoragelocation.yaml`): RustFS, bucket `velero-homelab`, prefix `velero/`, `us-east-1`, `s3ForcePathStyle: true`, `insecureSkipTLSVerify: true`. The endpoint FQDN is a Git literal — `gitops/values.yaml` → `s3.tailnetFqdn` — and is `required`, so a missing value fails the sync instead of pointing at a dead host.
+Schedule `daily-full` — `0 2 * * *`, TTL `720h`:
 
-Credentials are `Secret cloud-credentials` (`platform/velero/values.yaml:77-79`), applied by `bootstrap/init-sops.sh` from `platform/velero/sops/cloud-credentials.enc.yaml`. Fallback: `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars into `bootstrap/init-gitops.sh`.
-
-`job-bucket-init` is an ArgoCD `Sync` hook at wave `0` with `hook-weight: -1`, so it runs first *within* wave 0. It resolves the FQDN, pins it to the in-cluster `s3-egress` Service, and creates the bucket idempotently. Manual equivalent:
-
-```bash
-aws s3api create-bucket --bucket velero-homelab \
-  --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1
-```
-
-Long-lived pods resolve the FQDN through the `ts.net:53` CoreDNS stub reconciled in `platform/ts-operator`.
-
-### Schedule
-
-`daily-full` — `0 2 * * *`, TTL `720h`, `useOwnerReferencesInBackup: false`.
-
-| Setting | Value |
+| Includes | Excludes |
 |---|---|
-| `includedResources` | `persistentvolumeclaims`, `persistentvolumes`, `pods` |
-| `excludedNamespaces` | `velero`, `kube-system`, `kube-public`, `kube-node-lease`, `longhorn-system`, `vault`, `argocd` |
-| `excludedResources` | Longhorn replicas/engines/nodes, ArgoCD Applications/AppProjects/ApplicationSets, Cilium identities/endpoints, events, endpointslices, controllerrevisions, cert-manager ACME objects, Velero's own objects |
-| `defaultVolumesToFsBackup` | `true` (node-agent; `snapshotVolumes: false`, no CSI snapshots) |
-| `resourcePolicy` | skips the data of every volume on StorageClass `longhorn-cnpg` — Barman owns databases (§2.7) |
-| `restoreOnlyMode` | `false` (`values.yaml:69`) |
-
-`pods` is in the allowlist on purpose: without it the node-agent never discovers volumes, and the backup carries no data.
-
-### Verify
+| `persistentvolumeclaims`, `persistentvolumes`, `pods` (without pods in the backup the node-agent cannot discover volumes, and without restored pods there is no `PodVolumeRestore` target) | `velero`, `kube-system*`, `longhorn-system`, `vault`, `argocd`, Velero/ArgoCD/Cilium-owned objects, events |
+| | Anything labeled `cnpg.io/cluster` (DB PVCs and pods): dropped by the schedule `labelSelector` (`DoesNotExist`), so restores never replant DB shells — proven with a selector-only test backup, Oct 2026 |
+| | Postgres data: excluded by `resourcePolicy` on every `longhorn-cnpg` volume — databases go via Barman |
 
 ```bash
 kubectl -n velero get backupstoragelocation default -o jsonpath='{.status.phase}'   # Ready
-kubectl -n velero get schedules
 velero backup get
 ```
 
-### Waves
+## 2. Restore, step by step
 
-| Wave | Apps | Gate |
-|---|---|---|
-| `-1` | `ts-operator`, `longhorn`, `cert-manager`, `cloudnative-pg`, `grafana-database` | healthy |
-| `0` | `velero` | healthy |
-| `1` | `immich-database` | (inside the immich chart) |
-| `2` | `seaweedfs` | healthy |
-| `3` | `monitoring`, `trivy-operator`, `homepage` | sync-only |
-| `5` | `immich` | sync-only |
-| `100` | `gitops` root app-of-apps | sync-only |
+### Step 0 — Platform and GitOps first
 
-`vault` and `external-secrets` are gated off (`gitops/values.yaml:19-23`).
-
-## 2. Restore runbook
-
-### 2.1 In-place vs cross-cluster
-
-| | In-place (lost PVCs) | Cross-cluster (new bare metal) |
-|---|---|---|
-| Cilium / ArgoCD | Untouched | Reinstall first |
-| Longhorn | Already Healthy | Install |
-| ArgoCD freeze | Required | Required if data lands before the app-of-apps reaches those waves |
-| `--existing-resource-policy` | `update` | `update` |
-
-### 2.2 Platform and GitOps first
-
-Velero is installed *by* GitOps, so GitOps must be healthy before any restore can be issued. Do not hand-install Velero.
+GitOps installs Velero: without healthy GitOps there is no restore. Never install Velero by hand.
 
 ```bash
 just init-prod # Create secrets and install apps
 ```
 
-If a recipe fails with `Permission denied` on a script under `bootstrap/`, the executable bit was lost — restore it with `chmod +x bootstrap/*.sh` and re-run.
+If it fails with `Permission denied` in `bootstrap/`: `chmod +x bootstrap/*.sh` and retry.
 
-### 2.3 Freeze GitOps
+### Step 1 — Freeze GitOps
 
-Every `Application` runs `automated: {prune: true, selfHeal: true}`. Left enabled, `selfHeal` reverts whatever the restore writes. Freeze everything except the two that must stay live to perform the restore — Velero (running the restore) and Longhorn (its CSI provisioner must bind the restored PVCs to the restored PVs):
-
-```bash
-kubectl -n argocd get applications -o name | cut -d/ -f2 \
-  | grep -vE '^(velero|longhorn|ts-operator)$' > /tmp/frozen-apps.txt
-cat /tmp/frozen-apps.txt
-
-while read -r app; do
-  kubectl -n argocd patch application "$app" --type merge \
-    -p '{"spec":{"syncPolicy":{"automated":null}}}'
-done < /tmp/frozen-apps.txt
-```
-
-This includes the `gitops` root app-of-apps. It must: the root app owns the child `Application` manifests, so if it stays synced it re-asserts `automated` on every child and silently undoes these patches. Freezing the children but not the parent makes this step look successful and then revert the restore.
-
-§2.8 reads the same file back to unfreeze.
-
-### 2.4 Restore-only mode
-
-Without this, Velero may create or garbage-collect backups while you restore, against a 720h TTL.
+Every `Application` runs `automated: {prune, selfHeal}`: left alive, it reverts whatever the restore writes mid-flight (observed: CNPG killing pods with `FindingCluster Unknown` while Velero was still in `restore-wait`). A `deny` window on the `default` project — where the 12 apps live, and which is not in Git so nothing reverts it — freezes all syncs, automatic and manual, leaving UI and health alive:
 
 ```bash
-kubectl -n velero patch backupstoragelocation default --type merge \
-  -p '{"spec":{"accessMode":"ReadOnly"}}'
+# ArgoCD login: `just pf-argocd` in another terminal, password from `just argocd-password`.
+# If an operation is Running, terminate it first: argocd app terminate-op <app>
+argocd proj windows add default --kind deny \
+  --schedule '* * * * *' --duration 24h \
+  --applications '*' --description "DR restore freeze"
+argocd proj windows list default   # verify; note the id for step 6
 ```
 
-### 2.5 Pick the backup
+The window lasts 24h: if the restore runs long, syncs resume on their own. Re-check before long steps; if it expires, delete and re-add. Cross-cluster (new bare metal): same freeze, applied as soon as GitOps is up and before data apps sync.
+
+Single-app alternative (proven on `immich`, Oct 2026): instead of the project window, disable auto-sync, selfHeal and prune on that one `Application` only. Cheaper blast radius, same effect — nothing reconciles while Velero works.
+
+### Step 2 — Pause backups and quiesce workloads
+
+The `02:00` `daily-full` must not fire mid-restore (snapshot of half-restored volumes + contention with the node-agent):
+
+```bash
+velero schedule pause daily-full
+```
+
+Quiesce: scaling workloads to 0 first **does help** — the restore writes data into the bound volume, and a pod already running on a freshly created empty volume writes live files over the incoming data. Worst case observed: a CNPG `initdb` bootstrapping on top of ruins. With the step-1 freeze, ArgoCD does not fight the scale-down, and deleting the freeze returns replicas from Git. The list comes from live PVCs — exactly the volumes the restore is about to fill:
+
+```bash
+kubectl get pvc -A -o json \
+  | jq -r '.items[] | select(.spec.storageClassName // "" | startswith("longhorn")) | .metadata.namespace' \
+  | sort -u | grep -vE '^(tailscale|velero|longhorn-system|argocd|kube-system|vault|cnpg-system)$' \
+  > /tmp/quiesce-ns.txt
+cat /tmp/quiesce-ns.txt
+
+while read -r ns; do
+  kubectl -n "$ns" scale deploy --all --replicas=0 2>/dev/null || true
+  kubectl -n "$ns" scale statefulset --all --replicas=0 2>/dev/null || true
+done < /tmp/quiesce-ns.txt
+```
+
+`vault` is excluded because Raft is not touched (re-bootstraps, see below); `cnpg-system` is the operator, not data. Rules: never delete a PVC "to make room" *before* the restore (depending on reclaim policy it takes the Longhorn volume with it) — the only exception is the post-restore deletion of provably empty DB shells in step 5.0; if there is an HPA, delete it for the window (`kubectl -n <ns> delete hpa --all`, Git recreates it); the databases go further — the `Cluster` is deleted so the operator does not bootstrap (step 5).
+
+### Step 3 — Pick the backup
 
 ```bash
 velero backup get
 velero backup describe daily-full-<timestamp> --details
-velero backup get daily-full-<timestamp> -o json | jq -r '.status.namespaces[]'
 ```
 
-Only data namespaces appear; the rest are excluded at backup time.
+Step 2 quiesced every namespace with a Longhorn volume, so any backup is covered. Verify it carries data: in the describe's `Pod Volume Backups`, every PVC must have an entry. No entry means it was never backed up. No manual staging: the restore creates the `PodVolumeRestore` objects on its own.
 
-No manual staging is needed for volume data. The restore controller creates the `PodVolumeRestore` objects itself for every pod with associated FSB data.
+### Step 4 — Velero restore (app-of-apps pattern)
 
-### 2.6 The restore
+Manual-sync the Application first so ArgoCD creates manifests and **fresh, dynamically provisioned PVCs**; then Velero restores only the data on top. Velero writes data, ArgoCD writes workloads — each owns its layer, no fight:
 
 ```bash
+# 1. ArgoCD creates the empty scaffolding (manual sync — autosync is frozen):
+argocd app sync <app>
+kubectl -n <ns> get pvc   # fresh PVCs Bound, volumes empty — expected
+
+# 2. Velero fills the data. Do NOT exclude pods: restored pods carry the
+#    `restore-wait` init container and are the PodVolumeRestore target.
 velero restore create dr-$(date +%Y%m%d%H%M) \
   --from-backup daily-full-<timestamp> \
-  --exclude-resources pods \
-  --existing-resource-policy update \
+  --include-namespaces <ns> \
   --wait
 ```
 
-- `--exclude-resources pods` — the schedule includes pods so the node-agent can discover volumes, but that also makes Velero try to recreate workloads, which is ArgoCD's job. Excluding them at restore time splits the layers: Velero writes data, ArgoCD writes workloads.
-- `--existing-resource-policy update` — the default `none` skips objects GitOps already recreated and leaves stale data behind.
+Default `--existing-resource-policy none` is correct here: ArgoCD-created PVCs are skipped (kept), and the `PodVolumeRestore` downloads the kopia snapshots into the live volumes. Pods sit in `Init:restore-wait` while data downloads — that is normal progress, not stuck. Track it with `velero restore describe <name>` (`kopia Restores: In Progress/Prepared`) — `Bound` PVC alone proves nothing, it can be bound on top of an empty volume.
 
-There is no `--include-namespaces` filter. The namespaces that must not be restored are already excluded in the backup, so the backup only contains data namespaces. A list here would be a second copy of that policy that nobody updates, and a stale one silently skips data while the restore still reports success. Adding an app with a PVC requires no change here.
+Full-DR variant (namespace empty, nothing synced yet): same command without the prior manual sync — the restore creates the PVCs itself and Longhorn provisions new volumes. If a restored PVC stays `Pending` pointing at a gone volume (`spec.volumeName` of a deleted PV), clear it and let the provisioner retry:
 
-Cluster-scoped objects are not a concern: `includedResources` is a global allowlist, so the only cluster-scoped objects in the backup are the PVs.
+```bash
+kubectl -n <ns> patch pvc <name> -p '{"spec":{"volumeName":""}}'
+```
 
-For a partial recovery, filter with `--include-namespaces` derived from `.status.namespaces`.
+### Step 5 — Databases (Barman, not Velero)
 
-### 2.7 Restore the databases
+A live Postgres FsBackup is crash-consistent: not valid recovery. Both clusters go via PITR:
 
-Velero's FsBackup of a live Postgres is crash-consistent, not a valid recovery path. Both clusters recover through Barman PITR.
+| Cluster (namespace) | ObjectStore | Destination |
+|---|---|---|
+| `immich-database` (`immich`) | `immich-backup-store` | `s3://cnpg-db-backups/immich/` |
+| `grafana-database` (`monitoring`) | `grafana-backup-store` | `s3://cnpg-db-backups/grafana/` |
 
-| Cluster (namespace) | ObjectStore | Destination | Schedule | Retention |
-|---|---|---|---|---|
-| `immich-database` (`immich`) | `immich-backup-store` | `s3://cnpg-db-backups/immich/` | `55 1 * * *` | `30d` |
-| `grafana-database` (`monitoring`) | `grafana-backup-store` | `s3://cnpg-db-backups/grafana/` | `55 1 * * *` | `30d` |
+Restored or fresh DB volumes are empty by design — Barman fills them, not Velero. But the restore replants the database *objects* (PVCs and pods ride along in `includedResources`; only the data is skipped), and those shells block recovery: the CNPG operator reconciles a franken-state of initdb Cluster + empty replanted PVCs + stale same-named pods, and bootstrap never gets a clean shot. Clean slate first, recovery second. Git manifests only carry `bootstrap.initdb` — no `recovery:` stanza — so recovery is applied by hand with the app frozen. Unfreezing afterwards is safe: `bootstrap`/`recovery` only run on empty PGDATA, Git reconciles without touching data.
 
-Both Git manifests render only `bootstrap.initdb` (`apps/immich/templates/pg-immich.yaml:30-33`, `platform/monitoring/templates/grafana-database-cluster.yaml:26-29`) — no `recovery:` stanza, so the recovery manifest below is hand-applied while the app stays frozen (§2.3). Unfreezing is safe afterwards: `bootstrap`/`recovery` only run on empty PGDATA, so Git reconciles over the live object without touching data.
+Prerequisites: secret `cnpg-backup-s3-credentials` in the namespace (comes from SOPS, applied in step 0; `daily-full` does not back up Secrets). For PITR, `targetTime` with explicit timezone inside the 30d retention (`kubectl -n immich get backup` to see what exists; on a fresh cluster an empty list is normal, not loss).
 
-Prerequisites:
-
-1. **S3 Secret in the namespace.** `cnpg-backup-s3-credentials` (keys `ACCESS_KEY_ID` / `SECRET_ACCESS_KEY`) is namespace-local and comes from SOPS (`apps/immich/sops/cnpg-backup-credentials.enc.yaml`, plus the copy in `monitoring/`). §2.2 already applied it. `daily-full` does not back up Secrets.
-2. **Know your target.** Omitting `recoveryTarget` replays to the latest WAL. For PITR, `targetTime` needs an explicit timezone (RFC 3339) and must fall inside the `30d` retention:
-   ```bash
-   kubectl -n immich get backup
-   kubectl -n immich get scheduledbackup immich-database-daily -o yaml
-   ```
-   On a fresh cluster this list is empty — no `ScheduledBackup` has run yet. That is expected, not data loss.
-3. **The app stays frozen** until the cluster is primary and verified.
-
-Recovery manifest (immich shown; for grafana use namespace `monitoring`, cluster `grafana-database`, store `grafana-backup-store`, `serverName: grafana-database`, database/owner `grafana`, and no `postgresql:` block — that cluster has none in Git):
+Manifest (immich; grafana: namespace `monitoring`, cluster `grafana-database`, store `grafana-backup-store`, `serverName: grafana-database`, database/owner `grafana`, no `postgresql:` block):
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -214,20 +176,24 @@ spec:
     size: 2Gi
 ```
 
-Two differences from the Git manifest, both required:
+Two differences from Git, both mandatory:
 
-- **`bootstrap.recovery` + `externalClusters` added** — the recovery itself. `serverName` must equal the original cluster name. On version drift the installed CRDs are authoritative: `kubectl explain cluster.spec.externalClusters`.
-- **The `plugins:` WAL-archiver section removed.** A recovery cluster that archives to the same store + serverName trips the operator's empty-archive safety check (`ERROR: WAL archive check failed ... Expected empty archive`, stuck in `Setting up primary`). Recover read-only; §2.8 re-adds the archiver from Git after promotion. Do not work around it with `cnpg.io/skipEmptyWalArchiveCheck`.
-
-Procedure per database:
+- **`bootstrap.recovery` + `externalClusters`** — the recovery. `serverName` = original name. On version drift see `kubectl explain cluster.spec.externalClusters`.
+- **No `plugins:` WAL-archiver section.** A recovery archiving to the same store + serverName stalls at `Setting up primary` (`Expected empty archive`). It recovers read-only; step 6 re-adds it from Git. Never use `cnpg.io/skipEmptyWalArchiveCheck`.
 
 ```bash
-# 0. Only when the data is actually gone, so the operator does not bootstrap
-#    an empty initdb over the wreckage.
-kubectl -n immich delete cluster immich-database
-kubectl -n immich get pvc -l cnpg.io/cluster=immich-database
+# 0. Clean slate — MANDATORY for backups taken before the schedule
+#    `labelSelector` (Oct 2026); those replant empty DB PVCs and stale DB
+#    pods that block recovery. Skip this step for newer backups — the
+#    selector already dropped everything labeled `cnpg.io/cluster`. For old
+#    backups: the volumes are empty by design (resourcePolicy `skip` => no
+#    PodVolumeBackup), so deleting the PVCs loses nothing; reclaim `Delete` removes the shells. The recovery
+#    Cluster below makes CNPG provision truly fresh PVCs itself.
+kubectl -n immich delete cluster immich-database --ignore-not-found
+kubectl -n immich delete pod -l cnpg.io/cluster=immich-database --ignore-not-found
+kubectl -n immich delete pvc -l cnpg.io/cluster=immich-database --ignore-not-found
 
-# 1. Apply, then watch until primary:
+# 1. Apply and wait for primary:
 kubectl apply -f immich-database-recovery.yaml
 kubectl -n immich get cluster immich-database -w
 
@@ -236,37 +202,40 @@ kubectl -n immich get cluster immich-database -o jsonpath='{.status.phase}{"\n"}
 # Cluster in healthy state
 ```
 
-Postgres volumes use StorageClass `longhorn-cnpg`, so they are excluded twice: from every Longhorn RecurringJob by its `recurringJobGroup: no-snapshot`, and from the Velero backup by the `resourcePolicy` on `daily-full` (`platform/velero/values.yaml`), which skips the data of every volume on that class. The PVC and PV objects still come back, so the volume mounts empty and Barman fills it.
+### Step 6 — Unfreeze
 
-### 2.8 Unfreeze
-
-Release GitOps in dependency order — the databases must be primary before the apps that consume them:
+In order: databases must be primary before their apps. The window froze syncs without nulling policies, so there is no loop to replay — reopen in stages with the same window (id from step 1):
 
 ```bash
-# 1. SeaweedFS: Loki inside `monitoring` needs its S3 endpoint serving.
-kubectl -n argocd patch application seaweedfs --type merge \
-  -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
-kubectl -n seaweedfs get pods
+# 1. Manual syncs only — automatic ones stay blocked:
+argocd proj windows enable-manual-sync default <window-id>
 
-# 2. Gate:
+# 2. SeaweedFS first: Loki in `monitoring` needs its S3 serving.
+argocd app sync seaweedfs
+kubectl -n seaweedfs get pods   # serving before moving on
+
+# 3. Gate — both primary or stop here:
 kubectl -n immich get cluster immich-database -o jsonpath='{.status.phase}{"\n"}'
 kubectl -n monitoring get cluster grafana-database -o jsonpath='{.status.phase}{"\n"}'
-# Cluster in healthy state × 2 — otherwise stop here.
+# Cluster in healthy state × 2.
 
-# 3. Everything else that was frozen, read back from the same list.
-#    This also restores the WAL-archiver `plugins:` section.
-grep -v '^seaweedfs$' /tmp/frozen-apps.txt | while read -r app; do
-  kubectl -n argocd patch application "$app" --type merge \
-    -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
-done
+# 4. Everything else at once. Deleting the window resumes automatic
+#    syncs; Git returns the recovery Clusters to their manifest
+#    (initdb + archiver `plugins:`) — safe on live PGDATA.
+argocd proj windows delete default <window-id>
 
-kubectl -n velero patch backupstoragelocation default --type merge \
-  -p '{"spec":{"accessMode":"ReadWrite"}}'
+velero schedule unpause daily-full
 ```
 
-### 2.9 Validate
+Single-app freeze: re-enable auto-sync/selfHeal/prune on the Application instead. Then clean up Velero-restored workload pods (same names, older ReplicaSet hashes linger while prune was off) so ArgoCD owns the workloads again — data persists in the volumes:
 
-First, the mechanical preconditions. A restore that did not reach `Completed` is not a candidate for validation, and `Bound` PVCs prove nothing on their own — a PVC can be `Bound` on an empty volume with every application running happily over it.
+```bash
+kubectl -n <ns> delete pods --all   # ArgoCD recreates them on live data
+```
+
+### Step 7 — Validate
+
+Mechanical preconditions (a non-`Completed` restore is not validated; `Bound` PVC proves nothing — it can be bound over an empty volume):
 
 ```bash
 velero restore get
@@ -277,53 +246,55 @@ kubectl -n monitoring get cluster grafana-database    # healthy, 2 instances
 kubectl -n argocd get applications                    # Synced / Healthy
 ```
 
-Then verify the data itself — **[Restore verification](./restore-verification.md)**. Two application-level signals, each one reading data that cannot exist unless the restore returned real content: historical metrics, and an Immich image uploaded before the disaster.
+Then the real data — **[Restore verification](./restore-verification.md)**: historic metrics + one Immich photo older than the disaster.
 
-### 2.10 Restore troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| Restore `PartiallyFailed` | `velero restore describe <name>`; pre-existing objects are skipped unless `--existing-resource-policy update` was set |
-| Restore completes, volumes empty | Expected for databases — the `resourcePolicy` skips their data and Barman fills the volume (§2.7). For any other volume, confirm the backup actually carried FSB data: `velero backup describe <name> --details` and look for the PVC under `Pod Volume Backups - kopia`. An empty volume with no FSB entry in the backup was never backed up, not lost in transit. |
-| ArgoCD reverts restored objects | The `gitops` root app was not frozen (§2.3) — it re-asserts `automated` on every child |
-| Workloads do not come back | Expected — ArgoCD owns them |
-| `BSL not Ready` after unfreeze | The `ReadOnly` patch in §2.4 was not reverted |
-| Postgres restored but inconsistent | Use Barman, not Velero (§2.7) |
-| Recovery stuck `Setting up primary` + `Expected empty archive` | The manifest kept the `plugins:` archiver section — remove it, re-apply (§2.7) |
-| WAL replay fails on `vchord` | The manifest dropped `spec.postgresql` — copy it verbatim from Git (§2.7) |
-| PITR target never reached | `targetTime` outside the `30d` retention or missing timezone (§2.7) |
-| Apps CrashLoop after unfreeze, DBs healthy | Both clusters must be primary before their apps (§2.8 step 2) |
-| `NoSuchBucket` or `velero` unreachable | RustFS is gone — see [RustFS IAM](./rustfs-iam.md) |
-
-## 3. Velero troubleshooting
+## 3. If something fails
 
 | Symptom | Fix |
 |---|---|
-| `cloud-credentials not found` | Re-run `init-sops.sh` with env vars |
-| `NoSuchBucket` | `kubectl -n velero logs job/velero-bucket-init` |
-| `BSL not Ready` | Verify `s3Url`/`s3ForcePathStyle` and the ini format |
-| `nslookup` fails | Check the `ts.net:53` stub, `DNSConfig ts-dns` status IP, then the `s3-egress` endpoints and the bucket-init `/etc/hosts` pin |
-| Velero OOMKilled | Memory limit is `512Mi`; `deployNodeAgent: true` is required for `defaultVolumesToFsBackup: true` |
+| Restore `PartiallyFailed` | `velero restore describe <name>`; pre-existing objects are skipped unless `--existing-resource-policy update` |
+| Restore OK, volumes empty | Normal for DBs — Barman fills them (step 5). Other volumes: confirm the backup carried FSB (`velero backup describe --details`, find the PVC under `Pod Volume Backups`). No entry means never backed up |
+| ArgoCD reverts restored state | The `deny` window is missing, expired, or does not cover `*` (step 1) — `argocd proj windows list default` |
+| Syncs running mid-restore | 24h window expired (delete + re-add, step 1) or a manual sync with manual-sync enabled (step 6.1) |
+| Restored PVC `Pending` with a stale `volumeName` | The PV is gone (reclaim `Delete`) — `kubectl -n <ns> patch pvc <name> -p '{"spec":{"volumeName":""}}'` and Longhorn provisions fresh (step 4) |
+| Pods sit in `Init:restore-wait` | Normal — kopia data is downloading. Watch `velero restore describe` (`kopia Restores`), not the pod state |
+| Velero `restore-wait` init container survives on unrelated pods | Known Velero quirk ([#8870](https://github.com/vmware-tanzu/velero/issues/8870)) — harmless, ArgoCD recreates clean pods on next sync |
+| Duplicate workload pods after unfreeze | Prune was off during restore — delete restored pods, ArgoCD recreates them on the restored volumes (step 6) |
+| Workloads do not return | Normal — they belong to ArgoCD, they return when the freeze is lifted |
+| No new backups after recovery | Missing `velero schedule unpause daily-full` (step 6) |
+| Postgres inconsistent | Via Barman, not Velero (step 5) |
+| Recovery stalls / initdb never runs | Velero-replanted DB PVCs, pods, or Cluster in the way — clean slate per step 5.0 before applying recovery |
+| Recovery stuck `Setting up primary` + `Expected empty archive` | Manifest kept `plugins:` — remove and re-apply (step 5) |
+| WAL replay fails on `vchord` | Missing verbatim `spec.postgresql` from Git (step 5) |
+| PITR never arrives | `targetTime` outside the 30d window or missing timezone (step 5) |
+| Apps CrashLoop after unfreeze, DBs healthy | Both DBs must be primary before their apps (step 6.3) |
+| `NoSuchBucket` or Velero unreachable | RustFS down — [RustFS IAM](./rustfs-iam.md). If the bucket is gone: `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1` |
+| `BSL not Ready` | Check `s3Url`/`s3ForcePathStyle`, Secret `cloud-credentials` (`bootstrap/init-sops.sh`), and the `ts.net:53` stub (`DNSConfig ts-dns`, endpoints `s3-egress`) |
+| Velero OOMKilled | `512Mi` limit; `deployNodeAgent: true` mandatory with `defaultVolumesToFsBackup: true` |
 
-## 4. References
+## 4. Vault
 
-- ADR-004 option A (bootstrap Secret outside Vault), ADR-009 (Vault DR), ADR-011 (DNS/NetworkPolicy), ADR-017 (SOPS as the secrets path)
-- Restore: [Velero disaster-recovery docs](https://velero.io/docs/main/disaster-case) and [Red Hat — OADP + OpenShift GitOps DR](https://www.redhat.com/en/blog/oadp-openshift-gitops-an-approach-to-implementing-application-disaster-recovery)
-- Proving the restore worked: [Restore verification](./restore-verification.md)
-- Postgres: [CNPG 1.29 — Recovery](https://cloudnative-pg.io/docs/1.29/recovery), [Barman Cloud Plugin — Main Concepts](https://cloudnative-pg.io/plugin-barman-cloud/docs/concepts/)
-- Chart and values: `platform/velero/Chart.yaml`, `platform/velero/values.yaml`
-- Barman ObjectStores: `apps/immich/templates/pg-immich.yaml:56-73`, `platform/monitoring/templates/grafana-database-cluster.yaml:64-81`
-- ArgoCD Application: `gitops/templates/platform/00-velero.yaml`
-- S3 key material: [RustFS IAM](./rustfs-iam.md)
-
-## 5. Vault
-
-Vault is excluded from `daily-full` and is never restored from Velero — restoring Raft state from a backup corrupts the cluster. Vault holds no irreplaceable material, so DR is re-bootstrap:
+Vault is excluded from `daily-full` and never restored from Velero — restoring Raft corrupts the cluster. It holds nothing irreplaceable: DR is re-bootstrap:
 
 ```bash
 ./platform/vault/scripts/bootstrap-vault.sh   # init, unseal, kv-v2 + k8s auth
 ```
 
-Hourly protection is a Longhorn local snapshot: RecurringJob `vault-hourly-snapshot` (`0 * * * *`, `snapshot`, retain 24, group `vault-hourly`). Match it to a volume by labelling the `Volume` CR with `recurring-job-group.longhorn.io/vault-hourly=enabled`.
+Hourly protection: local Longhorn snapshot via RecurringJob `vault-hourly-snapshot` (`0 * * * *`, retain 24). To match it to a volume, label the `Volume` with `recurring-job-group.longhorn.io/vault-hourly=enabled`.
 
-See [ADR-009](adrs/009-vault-dr-and-velero-backup.md) §Decision 1.
+See [ADR-009](adrs/009-vault-dr-and-velero-backup.md).
+
+## 5. References
+
+- Restore: [Velero disaster-recovery docs](https://velero.io/docs/main/disaster-case) and [Red Hat — OADP + OpenShift GitOps DR](https://www.redhat.com/en/blog/oadp-openshift-gitops-an-approach-to-implementing-application-disaster-recovery)
+- Proving it worked: [Restore verification](./restore-verification.md)
+- Postgres: [CNPG 1.29 — Recovery](https://cloudnative-pg.io/docs/1.29/recovery), [Barman Cloud Plugin](https://cloudnative-pg.io/plugin-barman-cloud/docs/concepts/)
+- Chart and values: `platform/velero/Chart.yaml`, `platform/velero/values.yaml`
+- S3: [RustFS IAM](./rustfs-iam.md)
+
+## 6. Lessons learned (immich pilot, Oct 2026)
+
+- The ArgoCD fight was the root cause from the start, not background noise: CNPG `FindingCluster Unknown` + pod killing while Velero restored. Freeze first, always.
+- Velero-pure restore into pre-existing PVCs is a dead end: Velero never writes into an existing PVC and never resets a stale `spec.volumeName`. Fresh PVCs (from ArgoCD) + data-only restore is the pattern.
+- Manual kopia-in-a-pod was a detour: it trades one solved problem for three new ones (S3 endpoint format, secret hygiene, node inotify limits). Stay on the native path.
+- Quiescing (scale to 0) before restore prevents live writes on empty volumes and CNPG bootstrap races.
