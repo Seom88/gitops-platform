@@ -43,6 +43,9 @@ spec:
     # Intra-cluster streaming replication: replica -> primary 5432.
     # Without this, scaling past 1 instance hangs the join pod with
     # dial tcp ...:5432 i/o timeout (Cilium drop, not Postgres auth).
+    # Port 8000 is the CNPG instance-manager failsafe: without it the
+    # primary logs Get "https://<replica>:8000/failsafe": i/o timeout
+    # and the cluster never becomes healthy.
     - fromEndpoints:
         - matchLabels:
             k8s:cnpg.io/cluster: grafana-database
@@ -50,6 +53,8 @@ spec:
       toPorts:
         - ports:
             - port: "5432"
+              protocol: TCP
+            - port: "8000"
               protocol: TCP
     # Prometheus scraping from monitoring -> CNPG metrics 8000/9187
     - fromEndpoints:
@@ -111,6 +116,8 @@ spec:
       toPorts:
         - ports:
             - port: "5432"
+              protocol: TCP
+            - port: "8000"
               protocol: TCP
 ---
 # CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
