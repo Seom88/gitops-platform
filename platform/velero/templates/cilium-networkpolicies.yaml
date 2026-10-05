@@ -46,10 +46,6 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-          rules:
-            dns:
-              - matchPattern: "*.ts.net"
-              - matchPattern: "*.lonk-mirfak.ts.net"
     # S3 via tailnet IP (FQDN-independent fallback, 443 only).
     # WHY: Cilium learns FQDN->IP mappings by observing DNS replies. Anything
     # that resolves the FQDN without DNS (e.g. an /etc/hosts pin) leaves
