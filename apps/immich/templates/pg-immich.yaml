@@ -23,10 +23,19 @@ spec:
   # Declarative role management: CNPG reconciles this continuously, so the
   # app role stays a superuser across Cluster recreations — something
   # `bootstrap.initdb.postInitSQL` cannot guarantee (bootstrap SQL runs once).
+  #
+  # `connectionLimit` and `inherit` are written out ON PURPOSE even though they
+  # restate the CNPG CRD defaults (`connectionLimit: -1`, `inherit: true`).
+  # Those are structural-schema defaults, so the API server materialises them
+  # on every apply. A manifest that omits them never matches the live object and
+  # ArgoCD stays OutOfSync forever — with automated selfHeal + ServerSideApply
+  # that becomes a sync loop. Do not "clean up" these two lines.
   managed:
     roles:
       - name: {{ .Values.cnpg.owner }}
         ensure: present
+        connectionLimit: -1
+        inherit: true
         login: true
         superuser: {{ .Values.cnpg.ownerSuperuser }}
   {{- if .Values.backup.enabled }}
