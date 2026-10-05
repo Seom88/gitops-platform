@@ -2,7 +2,7 @@ apiVersion: v2
 name: velero
 description: "Velero backup & restore — S3 backend on RustFS (velero-homelab bucket)"
 type: application
-version: 1.1.0
+version: 1.2.0
 appVersion: "1.18.2"
 home: https://velero.io
 icon: https://velero.io/img/Velero-logo.png
@@ -17,3 +17,6 @@ dependencies:
     version: 12.2.0
     repository: https://vmware-tanzu.github.io/helm-charts
     condition: velero.enabled
+  - name: s3-bucket-lib
+    version: 0.1.0
+    repository: file://../s3-bucket-lib

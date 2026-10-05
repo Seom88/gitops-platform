@@ -13,6 +13,32 @@ s3:
   bucket: velero-homelab
   prefix: velero
   region: us-east-1
+  # Extra buckets provisioned by bucket-init Jobs (one Job per entry).
+  # Each entry: {name: <dns-safe slug>, bucket: <S3 bucket name>}.
+  # The primary s3.bucket above always gets the legacy Job
+  # `velero-bucket-init`; entries here render as
+  # `velero-bucket-init-<name>`. Script body is shared via
+  # templates/_bucket-init.tpl — add entries here, never copy the Job.
+  # IAM prerequisite: the velero key (docs/rustfs-iam.md) must hold
+  # s3:ListBucket + s3:CreateBucket on each extra bucket ARN, e.g. for
+  # cnpg-db-backups the cnpg key deliberately LACKS CreateBucket, so either
+  # pre-create the bucket in console (current decision) or widen the
+  # velero key before listing it here.
+  # Example:
+  # extraBuckets:
+  #   - name: cnpg-db-backups
+  #     bucket: cnpg-db-backups
+  extraBuckets: []
+
+# Bucket-init Jobs (templates/job-bucket-init.yaml, script in _bucket-init.tpl).
+bucketInit:
+  enabled: true
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  # Keep finished Jobs (incl. failures) 24h so `kubectl logs` evidence
+  # survives past the sync that ran it (was 600s — failure logs vanished
+  # before anyone could read them).
+  ttlSecondsAfterFinished: 86400
 
 developmentApp:
   enabled: false

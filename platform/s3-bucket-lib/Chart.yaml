@@ -1,0 +1,10 @@
+apiVersion: v2
+name: s3-bucket-lib
+description: "Shared library chart: reusable S3 bucket-init shell script for RustFS (tailnet FQDN) backends"
+type: library
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/Seom88/secured-gitops-tailscale-homelab
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88

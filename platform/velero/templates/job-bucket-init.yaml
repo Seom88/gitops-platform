@@ -1,11 +1,32 @@
-{{- if .Values.velero.enabled }}
+{{- $bucketInit := .Values.bucketInit | default dict }}
+{{- $initEnabled := true }}
+{{- if hasKey $bucketInit "enabled" }}{{ $initEnabled = $bucketInit.enabled }}{{- end }}
+{{- if and .Values.velero.enabled $initEnabled }}
 {{- $fqdn := required "s3.tailnetFqdn is required (set gitops/values.yaml sharedS3.tailnetFqdn)" .Values.s3.tailnetFqdn }}
-# NOTE (T-corr, live SNI evidence 2026-09-23): this Job dials
-# https://<FQDN>:443 — RustFS aborts TLS unless SNI equals its LE-cert FQDN
+# NOTE (T-corr, live SNI evidence 2026-09-23): these Jobs dial
+# https://<FQDN>:443 — RustFS aborts TLS unless SNI equals its LE-cert FQDN.
+# One Job per bucket: the primary s3.bucket keeps the legacy name
+# `velero-bucket-init`; each s3.extraBuckets entry renders
+# `velero-bucket-init-<name>`. Script body source-of-truth lives in the
+# s3-bucket-lib library chart (define "s3-bucket-lib.bucketInitScript");
+# templates/_bucket-init.tpl re-exports it as "velero.bucketInitScript"
+# (deprecated alias) so this Job — and any external caller still using the
+# old name — renders the shared script. Other charts: depend on
+# file://../s3-bucket-lib and copy this range block, not the script.
+{{- $entries := list (dict "name" "velero" "bucket" (required "s3.bucket is required" .Values.s3.bucket)) }}
+{{- range .Values.s3.extraBuckets | default list }}{{ $entries = append $entries . }}{{- end }}
+{{- range $i, $entry := $entries }}
+{{- if $i }}
+---
+{{- end }}
+{{- $bucket := required "each s3.extraBuckets entry needs 'bucket'" $entry.bucket }}
+{{- $slug := lower (required "each s3.extraBuckets entry needs 'name' (dns-safe slug)" $entry.name) }}
+{{- $jobName := "velero-bucket-init" }}
+{{- if ne $slug "velero" }}{{ $jobName = printf "velero-bucket-init-%s" $slug }}{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: velero-bucket-init
+  name: {{ $jobName }}
   namespace: velero
   annotations:
     argocd.argoproj.io/hook: Sync
@@ -15,13 +36,17 @@ metadata:
     argocd.argoproj.io/hook-weight: "-1"
     helm.sh/hook-weight: "-1"
 spec:
-  backoffLimit: 3
-  ttlSecondsAfterFinished: 600
-  activeDeadlineSeconds: 600
+  backoffLimit: {{ $bucketInit.backoffLimit | default 3 }}
+  # Long TTL keeps finished Jobs (INCLUDING failures) around ~24h so
+  # `kubectl logs job/<name>` evidence survives past the sync that ran it.
+  # ArgoCD hook-delete-policy BeforeHookCreation still replaces hooks on
+  # the next sync — TTL only governs post-finish GC, not hook lifecycle.
+  ttlSecondsAfterFinished: {{ $bucketInit.ttlSecondsAfterFinished | default 86400 }}
+  activeDeadlineSeconds: {{ $bucketInit.activeDeadlineSeconds | default 600 }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: velero-bucket-init
+        app.kubernetes.io/name: {{ $jobName }}
         app.kubernetes.io/component: bucket-init
     spec:
       serviceAccountName: default
@@ -42,154 +67,7 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              set -e
-              echo "[bucket-init] Starting S3 bucket init..."
-              CRED_FILE="/etc/velero/cloud"
-              WAIT_SECS=0
-              WAIT_MAX=60
-              while [ ! -f "$CRED_FILE" ] && [ $WAIT_SECS -lt $WAIT_MAX ]; do
-                echo "[bucket-init] Waiting for credentials file $CRED_FILE ($WAIT_SECS/$WAIT_MAX s)..."
-                sleep 5
-                WAIT_SECS=$((WAIT_SECS + 5))
-              done
-              if [ ! -f "$CRED_FILE" ]; then
-                echo "[bucket-init] ERROR: credentials file not found at $CRED_FILE (Secret velero/cloud-credentials missing?)"
-                echo "[bucket-init] Hint: ensure the SOPS secret (platform/velero/sops/*.enc.yaml via init-sops.sh) or the init-gitops.sh AWS_* fallback created it."
-                exit 1
-              fi
-              # Velero secret format: "[default]\naws_access_key_id=...\naws_secret_access_key=..."
-              export AWS_ACCESS_KEY_ID="$(grep -E 'aws_access_key_id' "$CRED_FILE" | cut -d'=' -f2 | tr -d '[:space:]')"
-              export AWS_SECRET_ACCESS_KEY="$(grep -E 'aws_secret_access_key' "$CRED_FILE" | cut -d'=' -f2 | tr -d '[:space:]')"
-              export AWS_DEFAULT_REGION="{{ .Values.s3.region }}"
-              export AWS_EC2_METADATA_DISABLED="true"
-               export AWS_S3_ADDRESSING_STYLE="path"
-               # Silence only the expected urllib3 warning (--no-verify-ssl is
-               # intentional); real errors still surface.
-               export PYTHONWARNINGS='ignore::urllib3.exceptions.InsecureRequestWarning'
-               # Ensure aws-cli uses path-style addressing (S3 backend requires it)
-              aws configure set default.s3.addressing_style path || true
-              aws configure set default.s3.addressing_style path --profile default || true
-              # Tailnet FQDN resolution via node MagicDNS: pods resolve $S3_FQDN
-              # through the default CoreDNS forward chain (kube-dns -> node
-              # /etc/resolv.conf -> tailscaled MagicDNS on the host). No
-              # in-cluster ts.net stub and no s3-egress proxy Service — the
-              # FQDN below is resolved directly and gated on private IPs.
-              S3_FQDN="{{ $fqdn }}"
-              SVC_HOST="$S3_FQDN"
-              ENDPOINT="https://$S3_FQDN"
-              S3_PORT="443"
-              BUCKET="{{ .Values.s3.bucket }}"
-              if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-                echo "[bucket-init] ERROR: could not parse credentials from $CRED_FILE"
-                echo "[bucket-init] File content (sanitized):"
-                sed 's/=.*/=***/' "$CRED_FILE" || cat "$CRED_FILE" || true
-                exit 1
-              fi
-              # Wait for the tailnet FQDN to resolve via node MagicDNS
-              echo "[bucket-init] Waiting for $SVC_HOST (max 120s)..."
-              DNS_WAIT=0
-              DNS_MAX=120
-              while [ $DNS_WAIT -lt $DNS_MAX ]; do
-                if nslookup "$SVC_HOST" >/dev/null 2>&1 || getent hosts "$SVC_HOST" >/dev/null 2>&1; then
-                  break
-                fi
-                echo "[bucket-init] DNS not yet resolved ($DNS_WAIT/$DNS_MAX s)..."
-                sleep 5
-                DNS_WAIT=$((DNS_WAIT + 5))
-              done
-              if [ $DNS_WAIT -ge $DNS_MAX ]; then
-                echo "[bucket-init] WARNING: DNS still not resolved after $DNS_MAX s — one final resolution attempt below before failing fast"
-              fi
-              # Pre-s3api endpoint validation: log every SVC-resolved IP:port
-              # BEFORE any aws call, and fail fast if any resolved IP is
-              # public. Private = 10/8 (pod/service nets), 100.64/10
-              is_private_ip() {
-                _pip="$1"
-                case "$_pip" in
-                  10.*|192.168.*) return 0 ;;
-                  100.*)
-                    _prest="${_pip#*.}"
-                    _psecond="${_prest%%.*}"
-                    case "$_psecond" in ''|*[!0-9]*) return 1 ;; esac
-                    if [ "$_psecond" -ge 64 ] && [ "$_psecond" -le 127 ]; then return 0; fi
-                    return 1 ;;
-                  fd*|FD*) return 0 ;;
-                  *) return 1 ;;
-                esac
-              }
-              RESOLVED_IPS="$( (getent hosts "$SVC_HOST" 2>/dev/null | awk '{print $1}'; nslookup "$SVC_HOST" 2>/dev/null | awk '/^Address: /{if ($2 !~ /#/) print $2} /^Address [0-9]+:/{print $3}') | sort -u | tr '\n' ' ' || true )"
-              if [ -z "$(echo "$RESOLVED_IPS" | tr -d '[:space:]')" ]; then
-                echo "[bucket-init] ERROR: no IP resolved for $SVC_HOST — refusing aws s3api call (check kube-dns forwarding and tailscaled MagicDNS on the node)"
-                exit 1
-              fi
-              for RIP in $RESOLVED_IPS; do
-                echo "[bucket-init] egress $SVC_HOST -> $RIP, dialing https://$S3_FQDN (SNI)"
-                if is_private_ip "$RIP"; then
-                  echo "[bucket-init] $RIP is private (10/8, 100.64/10, 192.168/16, fd00::/8) — OK"
-                else
-                  echo "[bucket-init] ERROR: refusing S3 dial — $RIP is PUBLIC (outside 10/8, 100.64/10, 192.168/16, fd00::/8); expected the tailnet 100.x IP from node MagicDNS, not a public fallback"
-                  if command -v openssl >/dev/null 2>&1; then
-                    echo "[bucket-init] TLS diagnostic (best-effort): openssl s_client -connect $RIP:$S3_PORT -servername $S3_FQDN"
-                    if command -v timeout >/dev/null 2>&1; then
-                      timeout 10 openssl s_client -connect "$RIP:$S3_PORT" -servername "$S3_FQDN" </dev/null 2>&1 | head -20 || true
-                    else
-                      openssl s_client -connect "$RIP:$S3_PORT" -servername "$S3_FQDN" </dev/null 2>&1 | head -20 || true
-                    fi
-                  else
-                    echo "[bucket-init] openssl not available — skipping TLS diagnostic"
-                  fi
-                  exit 1
-                fi
-              done
-              # SNI fix: pin the LE-cert FQDN to the in-cluster svc IPs
-              # resolved above — runtime /etc/hosts entries, never static
-              for RIP in $RESOLVED_IPS; do
-                echo "[bucket-init] hosts-pin: $RIP $S3_FQDN"
-                echo "$RIP $S3_FQDN" >> /etc/hosts
-              done
-
-              echo "[bucket-init] Checking bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
-
-              # RustFS serves a public Let's Encrypt cert for $S3_FQDN, but
-              # --no-verify-ssl is retained (robustness across rotations).
-
-              # Idempotent: head-bucket first; create only on 404/NoSuchBucket.
-              set +e
-              HEAD_OUTPUT="$(aws --no-verify-ssl s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>&1)"
-              HEAD_RC=$?
-              set -e
-              if [ $HEAD_RC -eq 0 ]; then
-                echo "[bucket-init] Bucket $BUCKET ready (already existed)."
-              elif echo "$HEAD_OUTPUT" | grep -qiE '404|NoSuchBucket|NotFound'; then
-                echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
-                set +e
-                OUTPUT="$(aws --no-verify-ssl s3api create-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>&1)"
-                RC=$?
-                set -e
-                if [ $RC -eq 0 ]; then
-                  echo "[bucket-init] Bucket created successfully."
-                elif echo "$OUTPUT" | grep -qiE 'BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists'; then
-                  echo "[bucket-init] Bucket $BUCKET ready (already existed)."
-                else
-                  echo "$OUTPUT"
-                  echo "[bucket-init] ERROR: create-bucket failed with exit $RC"
-                  exit $RC
-                fi
-              else
-                echo "$HEAD_OUTPUT"
-                if echo "$HEAD_OUTPUT" | grep -qiE 'AccessDenied|403|Forbidden'; then
-                  echo "[bucket-init] ERROR: head-bucket denied AND bucket not confirmed — grant s3:CreateBucket on arn:aws:s3:::$BUCKET (see docs/rustfs-iam.md) or pre-create the bucket."
-                else
-                  echo "[bucket-init] ERROR: head-bucket failed with exit $HEAD_RC"
-                fi
-                exit $HEAD_RC
-              fi
-
-              echo "[bucket-init] Verifying bucket with head-bucket..."
-              aws --no-verify-ssl s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION"
-              echo "[bucket-init] Verification OK — bucket $BUCKET is accessible."
-              aws --no-verify-ssl s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" || true
-              echo "[bucket-init] Done."
+              {{- include "velero.bucketInitScript" (dict "fqdn" $fqdn "region" $.Values.s3.region "bucket" $bucket "tag" $jobName) | nindent 14 }}
           volumeMounts:
             - name: cloud-credentials
               mountPath: /etc/velero
@@ -202,4 +80,5 @@ spec:
             items:
               - key: cloud
                 path: cloud
+{{- end }}
 {{- end }}

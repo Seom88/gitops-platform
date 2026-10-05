@@ -52,6 +52,25 @@ Restoring Raft state from Velero corrupts the cluster, and Vault holds no irrepl
 
 Hourly crash-consistency for Vault volumes is a Longhorn local snapshot instead: `platform/longhorn/templates/recurringjobs.yaml` (`RecurringJob` `vault-hourly-snapshot`, `task: snapshot`, `cron: 0 * * * *`, `retain: 24`). `snapshot` is local copy-on-write; `backup` would need an S3/NFS target that is intentionally unconfigured. Volumes opt in via the `vault-hourly` group label (`recurring-job-group.longhorn.io/vault-hourly=enabled`). Daily snapshot templates for `seaweedfs`/`monitoring` are commented out in the same file.
 
+## Multi-bucket init
+
+One Job per bucket: `s3.bucket` keeps the legacy `velero-bucket-init` Job;
+each `s3.extraBuckets` entry renders `velero-bucket-init-<name>` (same
+ArgoCD `Sync` / wave `0` / `Prune=false` annotations). The shell logic lives
+once in `templates/_bucket-init.tpl` (`velero.bucketInitScript`).
+
+```yaml
+# values.yaml
+s3:
+  extraBuckets:
+    - name: cnpg-db-backups
+      bucket: cnpg-db-backups
+```
+
+Prerequisite: the velero key needs `s3:ListBucket` + `s3:CreateBucket` on the
+extra bucket ARN (see `docs/rustfs-iam.md`) — otherwise pre-create the bucket
+in console and the Job still verifies it.
+
 ## Quick start
 
 ```bash
