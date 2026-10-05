@@ -117,3 +117,15 @@ helm template monitoring ./platform/monitoring \
   --set s3.tailnetFqdn=rustfs.lonk-mirfak.ts.net \
   --show-only templates/job-bucket-init.yaml
 ```
+
+## Cilium egress (mandatory)
+
+Always allow the S3 endpoint by **IP (`toCIDR`)**, not only by FQDN.
+K8s NetworkPolicy only understands `ipBlock`, and Cilium `toFQDNs`
+only works when it observes the DNS reply — `/etc/hosts` pinning or a
+CoreDNS → node MagicDNS chain breaks FQDN learning and the handshake
+dies with `SSL UNEXPECTED_EOF`. Keep `toFQDNs` as nice-to-have, but the
+`toCIDR: <tailnetIp>/32:443` rule is the guarantee. Never write the
+FQDN to `/etc/hosts` inside the Job. Single-source the IP (e.g.
+`sharedS3.tailnetIp` / `global`) — every Cilium-enforced namespace
+follows this pattern.

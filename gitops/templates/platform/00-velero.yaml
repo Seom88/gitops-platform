@@ -21,15 +21,17 @@ spec:
         {{- if .Values.developmentApp.enabled }}
         - values-dev.yaml
         {{- end }}
-      # S3 endpoint parameter — single source: gitops/values.yaml
-      # sharedS3.tailnetFqdn (literal in git, so repo-server renders without
+      # S3 endpoint parameters — single source: gitops/values.yaml
+      # sharedS3.tailnetFqdn + sharedS3.tailnetIp (literals in git, so repo-server renders without
       # any --set side-channel). `required` fails the sync loudly instead of
-      # deploying a stale hardcoded URL. One parameter is enough: Service,
-      # bucket-init Job, CiliumNetworkPolicy and the wrapper-owned
-      # BackupStorageLocation all derive from s3.tailnetFqdn.
+      # deploying a stale hardcoded URL. Two parameters: FQDN (Service,
+      # bucket-init Job, CiliumNetworkPolicy toFQDNs, BackupStorageLocation)
+      # and tailnet IP (FQDN-independent toCIDR/ipBlock egress fallback).
       parameters:
         - name: s3.tailnetFqdn
           value: {{ required "sharedS3.tailnetFqdn is required (set gitops/values.yaml)" .Values.sharedS3.tailnetFqdn | quote }}
+        - name: s3.tailnetIp
+          value: {{ required "sharedS3.tailnetIp is required (set gitops/values.yaml)" .Values.sharedS3.tailnetIp | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: velero

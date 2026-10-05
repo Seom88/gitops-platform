@@ -11,6 +11,10 @@ platformApps:
 # is an independent source — if the RustFS host ever changes, update both.
 sharedS3:
   tailnetFqdn: "rustfs.lonk-mirfak.ts.net"
+  # Tailnet IP of the RustFS host (S3 API :443). FQDN-independent egress
+  # fallback for the velero policies (toCIDR/ipBlock) — DNS stays the
+  # resolution path. If the RustFS host ever changes, update both.
+  tailnetIp: "100.89.39.31"
 
 developmentApp:
   enabled: false

@@ -48,6 +48,27 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: velero-allow-s3-egress
+  namespace: velero
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # RustFS S3 API on the tailnet (FQDN-independent, K8s mirror of the Cilium
+    # toCIDR rule in velero-allow-egress-cilium). DNS stays the resolution
+    # path — no /etc/hosts pin. 8443 (console UI) intentionally excluded:
+    # Velero only speaks the S3 API on 443.
+    - to:
+        - ipBlock:
+            cidr: {{ required "s3.tailnetIp is required (set gitops/values.yaml sharedS3.tailnetIp)" .Values.s3.tailnetIp }}/32
+      ports:
+        - port: 443
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: velero-default-deny-egress
   namespace: velero
 spec:

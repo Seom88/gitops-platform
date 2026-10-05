@@ -7,6 +7,8 @@ platformApps:
 # No fallback anywhere — `required` fails loudly on drift.
 sharedS3:
   tailnetFqdn: "rustfs.lonk-mirfak.ts.net"
+  # Same tailnet IP as prod (dev BSL points at the PROD prefix for restore drills).
+  tailnetIp: "100.89.39.31"
 
 developmentApp:
   enabled: true

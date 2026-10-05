@@ -10,6 +10,15 @@ ciliumNetworkPolicy:
 # Do NOT put a URL literal here: a stale literal would silently win over CI.
 s3:
   tailnetFqdn: ""
+  # Tailnet IP of the RustFS host (S3 API :443). Used ONLY as an
+  # FQDN-independent egress allow (Cilium toCIDR + K8s ipBlock, see
+  # templates/cilium-networkpolicies.yaml and templates/networkpolicies.yaml).
+  # DNS stays the resolution path — this IP never lands in /etc/hosts.
+  # GitOps single source: gitops/values.yaml sharedS3.tailnetIp (passed as helm
+  # parameter s3.tailnetIp); this literal is the standalone fallback so
+  # `helm lint/template` works without --set. If the RustFS host ever changes,
+  # update both.
+  tailnetIp: "100.89.39.31"
   bucket: velero-homelab
   prefix: velero
   region: us-east-1

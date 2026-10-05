@@ -12,11 +12,12 @@ Expects a dict:
              and passes its own path, e.g. monitoring passes
              "/etc/monitoring/cloud").
 
-The script is intentionally backend-agnostic: DNS-via-node-MagicDNS wait,
-private-IP egress gate, runtime /etc/hosts pin, idempotent head/create,
-and classified error output (TLS/network vs 403 vs 404). Callers only
-supply bucket identity; credentials come from the Secret mounted by each
-consuming Job (the script only reads $CRED_FILE).
+ The script is intentionally backend-agnostic: DNS-via-node-MagicDNS wait,
+ private-IP egress gate, idempotent head/create, and classified error output
+ (TLS/network vs 403 vs 404). DNS is the ONLY resolution path on purpose —
+ there is deliberately no /etc/hosts pin (see below). Callers only supply
+ bucket identity; credentials come from the Secret mounted by each
+ consuming Job (the script only reads $CRED_FILE).
 */}}
 {{- define "s3-bucket-lib.bucketInitScript" -}}
 {{- $tag := .tag | default "bucket-init" }}
@@ -133,12 +134,14 @@ for RIP in $RESOLVED_IPS; do
     exit 1
   fi
 done
-# SNI fix: pin the LE-cert FQDN to the in-cluster svc IPs
-# resolved above — runtime /etc/hosts entries, never static
-for RIP in $RESOLVED_IPS; do
-  echo "[{{ $tag }}] hosts-pin: $RIP $S3_FQDN"
-  echo "$RIP $S3_FQDN" >> /etc/hosts
-done
+# No /etc/hosts pin here BY DESIGN. A hosts-pin resolves the FQDN without a
+# DNS query, so Cilium never observes the reply and its FQDN allowlist
+# (toFQDNs) learns no mapping — the egress SYN is then dropped and the Job
+# fails with EOF. DNS via CoreDNS/MagicDNS stays the ONLY resolution path;
+# the FQDN-independent fallback is the toCIDR rule on the RustFS tailnet IP
+# (see the velero-allow-egress-cilium / velero-allow-s3-egress policies).
+# The RESOLVED_IPS validation above already performs real DNS lookups, which
+# is exactly what feeds Cilium FQDN learning.
 
 echo "[{{ $tag }}] Checking bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
 
@@ -163,7 +166,7 @@ if [ $HEAD_RC -eq 0 ]; then
 elif echo "$HEAD_OUTPUT" | grep -qiE 'UNEXPECTED_EOF|EOF occurred|SSLError|TLS|handshake failure|Connection reset|Connection refused|timed out|Timeout|EndpointConnectionError|Max retries exceeded|Could not connect|Network is unreachable'; then
   echo "[{{ $tag }}] ERROR: TLS/network failure reaching $ENDPOINT (exit $HEAD_RC)."
   echo "[{{ $tag }}] This is a BACKEND outage, not an IAM or bucket problem: the TCP/TLS layer died before S3 answered."
-  echo "[{{ $tag }}] Check the RustFS host (serve.json, rustfs-ts tailscaled sidecar packet filter, :443 listener) — the Job DNS/IP-guard/hosts-pin above already passed."
+  echo "[{{ $tag }}] Check the RustFS host (serve.json, rustfs-ts tailscaled sidecar packet filter, :443 listener) — the Job DNS/IP-guard above already passed."
   for RIP in $RESOLVED_IPS; do
     tls_probe "$S3_FQDN" "$RIP"
   done
