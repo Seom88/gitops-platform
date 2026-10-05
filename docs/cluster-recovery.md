@@ -298,3 +298,35 @@ See [ADR-009](adrs/009-vault-dr-and-velero-backup.md).
 - Velero-pure restore into pre-existing PVCs is a dead end: Velero never writes into an existing PVC and never resets a stale `spec.volumeName`. Fresh PVCs (from ArgoCD) + data-only restore is the pattern.
 - Manual kopia-in-a-pod was a detour: it trades one solved problem for three new ones (S3 endpoint format, secret hygiene, node inotify limits). Stay on the native path.
 - Quiescing (scale to 0) before restore prevents live writes on empty volumes and CNPG bootstrap races.
+
+## 7. CNPG recovery under GitOps (Oct 2026)
+
+There is no pure-GitOps recovery: CNPG only honours `bootstrap`/`recovery` on
+initial bootstrap of an empty PGDATA, never in place
+([docs](https://cloudnative-pg.io/docs/1.30/recovery),
+[#5203](https://github.com/cloudnative-pg/cloudnative-pg/issues/5203),
+[#5778](https://github.com/cloudnative-pg/cloudnative-pg/issues/5778)).
+Editing YAML without deleting the Cluster does nothing. ArgoCD/Flux do not
+manage PGDATA PVCs, so a manual `kubectl delete cluster` (the CNPG operator
+removes its PVCs) is always required before the recreate.
+
+Patterns in the wild (all need that manual delete):
+
+1. **Temporary `bootstrap.recovery` commit + revert** (most common in
+   homelabs, e.g. [rwlove/home-ops cnpg_restore](https://rwlove.github.io/home-ops/cnpg_restore)):
+   commit recovery, delete cluster, sync, verify, revert. Traceable, 2 commits.
+2. **Chart flag (`recovery.enabled`)**: same as 1 but declarative — this repo's
+   choice. The chart renders `bootstrap.recovery` when the flag is on,
+   `bootstrap.initdb` otherwise. Still needs the manual delete + a second
+   commit turning the flag off (leaving `recovery` pinned re-runs a restore
+   on the next recreate).
+3. **Cloned cluster + cutover** (or pausing sync and applying by hand, e.g.
+   [KubeAid runbook](https://github.com/Obmondo/KubeAid/blob/master/argocd-helm-charts/cloudnative-pg/readme.md)):
+   safest in prod, temporarily out of GitOps.
+
+Rules: never reuse the same ObjectStore + `serverName` for a *different*
+cluster name (use a new path or `cnpg.io/skipEmptyWalArchiveCheck` is a trap);
+same-name DR after deleting PVCs reuses the store correctly. Drop the WAL
+archiver `plugins:` section from the recovery manifest or it stalls at
+`Setting up primary` (`Expected empty archive`); Git re-adds it on the
+revert commit, safe on live PGDATA.

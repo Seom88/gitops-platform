@@ -478,6 +478,17 @@ backup:
   # back the same distance on restore.
   retentionPolicy: "30d"
 
+# Patrón 2 — recovery por flag (solo Git, no toca cluster hasta aplicarse).
+# enabled=false (defecto): bootstrap initdb + WAL-archiver normal.
+# enabled=true: bootstrap.recovery desde ObjectStore + externalClusters,
+#   sin plugins WAL-archiver (evita "Expected empty archive").
+# targetTime vacío = latest; si se setea, PITR a ese timestamp.
+recovery:
+  enabled: true
+  source: grafana-backup-origin
+  serverName: grafana-database
+  targetTime: ""
+
 # Single-node: 1 instance. Grafana HA comes from 2 stateless-ish pods
 # sharing this DB, not from Postgres replicas.
 cnpg:

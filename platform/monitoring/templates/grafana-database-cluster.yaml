@@ -15,7 +15,7 @@ spec:
     enablePodMonitor: true
   instances: {{ .Values.cnpg.instances }}
   imageName: {{ .Values.cnpg.imageName }}
-  {{- if .Values.backup.enabled }}
+  {{- if and .Values.backup.enabled (not .Values.recovery.enabled) }}
   plugins:
     - name: barman-cloud.cloudnative-pg.io
       enabled: true
@@ -24,9 +24,27 @@ spec:
         barmanObjectName: grafana-backup-store
   {{- end }}
   bootstrap:
+    {{- if .Values.recovery.enabled }}
+    recovery:
+      source: {{ .Values.recovery.source }}
+      {{- if .Values.recovery.targetTime }}
+      recoveryTarget:
+        targetTime: {{ .Values.recovery.targetTime | quote }}
+      {{- end }}
+    {{- else }}
     initdb:
       database: {{ .Values.cnpg.database }}
       owner: {{ .Values.cnpg.owner }}
+    {{- end }}
+  {{- if .Values.recovery.enabled }}
+  externalClusters:
+    - name: {{ .Values.recovery.source }}
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: grafana-backup-store
+          serverName: {{ .Values.recovery.serverName }}
+  {{- end }}
   storage:
     {{- if .Values.cnpg.storage.class }}
     storageClass: {{ .Values.cnpg.storage.class }}
