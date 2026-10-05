@@ -17,6 +17,10 @@ trivy-operator:
   operator:
     scanJobsConcurrentLimit: 2
     scanJobTimeout: 15m
+    # Weekly rescan instead of the 24h upstream default: scan Jobs churn
+    # endpoints/volumes/cgroups on this single node (observed cilium-agent
+    # >100% CPU during scan storms). CI already scans every push.
+    scannerReportTTL: "168h"
     # Disabled: node-collector needs a mutable host rootfs, which immutable host OS layouts break.
     infraAssessmentScannerEnabled: false
     # Built-in server caches trivy-db (113MiB) on a Longhorn PVC so every

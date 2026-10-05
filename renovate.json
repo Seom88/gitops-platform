@@ -58,7 +58,7 @@
     },
     {
       "description": "Images without digest support (CRD or chart without digest field) - tags only, digest tracked in comment where applicable",
-      "matchPackageNames": ["tailscale/k8s-nameserver", "ghcr.io/immich-app/immich-server", "ghcr.io/immich-app/immich-machine-learning"],
+      "matchPackageNames": ["ghcr.io/immich-app/immich-server", "ghcr.io/immich-app/immich-machine-learning"],
       "pinDigests": false
     },
     {
