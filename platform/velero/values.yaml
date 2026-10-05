@@ -40,6 +40,24 @@ bucketInit:
   # before anyone could read them).
   ttlSecondsAfterFinished: 86400
 
+# Sweep for kopia maintenance Job orphans
+# (templates/cleanup-maintain-jobs.yaml). Velero's keepLatestMaintenanceJobs
+# caps per-repo Jobs at the controller level but sets no
+# ttlSecondsAfterFinished — Failed orphans (deleted BackupRepositories,
+# prune misses) accumulate forever. This hourly CronJob deletes COMPLETED
+# *-kopia-maintain-job-* Jobs older than maxAgeSeconds (failure logs stay
+# readable for 1h). Least-privilege RBAC: own ServiceAccount, batch/jobs
+# get+list+delete in the velero namespace only.
+maintainJobsCleanup:
+  enabled: true
+  schedule: "17 * * * *"
+  maxAgeSeconds: 3600
+  # History limits for the sweeper CronJob itself.
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  # TTL on the sweeper's own finished Jobs (TTL-after-finished controller).
+  ttlSecondsAfterFinished: 3600
+
 developmentApp:
   enabled: false
 
@@ -93,6 +111,20 @@ velero:
     # UI: keep default 60s.
     # Features: CSI if available (empty = defaults). Must NOT be a literal string.
     features: ""
+
+    # Repository maintenance Jobs GC — native Velero knob (verified against the
+    # vendored subchart velero 12.2.0: values `configuration.repositoryMaintenanceJob`
+    # + template repo-maintenance-configmap.yaml + `--repo-maintenance-job-configmap`
+    # server arg in deployment.yaml). The upstream default happens to be 3 too —
+    # pinned here so a subchart bump cannot silently lift the cap. Velero prunes
+    # per-repository *-kopia-maintain-job-* Jobs down to this count. It sets NO
+    # TTL (the subchart exposes no ttlSecondsAfterFinished/historyLimit for
+    # these controller-created Jobs), so orphans are swept by
+    # maintainJobsCleanup (top level) as defense in depth.
+    repositoryMaintenanceJob:
+      repositoryConfigData:
+        global:
+          keepLatestMaintenanceJobs: 3
 
   # Credentials — the Secret `cloud-credentials` is created by bootstrap/init-gitops.sh
   # (chicken-egg: Velero cannot use ESO/Vault because Vault itself is backed up).

@@ -1,0 +1,132 @@
+{{- $cleanup := .Values.maintainJobsCleanup | default dict }}
+{{- $cleanupEnabled := true }}
+{{- if hasKey $cleanup "enabled" }}{{ $cleanupEnabled = $cleanup.enabled }}{{- end }}
+{{- if and .Values.velero.enabled $cleanupEnabled }}
+# Auto-cleanup for Velero kopia repository-maintenance Jobs.
+# These Jobs are created by the velero server controller (not by a CronJob),
+# so neither ttlSecondsAfterFinished nor failed/successfulJobsHistoryLimit can
+# be set on them — the subchart (vmware-tanzu/velero 12.2.0) exposes only
+# `configuration.repositoryMaintenanceJob...keepLatestMaintenanceJobs` (pinned
+# to 3 in values.yaml). That cap is per-repository and has no TTL: orphans
+# from deleted BackupRepositories or missed prunes accumulate as Failed
+# forever. This hourly sweeper deletes COMPLETED (Complete or Failed)
+# *-kopia-maintain-job-* Jobs older than maxAgeSeconds. Fresh failures are
+# left alone so logs stay debuggable. The history/TTL fields below govern the
+# sweeper's own Jobs — the only place those fields exist here.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: velero-maintain-jobs-cleanup
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: velero-maintain-jobs-cleanup
+    app.kubernetes.io/component: maintenance-cleanup
+    app.kubernetes.io/part-of: velero
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: velero-maintain-jobs-cleanup
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: velero-maintain-jobs-cleanup
+    app.kubernetes.io/component: maintenance-cleanup
+    app.kubernetes.io/part-of: velero
+rules:
+  # Least privilege: list finished maintenance Jobs, delete the expired ones.
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: velero-maintain-jobs-cleanup
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: velero-maintain-jobs-cleanup
+    app.kubernetes.io/component: maintenance-cleanup
+    app.kubernetes.io/part-of: velero
+subjects:
+  - kind: ServiceAccount
+    name: velero-maintain-jobs-cleanup
+    namespace: velero
+roleRef:
+  kind: Role
+  name: velero-maintain-jobs-cleanup
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: velero-maintain-jobs-cleanup
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: velero-maintain-jobs-cleanup
+    app.kubernetes.io/component: maintenance-cleanup
+    app.kubernetes.io/part-of: velero
+spec:
+  schedule: {{ $cleanup.schedule | default "17 * * * *" | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ $cleanup.successfulJobsHistoryLimit | default 1 }}
+  failedJobsHistoryLimit: {{ $cleanup.failedJobsHistoryLimit | default 3 }}
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: {{ $cleanup.ttlSecondsAfterFinished | default 3600 }}
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: velero-maintain-jobs-cleanup
+            app.kubernetes.io/component: maintenance-cleanup
+        spec:
+          serviceAccountName: velero-maintain-jobs-cleanup
+          restartPolicy: OnFailure
+          containers:
+            - name: cleanup
+              # Digest-pinned (fail-closed Trivy gate); same kubectl pin used
+              # across the repo (vault, longhorn). Refresh:
+              # skopeo inspect docker://bitnami/kubectl:latest | jq -r .Digest
+              image: bitnami/kubectl:latest@sha256:ab90e1058e5a658cc94b4e7eb6d48e5758cfd6d77b5dd1869513aec3a3054673
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: MAX_AGE_SECONDS
+                  value: {{ $cleanup.maxAgeSeconds | default 3600 | quote }}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  NAMESPACE="$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)"
+                  MAX_AGE="${MAX_AGE_SECONDS:-3600}"
+                  NOW="$(date -u +%s)"
+                  echo "sweeping completed *-kopia-maintain-job-* Jobs older than ${MAX_AGE}s in ns ${NAMESPACE}"
+                  # One row per Job: "<name> <creationTimestamp> [Type=Status...]".
+                  # creationTimestamp is RFC3339 (no spaces); maintenance Jobs run
+                  # for minutes, so creation age ~= finished age — close enough
+                  # for a 1h TTL and avoids a per-Job API call for completionTime.
+                  kubectl get jobs -n "$NAMESPACE" \
+                    -o 'jsonpath={range .items[*]}{.metadata.name} {.metadata.creationTimestamp} {range .status.conditions[*]}[{.type}={.status}]{end}{"\n"}{end}' \
+                  | while read -r name created conds; do
+                      case "$name" in
+                        *-kopia-maintain-job-*) ;;
+                        *) continue ;;
+                      esac
+                      # Only finished Jobs (Complete=True or Failed=True); skip
+                      # active ones (no conditions) so running maintenance is
+                      # never deleted.
+                      case "${conds:-}" in
+                        *True*) ;;
+                        *) continue ;;
+                      esac
+                      finished="$(date -u -d "$created" +%s)"
+                      age=$((NOW - finished))
+                      if [ "$age" -ge "$MAX_AGE" ]; then
+                        echo "deleting expired maintenance job $name (age ${age}s)"
+                        kubectl delete job -n "$NAMESPACE" "$name" --ignore-not-found=true
+                      fi
+                    done
+                  echo "sweep done"
+{{- end }}
