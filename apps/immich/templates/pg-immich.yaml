@@ -15,6 +15,20 @@ spec:
     enablePodMonitor: true
   instances: {{ .Values.cnpg.instances }}
   imageName: {{ .Values.cnpg.imageName }}
+  {{- if .Values.cnpg.enableSuperuserAccess }}
+  # Remote access to the `postgres` operator role + creates the
+  # `immich-database-superuser` Secret (DR script / manual recovery).
+  enableSuperuserAccess: true
+  {{- end }}
+  # Declarative role management: CNPG reconciles this continuously, so the
+  # app role stays a superuser across Cluster recreations — something
+  # `bootstrap.initdb.postInitSQL` cannot guarantee (bootstrap SQL runs once).
+  managed:
+    roles:
+      - name: {{ .Values.cnpg.owner }}
+        ensure: present
+        login: true
+        superuser: {{ .Values.cnpg.ownerSuperuser }}
   {{- if .Values.backup.enabled }}
   # WAL archiving via the plugin-barman-cloud CNPG-I plugin (ObjectStore
   # immich-backup-store below). Retention lives on the ObjectStore.

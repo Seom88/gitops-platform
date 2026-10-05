@@ -57,6 +57,20 @@ cnpg:
       backup.velero.io/backup-volumes-excludes: ext-vchord
   database: immich
   owner: immich
+  # Immich expects a superuser-capable role: on bootstrap it runs
+  # `CREATE EXTENSION IF NOT EXISTS <vector ext>` unconditionally (upstream
+  # issue #10070) and its in-app DB restore needs it too. This DB is
+  # single-tenant, so the app role gets superuser declaratively — which also
+  # survives ArgoCD recreating the Cluster. `bootstrap.initdb.postInitSQL`
+  # cannot do this: it runs once, at cluster creation only.
+  # Trade-off accepted: superuser applies to the Postgres instance, not to
+  # "immich" — any pod able to reach the Service with these credentials is
+  # superuser. Acceptable for a single-purpose homelab database.
+  ownerSuperuser: true
+  # Grants remote access to the `postgres` operator role and creates the
+  # `immich-database-superuser` Secret. Used by the DR script and manual
+  # recovery (see docs/cluster-recovery.md); independent of ownerSuperuser.
+  enableSuperuserAccess: true
   postgresql:
     shared_preload_libraries:
       - "vchord.so"
@@ -68,9 +82,9 @@ cnpg:
           - /usr/lib/postgresql/18/lib
         extension_control_path:
           - /usr/share/postgresql/18/
-  # Extensions created inside the `immich` database as superuser via the
-  # Database CR (the app user is not a superuser). Order: vector first
-  # (vchord CASCADEs onto it).
+  # Extensions created inside the `immich` database via the Database CR (the
+  # operator creates them with its own superuser connection). Order: vector
+  # first (vchord CASCADEs onto it).
   dbExtensions:
     - name: vector
       ensure: present
