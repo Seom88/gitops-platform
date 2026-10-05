@@ -459,6 +459,15 @@ backup:
   bucket: cnpg-db-backups
   prefix: grafana
   secretName: cnpg-backup-s3-credentials # pragma: allowlist secret
+  # Tailnet IP of the RustFS host (S3 API :443). FQDN-independent egress
+  # fallback (Cilium toCIDR, patrón velero): Cilium solo aprende FQDN->IP
+  # observando DNS, así que sin toCIDR el SYN cae si la resolución no pasa
+  # por DNS observado.
+  # TODO: single-source desde gitops/values.yaml sharedS3.tailnetIp como
+  # helm parameter (s3.tailnetIp) igual que gitops/templates/platform/00-velero.yaml;
+  # hoy 03-monitoring.yaml no pasa parameters, así que este literal es la
+  # fuente. Si el host RustFS cambia, actualizar ambos.
+  tailnetIp: "100.89.39.31"
   # 01:55 UTC daily, ahead of Velero `daily-full` (02:00). Nothing coordinates
   # the two backups, so the gap between them is only safe in one direction:
   # Barman first leaves an orphaned file recoverable on disk; Velero first

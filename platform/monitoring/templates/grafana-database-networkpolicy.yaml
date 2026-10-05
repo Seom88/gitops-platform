@@ -121,8 +121,13 @@ spec:
               protocol: TCP
 ---
 # CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
-# Same FQDN:443 pattern as Velero (RustFS needs SNI = LE-cert FQDN), resolved
-# via node MagicDNS — no in-cluster s3-egress proxy path.
+# Patrón Velero: FQDN:443 L4 puro (sin rules: — cualquier rules: lo vuelve
+# L7 y Cilium desvía el TLS crudo por Envoy, rompiendo el handshake) +
+# toCIDR tailnetIp/32:443 como fallback FQDN-independiente (Cilium solo
+# aprende FQDN->IP observando DNS) + world:443. DNS va por
+# monitoring-allow-dns (puerto 53) — no hay rules.dns aquí.
+# TODO: single-source tailnetIp desde gitops/values.yaml sharedS3.tailnetIp
+# (hoy sin wiring en 03-monitoring.yaml, value local backup.tailnetIp).
 {{- if .Values.backup.enabled }}
 ---
 apiVersion: cilium.io/v2
@@ -144,10 +149,13 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-          rules:
-            dns:
-              - matchPattern: "*.ts.net"
-              - matchPattern: "*.lonk-mirfak.ts.net"
+    # S3 vía tailnet IP (fallback FQDN-independiente, solo 443 — patrón velero).
+    - toCIDR:
+        - {{ required "backup.tailnetIp is required (set backup.tailnetIp in platform/monitoring values.yaml)" .Values.backup.tailnetIp }}/32
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
     - toEntities:
         - world
       toPorts:

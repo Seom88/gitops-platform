@@ -129,3 +129,9 @@ dies with `SSL UNEXPECTED_EOF`. Keep `toFQDNs` as nice-to-have, but the
 FQDN to `/etc/hosts` inside the Job. Single-source the IP (e.g.
 `sharedS3.tailnetIp` / `global`) — every Cilium-enforced namespace
 follows this pattern.
+
+Never put a `rules:` block under the `toPorts: 443` egress entry:
+any `rules:` turns it into an L7 rule and Cilium diverts the raw TLS
+through its Envoy proxy, killing the handshake. `rules.dns` belongs
+only on the port-53 DNS rule; the 443 rule stays L4 (`toFQDNs` +
+`toCIDR`, no `rules:`).
