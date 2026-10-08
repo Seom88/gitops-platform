@@ -10,14 +10,27 @@ metadata:
   name: grafana-database
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
-    {{- if .Values.recovery.enabled }}
-    # Required only while `recovery.enabled` is true. CNPG refuses to bootstrap a
-    # cluster whose WAL archive is not empty ("Expected empty archive") — a check
-    # that exists to stop one cluster from clobbering another's archive. We are
-    # deliberately restoring into the SAME archive this cluster already owns, and
-    # we keep `plugins` below so archiving resumes on the recovered cluster
-    # (upstream explicitly supports plugins on a recovered cluster). The
-    # annotation value must be the literal string `enabled`, not `"true"`.
+    # `.spec.bootstrap` is write-once: once CNPG reports BootstrapCompleted the
+    # operator never re-runs it, so this cluster permanently keeps the
+    # `bootstrap.recovery` it was recovered with while git declares `initdb`.
+    # Comparing that field forever would pin the app OutOfSync, so the difference
+    # is ignored explicitly. Everything else in this manifest is compared.
+    argocd.argoproj.io/compare-options: |
+      {
+        "ignoreDifferences": {
+          "jqPathExpressions": [".spec.bootstrap.recovery"]
+        }
+      }
+    {{- if .Values.backup.enabled }}
+    # REQUIRED whenever `backup.enabled` is true, and NOT about recovery.
+    # barman-cloud-wal-archive refuses to archive into a non-empty archive
+    # ("Expected empty archive") — a check meant to stop one cluster adopting a
+    # stranger's archive. But CNPG also runs it on every instance-manager start
+    # of an already-bootstrapped cluster, so the moment this cluster's own
+    # archive exists, the next pod recreation breaks WAL archiving for good
+    # while base backups keep reporting success. This happened on 2026-10-05 on
+    # immich and wedged that primary two days later. The annotation value must be
+    # the literal string `enabled`, not `"true"`.
     cnpg.io/skipEmptyWalArchiveCheck: "enabled"
     {{- end }}
 spec:
@@ -45,6 +58,13 @@ spec:
   bootstrap:
     {{- if .Values.recovery.enabled }}
     recovery:
+      # CNPG defaults these to `app`/`app`. Leaving them out does NOT mean
+      # "reuse what was there": it makes the API server materialise `app`, and
+      # CNPG then generates grafana-database-app with dbname/user `app` — so
+      # Grafana authenticates as `grafana` with the `app` role's password and
+      # dies with "password authentication failed". Always state them.
+      database: {{ .Values.cnpg.database }}
+      owner: {{ .Values.cnpg.owner }}
       source: {{ .Values.recovery.source }}
       {{- if .Values.recovery.targetTime }}
       recoveryTarget:
