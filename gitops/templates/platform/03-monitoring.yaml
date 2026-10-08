@@ -38,7 +38,7 @@ spec:
       kind: Cluster
       name: grafana-database
       jqPathExpressions:
-        - .spec.bootstrap.recovery.recoveryTarget
+        - .spec.bootstrap.recovery
   syncPolicy:
     automated:
       prune: true
