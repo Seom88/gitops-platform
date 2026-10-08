@@ -478,39 +478,34 @@ backup:
   # back the same distance on restore.
   retentionPolicy: "30d"
 
-# Patrón 2 — recovery por flag (solo Git, no toca cluster hasta aplicarse).
-# Es un mecanismo de CARRERA, no un estado permanente: `.spec.bootstrap` en CNPG
-# es write-once, así que dejar `enabled: true` en Git haría que TODO recreate
-# futuro resurrectiera el cluster en 2026-09-29. Se usa, se comprueba, y se
-# vuelve a apagar.
+# Patrón 2 — recovery por flag.
 #
-# enabled=false (estado normal): bootstrap initdb + WAL-archiver.
-# enabled=true: bootstrap.recovery desde ObjectStore + externalClusters.
+# ATENCIÓN: este flag queda en `true` de forma permanente, y NO es un descuido.
+# `grafana-database` fue bootstrapeado por recovery (PITR a 2026-09-29, ejecutado
+# el 2026-10-08). `.spec.bootstrap` en CNPG es WRITE-ONCE: el webhook rechaza
+# tener dos métodos de bootstrap a la vez, así que Git NO puede volver a
+# `initdb` sin romper el apply de ArgoCD para siempre
+# ("Only one bootstrap method can be specified at a time"). Decir la verdad es
+# la única salida: el cluster SÍ nació de un recovery, y Git lo declara.
+#
+# Consecuencia práctica buena: si alguien borra el Cluster, ArgoCD lo recrea
+# restaurando desde el archivo (que es lo correcto para una base que tiene
+# backups) en vez de crear una base vacía que Grafana no podría distinguir de
+# una sana. Si el archivo no existiera, falla ruidosamente — mejor que un initdb
+# silencioso.
 #
 # `plugins` y `cnpg.io/skipEmptyWalArchiveCheck` NO se gatean con este flag: se
 # declaran siempre que backup.enabled. Antes `plugins` se gateaba con
 # `not recovery.enabled` y eso fue exactamente la causa del silencio del
 # 2026-10-08 (todas las copias fallando, WAL archivando a la nada).
 #
-# Para volver a recovery: poné enabled=true + el targetTime que necesites,
-# esperá a Ready + ContinuousArchiving=True, y apagalo de nuevo. La diferencia
-# residual de `.spec.bootstrap.recovery` está ignorada a propósito por
-# `argocd.argoproj.io/compare-options` en el template.
-#
-# targetTime vacío = latest (replay hasta el final del WAL disponible); si se
-# setea, PITR a ese timestamp.
+# targetTime vacío = latest (replay hasta el final del WAL disponible); con un
+# valor, PITR a ese timestamp. Dejarlo vacío a propósito: un recreate tiene que
+# ir al final del archivo, no clavarse en 2026-09-29.
 recovery:
-  enabled: false
+  enabled: true
   source: grafana-backup-origin
   serverName: grafana-database
-  # Último target usado (2026-10-08, PITR ejecutado con éxito). Se conserva como
-  # referencia historical, NO está activo con `enabled: false`.
-  # Fue el último día con WAL continuo en el archivo: la última segmento
-  # archivada es 00000001000000030000002F @ 2026-09-29T17:09:15Z (timeline 1).
-  # Cualquier targetTime posterior, o un target sin timeline explícito, pide
-  # timeline 2 — que no existe en el archivo → "WAL not found".
-  # CNPG elige el base backup completo más cercano anterior al target
-  # (20260929T160156, end_wal 000000010000000300000022) y reproduce 0x22→0x2F.
   targetTime: ""
 
 # Single-node: 1 instance. Grafana HA comes from 2 stateless-ish pods

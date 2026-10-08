@@ -10,17 +10,6 @@ metadata:
   name: grafana-database
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
-    # `.spec.bootstrap` is write-once: once CNPG reports BootstrapCompleted the
-    # operator never re-runs it, so this cluster permanently keeps the
-    # `bootstrap.recovery` it was recovered with while git declares `initdb`.
-    # Comparing that field forever would pin the app OutOfSync, so the difference
-    # is ignored explicitly. Everything else in this manifest is compared.
-    argocd.argoproj.io/compare-options: |
-      {
-        "ignoreDifferences": {
-          "jqPathExpressions": [".spec.bootstrap.recovery"]
-        }
-      }
     {{- if .Values.backup.enabled }}
     # REQUIRED whenever `backup.enabled` is true, and NOT about recovery.
     # barman-cloud-wal-archive refuses to archive into a non-empty archive
