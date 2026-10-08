@@ -43,7 +43,14 @@ cnpg:
   imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
   storage:
     class: longhorn-cnpg
-    size: 2Gi
+    # Was 2Gi and wedged at 100% on 2026-10-08: pg_wal grew unbounded because
+    # the archiver had been failing since 2026-10-05, CNPG refused to start the
+    # primary ("Not enough WAL disk space"), and the volume could not be freed
+    # from the inside. `parameters.max_wal_size` below now bounds pg_wal, so the
+    # extra gigabyte only buys the way out of the wedge — it is not a steady-state
+    # requirement (the database itself is 165MB). Longhorn cannot shrink a volume,
+    # so this is a one-way bump.
+    size: 3Gi
   # Velero opt-out for the CNPG extension image volume. CNPG materialises
   # `postgresql.extensions[].image` as an Image Volume named `ext-<name>`, and
   # the kubelet bind-mounts it straight from the containerd snapshotter overlay.
@@ -72,6 +79,16 @@ cnpg:
   # recovery (see docs/cluster-recovery.md); independent of ownerSuperuser.
   enableSuperuserAccess: true
   postgresql:
+    # WAL budget. The live cluster was running Postgres' stock defaults
+    # (max_wal_size 1GB, min_wal_size 80MB) with `wal_keep_size: 512MB` injected
+    # by the operator. That combination let pg_wal grow to ~1.7GB on a 2Gi volume:
+    # when the archiver fails, WAL is never recycled, and Postgres only recycles
+    # at a checkpoint. `max_wal_size` is the hard ceiling on that growth;
+    # `wal_keep_size` only needs to cover replica lag, not a day of history.
+    parameters:
+      max_wal_size: "256MB"
+      min_wal_size: "80MB"
+      wal_keep_size: "128MB"
     shared_preload_libraries:
       - "vchord.so"
     extensions:

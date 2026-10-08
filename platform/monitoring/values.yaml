@@ -481,13 +481,23 @@ backup:
 # Patrón 2 — recovery por flag (solo Git, no toca cluster hasta aplicarse).
 # enabled=false (defecto): bootstrap initdb + WAL-archiver normal.
 # enabled=true: bootstrap.recovery desde ObjectStore + externalClusters,
-#   sin plugins WAL-archiver (evita "Expected empty archive").
-# targetTime vacío = latest; si se setea, PITR a ese timestamp.
+#   + cnpg.io/skipEmptyWalArchiveCheck (el archivo NO está vacío: es el mismo
+#   archivo que este cluster ya posee). `plugins` sigue declarado en ambos modos
+#   — antes se gateaba con `not recovery.enabled` y eso fue exactamente la
+#   causa del silencio de 2026-10-08.
+# targetTime vacío = latest (replay hasta el final del WAL disponible); si se
+# setea, PITR a ese timestamp.
 recovery:
   enabled: true
   source: grafana-backup-origin
   serverName: grafana-database
-  targetTime: ""
+  # PITR al 2026-09-29. Es el último día con WAL continuo en el archivo: la
+  # última segmento archivada es 00000001000000030000002F @ 2026-09-29T17:09:15Z
+  # (timeline 1). Cualquier targetTime posterior o un target sin timeline
+  # explícito pide timeline 2, que no existe en el archivo → "WAL not found".
+  # CNPG elige el base backup completo más cercano anterior al target
+  # (20260929T160156, end_wal 000000010000000300000022) y reproduce 0x22→0x2F.
+  targetTime: "2026-09-29T17:00:00Z"
 
 # Single-node: 1 instance. Grafana HA comes from 2 stateless-ish pods
 # sharing this DB, not from Postgres replicas.
@@ -499,3 +509,14 @@ cnpg:
     size: 2Gi
   database: grafana
   owner: grafana
+  postgresql:
+    # WAL budget. The live cluster was running Postgres' stock defaults
+    # (max_wal_size 1GB, min_wal_size 80MB) with `wal_keep_size: 512MB`
+    # injected by the operator — so a stalled archiver could grow pg_wal until
+    # it consumed the entire volume. `max_wal_size` is the hard ceiling on
+    # checkpoint-driven recycling; `wal_keep_size` only needs to cover replica
+    # lag, not a day of history. Same rationale as apps/immich.
+    parameters:
+      max_wal_size: "256MB"
+      min_wal_size: "80MB"
+      wal_keep_size: "128MB"

@@ -10,12 +10,31 @@ metadata:
   name: grafana-database
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
+    {{- if .Values.recovery.enabled }}
+    # Required only while `recovery.enabled` is true. CNPG refuses to bootstrap a
+    # cluster whose WAL archive is not empty ("Expected empty archive") — a check
+    # that exists to stop one cluster from clobbering another's archive. We are
+    # deliberately restoring into the SAME archive this cluster already owns, and
+    # we keep `plugins` below so archiving resumes on the recovered cluster
+    # (upstream explicitly supports plugins on a recovered cluster). The
+    # annotation value must be the literal string `enabled`, not `"true"`.
+    cnpg.io/skipEmptyWalArchiveCheck: "enabled"
+    {{- end }}
 spec:
   monitoring:
     enablePodMonitor: true
   instances: {{ .Values.cnpg.instances }}
   imageName: {{ .Values.cnpg.imageName }}
-  {{- if and .Values.backup.enabled (not .Values.recovery.enabled) }}
+  {{- if .Values.backup.enabled }}
+  # NOTE: deliberately NOT gated on `.Values.recovery.enabled`. Gating it that way
+  # (as this template did until 2026-10-08) silently dropped `.spec.plugins` the
+  # moment recovery was turned on, which is the whole outage: every ScheduledBackup
+  # then fails with "cannot proceed with the backup as the cluster has no plugin
+  # configured", WAL archiving stops, and the archive silently goes stale while
+  # base backups keep reporting success. Barman is the ONLY recovery layer here
+  # (Velero carries no DB bytes), so losing the plugin means losing the fallback.
+  # Upstream docs bless plugins on a recovered cluster so archiving resumes
+  # immediately after recovery.
   plugins:
     - name: barman-cloud.cloudnative-pg.io
       enabled: true
@@ -44,6 +63,10 @@ spec:
         parameters:
           barmanObjectName: grafana-backup-store
           serverName: {{ .Values.recovery.serverName }}
+  {{- end }}
+  {{- with .Values.cnpg.postgresql }}
+  postgresql:
+    {{- toYaml . | nindent 4 }}
   {{- end }}
   storage:
     {{- if .Values.cnpg.storage.class }}
