@@ -10,6 +10,24 @@ metadata:
   name: immich-database
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    # REQUIRED, and it is NOT about recovery.
+    #
+    # barman-cloud-wal-archive refuses to archive when the destination archive
+    # is non-empty ("WAL archive check failed for server <name>: Expected empty
+    # archive"). That check is meant to stop a *new* cluster from adopting a
+    # stranger's archive, but CNPG also runs it on every instance-manager start
+    # of an already-bootstrapped cluster. So the moment this cluster's own
+    # archive exists, the next pod recreation kills WAL archiving for good:
+    # the check fails, `ContinuousArchiving=False`, and nobody notices while
+    # base backups keep reporting success (the check lives only in the WAL
+    # path).
+    #
+    # That is not hypothetical: on 2026-10-05 the pods were recreated, the
+    # check failed, WAL stopped being archived and recycled, and the 2Gi PVC
+    # hit 100% — which wedged the primary with "Not enough WAL disk space"
+    # for two days. This annotation bypasses the check, which is safe here
+    # because the archive under immich/ is this cluster's own.
+    cnpg.io/skipEmptyWalArchiveCheck: "enabled"
 spec:
   monitoring:
     enablePodMonitor: true
