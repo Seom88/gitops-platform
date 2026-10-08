@@ -10,6 +10,20 @@ metadata:
   name: grafana-database
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
+    # `.spec.bootstrap` is WRITE-ONCE in CNPG, and `recoveryTarget` is the
+    # sharpest edge of that: once the PITR completed, the field is inert but
+    # still on the live object. Server-side apply CANNOT remove it (no field
+    # manager owns it, so the API server keeps it), so without this the
+    # application is OutOfSync forever on a field that cannot be reconciled.
+    # Scope is deliberately narrow: ONLY recoveryTarget is ignored. Everything
+    # else — source, database, owner, and the whole rest of the Cluster — is
+    # still compared, so real drift is still caught.
+    argocd.argoproj.io/compare-options: |
+      {
+        "ignoreDifferences": {
+          "jqPathExpressions": [".spec.bootstrap.recovery.recoveryTarget"]
+        }
+      }
     {{- if .Values.backup.enabled }}
     # REQUIRED whenever `backup.enabled` is true, and NOT about recovery.
     # barman-cloud-wal-archive refuses to archive into a non-empty archive
