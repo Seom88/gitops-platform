@@ -25,6 +25,20 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
+  # CNPG's `.spec.bootstrap` is WRITE-ONCE. This cluster was bootstrapped by a
+  # PITR, so `recoveryTarget` stays on the live object forever, and server-side
+  # apply cannot remove it (no field manager owns it). Left unreconciled, the
+  # application is pinned OutOfSync on an inert field forever.
+  #
+  # Scoped to this exact group/kind/name AND this exact path, so it cannot mask
+  # drift anywhere else: every other field of every other resource is still
+  # compared.
+  ignoreDifferences:
+    - group: postgresql.cnpg.io
+      kind: Cluster
+      name: grafana-database
+      jqPathExpressions:
+        - .spec.bootstrap.recovery.recoveryTarget
   syncPolicy:
     automated:
       prune: true
