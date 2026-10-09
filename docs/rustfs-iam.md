@@ -91,20 +91,34 @@ in console (no bucket-init Job per user decision 2026-09-28).
 Verified 2026-10-09 by signing every call with the real `cnpg-backup` key
 (read/write probe from inside the cluster, each operation executed against
 `https://rustfs.lonk-mirfak.ts.net` — status codes below are observed, not
-inferred). Barman needs three distinct **bucket-level listing** verbs that were
-missing; that is exactly what made retention fail on *both* clusters while
-base backups kept succeeding:
+inferred). Three bucket-level listing verbs returned 403 and were added
+(`s3:ListBucketVersions`, `s3:ListBucketMultipartUploads`,
+`s3:GetBucketVersioning`), but **they were NOT the blocker**: events kept
+firing after the policy update. The real root cause was the trailing slash
+in `destinationPath` (`s3://cnpg-db-backups/grafana/`):
 
-| Verb | Who needs it | Observed before the fix |
+| Verb | Who needs it | Observed before the policy fix |
 | --- | --- | --- |
-| `s3:ListBucketVersions` | **retention.** barman's catalogue enumerates `list_object_versions()` to compute the recovery window, so `barman-cloud-backup-delete` cannot even start without it | 403 |
-| `s3:ListBucketMultipartUploads` | enumerating abandoned multipart uploads | 403 |
-| `s3:GetBucketVersioning` | barman probes bucket versioning before deciding its delete strategy | 403 |
+| `s3:ListBucketVersions` | barman's catalogue (`list_object_versions()`) for the recovery window | 403, then added |
+| `s3:ListBucketMultipartUploads` | enumerating abandoned multipart uploads | 403, then added |
+| `s3:GetBucketVersioning` | barman probes bucket versioning before deciding its delete strategy | 403, then added |
 
-The trap: `s3:ListMultipartUploadParts` (object ARN) is **not** the same
-permission as `s3:ListBucketMultipartUploads` (bucket ARN). The first was
-already granted, which is why uploads and aborts worked while retention
-did not. Symptom on the cluster: `RetentionPolicyFailed` on
+The three verbs above are correct to keep (AWS parity, harmless), but the
+failure persisted because it was never IAM: the instance log showed
+`InvalidArgument on ListObjectsV2`, not `AccessDenied`. Barman lists the WAL
+catalogue with `prefix='<prefix>//<cluster>/base/'` (double slash from the
+trailing slash in `destinationPath`) and **RustFS rejects any `//` prefix
+with 400** — AWS accepts it as literal characters. Reproduced with the real
+`barman-cloud-backup-delete` binary (exit 4) and bisected to `//` by raw
+SigV4 calls. Fix: `destinationPath` without trailing slash in
+`platform/monitoring/templates/grafana-database-cluster.yaml` and
+`apps/immich/templates/pg-immich.yaml` (all 1087 existing keys already live
+under single-slash paths, so object keys are unchanged).
+
+The trap, kept for reference: `s3:ListMultipartUploadParts` (object ARN) is
+**not** the same permission as `s3:ListBucketMultipartUploads` (bucket ARN).
+The first was already granted, which is why uploads and aborts always
+worked. Symptom on the cluster: `RetentionPolicyFailed` on
 `immich-database` and `grafana-database` once every ~5 minutes, with every
 `ScheduledBackup` reporting `completed`.
 
@@ -144,7 +158,8 @@ marker and stops freeing space.
 ```
 
 **Apply in RustFS console** (key `cnpg-backup`): paste the JSON above as the
-session policy, then confirm with `kubectl get events -n immich --field-selector reason=RetentionPolicyFailed` — the count must stop increasing and no new `RetentionPolicyFailed` may appear.
+session policy (already applied 2026-10-09), then confirm the trailing-slash
+fix took effect with `kubectl get events -n immich --field-selector reason=RetentionPolicyFailed` — the count must stop increasing and no new `RetentionPolicyFailed` may appear within ~10 minutes of the new `destinationPath` syncing.
 
 Manual step (once): create bucket `cnpg-db-backups` in console before the first
 backup. No cluster-side provisioning — the old SeaweedFS `backup-init` IAM flow

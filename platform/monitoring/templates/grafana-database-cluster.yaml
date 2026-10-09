@@ -133,7 +133,11 @@ metadata:
     argocd.argoproj.io/sync-wave: "-1"
 spec:
   configuration:
-    destinationPath: s3://{{ .Values.backup.bucket }}/{{ .Values.backup.prefix }}/
+    # NO trailing slash: barman joins destinationPath with subpaths and a
+    # trailing '/' produces '//' prefixes in ListObjectsV2, which RustFS
+    # rejects with InvalidArgument (AWS tolerates it). All existing objects
+    # already live under single-slash keys, so keys are unchanged.
+    destinationPath: s3://{{ .Values.backup.bucket }}/{{ .Values.backup.prefix }}
     endpointURL: {{ .Values.backup.endpoint }}
     s3Credentials:
       accessKeyId:
