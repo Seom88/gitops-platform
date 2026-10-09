@@ -1,6 +1,6 @@
 # Skills Demonstrated
 
-This document outlines the technical and operational skills demonstrated by the `secured-gitops-tailscale-homelab` project, with specific evidence and links to implementation details.
+This document outlines the technical and operational skills demonstrated by the `gitops-platform` project, with specific evidence and links to implementation details.
 
 ---
 

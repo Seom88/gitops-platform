@@ -1,5 +1,5 @@
 # App-of-Apps chart values — ordered core is plain Applications in templates/apps/ (see ADR-006)
-repoURL: https://github.com/Seom88/secured-gitops-tailscale-homelab.git
+repoURL: https://github.com/Seom88/gitops-platform.git
 platformApps:
   enabled: true
 

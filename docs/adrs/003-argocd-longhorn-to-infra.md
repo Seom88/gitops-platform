@@ -79,7 +79,7 @@ It also keeps the provisioning path free to evolve. In the future, for cloud and
 
 ## Files
 
-### This repository — secured-gitops-tailscale-homelab
+### This repository — gitops-platform
 
 | Action | File |
 |--------|------|

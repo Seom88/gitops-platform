@@ -108,7 +108,7 @@ Rely on `syncPolicy.automated + retry` and let Argo retry until Vault's webhook/
 | Action | File |
 |--------|------|
 | Updated | `infra-talos-homelab/modules/platform/values/argocd/values.yaml` — `argoproj.io/Application` health.lua with `wave-policy` (healthy/sync-only) |
-| Updated | `secured-gitops-tailscale-homelab/gitops/values.yaml` + `values-dev.yaml` — `platformApps.helm/local` emptied; waves now live in `templates/apps/` |
+| Updated | `gitops-platform/gitops/values.yaml` + `values-dev.yaml` — `platformApps.helm/local` emptied; waves now live in `templates/apps/` |
 | Created | `gitops/templates/apps/00-cert-manager.yaml` (0) · `00-external-secrets.yaml` (0) · `00-longhorn.yaml` (0) |
 | Created | `gitops/templates/apps/01-vault.yaml` (1) · `02-seaweedfs.yaml` (2) · `03-monitoring.yaml` (3) · `04-tailscale.yaml` (4) |
 | Kept | `gitops/templates/platform-*.yaml` — ApplicationSets with empty `list` (future unordered fleet placeholder) |

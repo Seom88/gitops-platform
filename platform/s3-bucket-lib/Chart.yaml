@@ -4,7 +4,7 @@ description: "Shared library chart: reusable S3 bucket-init shell script for Rus
 type: library
 version: 0.1.0
 appVersion: "1.0.0"
-home: https://github.com/Seom88/secured-gitops-tailscale-homelab
+home: https://github.com/Seom88/gitops-platform
 maintainers:
   - name: Seom88
     url: https://github.com/Seom88

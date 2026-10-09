@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────
-#  Secured GitOps Homelab — ujust / just recipes
+#  GitOps Platform — ujust / just recipes
 # ──────────────────────────────────────────────
 
 # Auto-load .env if present — secrets for k8s (see .env.example)

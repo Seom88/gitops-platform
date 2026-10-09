@@ -1,4 +1,4 @@
-# Secured GitOps Homelab
+# GitOps Platform
 
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-(Distro--Agnostic)-blue?style=for-the-badge&logo=kubernetes)](https://kubernetes.io/)
 [![GitOps](https://img.shields.io/badge/GitOps-ArgoCD-orange?style=for-the-badge&logo=argo)](https://argoproj.github.io/cd/)
@@ -6,8 +6,8 @@
 [![Network](https://img.shields.io/badge/Network-Tailscale-234E5C?style=for-the-badge&logo=tailscale)](https://tailscale.com/)
 
 [![Release](https://img.shields.io/badge/Release-v1.0.0%20pending-blue?style=flat-square)](./docs/roadmap.md#what-blocks-v100)
-[![CI Status](https://img.shields.io/github/actions/workflow/status/Seom88/secured-gitops-tailscale-homelab/ci.yaml?style=flat-square&label=CI)](https://github.com/Seom88/secured-gitops-tailscale-homelab/actions)
-[![Last Commit](https://img.shields.io/github/last-commit/Seom88/secured-gitops-tailscale-homelab?style=flat-square)](https://github.com/Seom88/secured-gitops-tailscale-homelab/commits)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/Seom88/gitops-platform/ci.yaml?style=flat-square&label=CI)](https://github.com/Seom88/gitops-platform/actions)
+[![Last Commit](https://img.shields.io/github/last-commit/Seom88/gitops-platform?style=flat-square)](https://github.com/Seom88/gitops-platform/commits)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Active%20Development-brightgreen?style=flat-square)](#-roadmap--status)
 
@@ -165,8 +165,8 @@ This is the **GitOps layer** — it assumes a running cluster with ArgoCD alread
 
 ```bash
 # 1. Fork/clone this repo and update repository references
-git clone https://github.com/YOUR_USERNAME/secured-gitops-tailscale-homelab.git
-cd secured-gitops-tailscale-homelab
+git clone https://github.com/YOUR_USERNAME/gitops-platform.git
+cd gitops-platform
 
 # 2. Bootstrap the GitOps layer (deploys root App-of-Apps + configures Vault)
 ./bootstrap/init-gitops.sh prod
@@ -187,7 +187,7 @@ kubectl port-forward -n monitoring svc/grafana 3000:80
 ## 📂 Project Structure
 
 ```
-secured-gitops-tailscale-homelab/
+gitops-platform/
 ├── bootstrap/               # Bootstrap script (init-gitops.sh)
 ├── platform/                # Helm charts (Vault, Monitoring, Tailscale, SeaweedFS)
 ├── gitops/                  # Root App-of-Apps (wave-ordered deployments)
@@ -233,8 +233,8 @@ This project is actively maintained and open to contributions.
 
 ### Get Involved
 
-- 🐛 **Found a bug?** → [GitHub Issues](https://github.com/Seom88/secured-gitops-tailscale-homelab/issues)
-- ✨ **Have an idea?** → [GitHub Discussions](https://github.com/Seom88/secured-gitops-tailscale-homelab/discussions)
+- 🐛 **Found a bug?** → [GitHub Issues](https://github.com/Seom88/gitops-platform/issues)
+- ✨ **Have an idea?** → [GitHub Discussions](https://github.com/Seom88/gitops-platform/discussions)
 - 📝 **Want to contribute?** → See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines
 - 🏗️ **Architectural proposals?** → Open a PR with an ADR in [`docs/adrs/`](./docs/adrs/)
 

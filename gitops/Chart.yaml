@@ -4,9 +4,9 @@ description: App-of-Apps Helm chart — manages ArgoCD Application resources onl
 type: application
 version: 1.0.0
 appVersion: "1.0.0"
-home: https://github.com/Seom88/secured-gitops-tailscale-homelab
+home: https://github.com/Seom88/gitops-platform
 sources:
-  - https://github.com/Seom88/secured-gitops-tailscale-homelab
+  - https://github.com/Seom88/gitops-platform
 maintainers:
   - name: Seom88
     url: https://github.com/Seom88
