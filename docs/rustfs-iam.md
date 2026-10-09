@@ -86,8 +86,38 @@ replaces per-DB SeaweedFS IAM users). Each Cluster keeps its own
 rotation stays a single key.
 
 `s3:CreateBucket` is intentionally omitted: the bucket is created once manually
-in console (no bucket-init Job per user decision 2026-09-28). Barman uploads via
-multipart, hence the multipart actions:
+in console (no bucket-init Job per user decision 2026-09-28).
+
+Verified 2026-10-09 by signing every call with the real `cnpg-backup` key
+(read/write probe from inside the cluster, each operation executed against
+`https://rustfs.lonk-mirfak.ts.net` — status codes below are observed, not
+inferred). Barman needs three distinct **bucket-level listing** verbs that were
+missing; that is exactly what made retention fail on *both* clusters while
+base backups kept succeeding:
+
+| Verb | Who needs it | Observed before the fix |
+| --- | --- | --- |
+| `s3:ListBucketVersions` | **retention.** barman's catalogue enumerates `list_object_versions()` to compute the recovery window, so `barman-cloud-backup-delete` cannot even start without it | 403 |
+| `s3:ListBucketMultipartUploads` | enumerating abandoned multipart uploads | 403 |
+| `s3:GetBucketVersioning` | barman probes bucket versioning before deciding its delete strategy | 403 |
+
+The trap: `s3:ListMultipartUploadParts` (object ARN) is **not** the same
+permission as `s3:ListBucketMultipartUploads` (bucket ARN). The first was
+already granted, which is why uploads and aborts worked while retention
+did not. Symptom on the cluster: `RetentionPolicyFailed` on
+`immich-database` and `grafana-database` once every ~5 minutes, with every
+`ScheduledBackup` reporting `completed`.
+
+Confirmed working, deliberately kept: `HeadBucket`/`ListObjectsV2`
+(`s3:ListBucket`), `s3:GetBucketLocation`, `s3:GetObject`, `s3:PutObject`,
+`CreateMultipartUpload`/`UploadPart` (`s3:PutObject`),
+`s3:ListMultipartUploadParts`, `s3:AbortMultipartUpload`, `s3:DeleteObject`.
+
+No version-related verbs (`s3:DeleteObjectVersion`, `s3:GetObjectVersion`):
+the bucket is **not** versioned — verified by `HeadObject` on a live object,
+which returns no `x-amz-version-id`. Add them only if versioning is ever
+switched on, because with versioning live `s3:DeleteObject` writes a delete
+marker and stops freeing space.
 
 ```json
 {
@@ -95,7 +125,13 @@ multipart, hence the multipart actions:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:ListBucketMultipartUploads",
+        "s3:GetBucketVersioning"
+      ],
       "Resource": ["arn:aws:s3:::cnpg-db-backups"]
     },
     {
@@ -106,6 +142,9 @@ multipart, hence the multipart actions:
   ]
 }
 ```
+
+**Apply in RustFS console** (key `cnpg-backup`): paste the JSON above as the
+session policy, then confirm with `kubectl get events -n immich --field-selector reason=RetentionPolicyFailed` — the count must stop increasing and no new `RetentionPolicyFailed` may appear.
 
 Manual step (once): create bucket `cnpg-db-backups` in console before the first
 backup. No cluster-side provisioning — the old SeaweedFS `backup-init` IAM flow
