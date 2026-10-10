@@ -119,7 +119,34 @@ immich:
     persistence:
       library:
         existingClaim: immich-library
+    # Renders immich-config.yaml (mounted by the chart as IMMICH_CONFIG_FILE).
+    # Video transcoding on the iGPU via VAAPI (Intel iHD driver shipped in the
+    # image): Gen9.5 (UHD 630) supports QSV too, but it drags the libmfx/oneVPL
+    # stack and saturates the render engine per stream instead of leaving
+    # headroom (measured on a same-family i5-10400T: QSV 60-100% GPU per
+    # transcode vs VAAPI 30-35%).
+    # ref: https://docs.immich.app/features/hardware-transcoding
+    configuration:
+      ffmpeg:
+        accel: vaapi
+        accelDecode: true
   server:
+    # Exposes the Intel render node (/dev/dri/renderD128, Gen9.5 UHD 630 on
+    # aleph) for VAAPI transcoding. bjw-s common 5.x builds volumes from
+    # `persistence` (hostPath is a native type), not from raw pod volumes.
+    # hostPath is node-blind: with a single node it is fine; the day a second
+    # node joins, label it (kubectl label node <node> hardware/gpu=intel) and
+    # pin the container with server.defaultPodOptions.nodeSelector, otherwise a
+    # pod landing without the device mounts an empty /dev/dri. The declarative
+    # alternative is the Intel GPU device plugin (gpu.intel.com/i915).
+    persistence:
+      dri:
+        enabled: true
+        type: hostPath
+        hostPath: /dev/dri
+        hostPathType: Directory
+        globalMounts:
+          - path: /dev/dri
     controllers:
       main:
         annotations:
@@ -129,15 +156,15 @@ immich:
           # `secret "immich-database-app" not found`.
           "argocd.argoproj.io/sync-wave": "2"
         # pod:
-          # affinity:
-          #   podAntiAffinity:
-          #     requiredDuringSchedulingIgnoredDuringExecution:
-          #       - labelSelector:
-          #           matchLabels:
-          #             app.kubernetes.io/instance: "{{ .Release.Name }}"
-          #             app.kubernetes.io/name: machine-learning
-          #             app.kubernetes.io/controller: main
-          #         topologyKey: kubernetes.io/hostname
+        #   affinity:
+        #     podAntiAffinity:
+        #       requiredDuringSchedulingIgnoredDuringExecution:
+        #         - labelSelector:
+        #             matchLabels:
+        #               app.kubernetes.io/instance: "{{ .Release.Name }}"
+        #               app.kubernetes.io/name: machine-learning
+        #               app.kubernetes.io/controller: main
+        #         topologyKey: kubernetes.io/hostname
         containers:
           main:
             image: { repository: ghcr.io/immich-app/immich-server, tag: v3.3.1, pullPolicy: IfNotPresent }
@@ -156,6 +183,11 @@ immich:
         containers:
           main:
             image: { repository: ghcr.io/immich-app/immich-machine-learning, tag: v3.3.1, pullPolicy: IfNotPresent }
+    # ML stays on CPU on purpose: OpenVINO on this Gen9.5 UHD 630 measured
+    # identical throughput to CPU (same iGPU benchmarked in
+    # immich-app/immich#8104). Migration path if a Gen12+/NVIDIA node joins
+    # the cluster: image tag v<version>-openvino (or -cuda for NVIDIA),
+    # mount /dev/dri here too, and pin this deployment to the GPU node.
         # pod:
           # affinity:
           #   podAntiAffinity:
