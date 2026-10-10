@@ -8,6 +8,6 @@ maintainers:
     url: https://github.com/Seom88
 dependencies:
   - name: immich
-    version: 0.13.2
+    version: 0.13.4
     repository: oci://ghcr.io/immich-app/immich-charts
 
