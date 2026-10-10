@@ -133,7 +133,7 @@ kube-prometheus-stack:
 
   # Grafana configuration
   grafana:
-    replicas: 2
+    replicas: 1
     # Wave 2: this Deployment references the CNPG-generated
     # `grafana-database-app` Secret (DB set is wave -1, right after the
     # namespace at -2). Without this delay, Argo CD applies the Deployment
@@ -295,7 +295,7 @@ kube-prometheus-stack:
   # Alertmanager configuration:
   alertmanager:
     alertmanagerSpec:
-      replicas: 2
+      replicas: 1
       # Lean: alertmanager is idle except on firing alerts.
       resources:
         requests:

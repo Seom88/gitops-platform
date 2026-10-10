@@ -11,7 +11,7 @@ vault:
 
   injector:
     enabled: true
-    replicas: 2
+    replicas: 1
     # P2 defensive pin — injector metrics disabled (no ServiceMonitor in chart v0.34.1)
     metrics:
       enabled: false
