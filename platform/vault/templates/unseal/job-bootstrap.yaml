@@ -81,7 +81,7 @@ spec:
         - name: bootstrap
           # Digest-pinned (fail-closed Trivy gate); Renovate `kubectl jobs` group.
           # Refresh: skopeo inspect docker://bitnami/kubectl:latest | jq -r .Digest
-          image: bitnami/kubectl:latest@sha256:ab90e1058e5a658cc94b4e7eb6d48e5758cfd6d77b5dd1869513aec3a3054673
+          image: bitnami/kubectl:latest@sha256:999d5eb28f404b45f15117f2a110ff23c6164f76edac261d75d783b6e88252b7
           imagePullPolicy: IfNotPresent
           command:
             - /bin/bash
