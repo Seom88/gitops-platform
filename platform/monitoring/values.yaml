@@ -515,7 +515,10 @@ cnpg:
   imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
   storage:
     class: longhorn-cnpg
-    size: 2Gi
+    # 5Gi since 2026-10-10: with 2Gi the primary filled pg_wal during the
+    # RustFS outage (archiver stalled, WAL retained) and CrashLoopBackOff'd.
+    # 5Gi buys headroom for a multi-hour object-store outage.
+    size: 5Gi
   database: grafana
   owner: grafana
   postgresql:
