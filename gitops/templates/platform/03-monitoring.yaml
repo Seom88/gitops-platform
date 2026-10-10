@@ -39,6 +39,10 @@ spec:
       name: grafana-database
       jqPathExpressions:
         - .spec.bootstrap.recovery
+        # The operator stamps this annotation on every config reload; git
+        # never renders it, so without this the Cluster is permanently
+        # OutOfSync. Scoped to this one annotation only.
+        - .metadata.annotations."cnpg.io/reloadedAt"
   syncPolicy:
     automated:
       prune: true
