@@ -83,6 +83,8 @@ spec:
     - name: {{ .Values.recovery.source }}
       plugin:
         name: barman-cloud.cloudnative-pg.io
+        enabled: true
+        isWALArchiver: false
         parameters:
           barmanObjectName: grafana-backup-store
           serverName: {{ .Values.recovery.serverName }}
