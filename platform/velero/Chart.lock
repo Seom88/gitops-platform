@@ -1,9 +1,9 @@
 dependencies:
 - name: velero
   repository: https://vmware-tanzu.github.io/helm-charts
-  version: 12.2.0
+  version: 12.2.1
 - name: s3-bucket-lib
   repository: file://../s3-bucket-lib
   version: 0.1.0
-digest: sha256:6ea187cf49d281cd1a5788d2ae9f853d8c0621300c53cdccbc00a76d77bbe1f2
-generated: "2026-10-04T20:35:12.119981216-05:00"
+digest: sha256:bf15a1e4533801b120ed33d88f1b88f5151195d09284b26b976ecbeb244cdb45
+generated: "2026-10-10T03:06:44.525928081Z"
