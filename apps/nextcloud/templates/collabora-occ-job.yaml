@@ -72,34 +72,18 @@ spec:
               # Bundled with the image, enabled by default, and breaks
               # document editing next to richdocuments 12.x on NC 35.
               php occ app:disable office
-              # BEFORE the activation, not after: the CLI carries no Host, so
-              # activate-config cannot detect the server on its own — run it
-              # with wopi_url unset and it reports "Could not detect any host",
-              # fails to fetch the discovery endpoint, and caches nothing.
-              # This is also what the admin UI's Save button does, just
+              # wopi_url must be set BEFORE the activation, not after: the CLI
+              # carries no Host, so activate-config cannot detect the server on
+              # its own — run it with the value empty and it reports "Could not
+              # detect any host", fails the fetch, and caches nothing. This is
+              # also what the Save button in Admin → Office does, just
               # non-interactively.
               php occ config:app:set richdocuments wopi_url --value={{ .Values.nextcloud.collabora.wopiUrl | quote }}
-              if php occ richdocuments:activate-config 2>/dev/null; then
-                echo "discovery and capabilities re-fetched"
-              else
-                # Not every release ships the command. When it is missing the
-                # app re-fetches the discovery document itself on the next
-                # file open, so drop any cached one to force that fetch instead
-                # of serving a stale document. Observed path on 12.0.1 (no
-                # .xml suffix, and under remoteData/): the older
-                # richdocuments/richdocuments/discovery.xml layout this used to
-                # be does not exist, and clearing it was a silent no-op.
-                rm -f /var/www/html/data/appdata_*/richdocuments/remoteData/discovery \
-                      /var/www/html/data/appdata_*/richdocuments/remoteData/capabilities \
-                      2>/dev/null || true
-              fi
-              # Gate instead of pretending. activate-config exits 0 even when
-              # the fetch returns nothing, and an empty discovery cache turns
-              # every file open into a 500 much later. Prove from inside the
-              # Nextcloud pod that coolwsd answers and returns a real document.
-              # The loop matters: a cold kit image is still booting while this
-              # job runs — it took a couple of minutes on the first sync — and a
-              # one-shot curl would fail the release before CODE is ready.
+              # Reachability gate BEFORE anything that rewrites the cache, and
+              # the reason it is a loop: a cold kit image is still booting while
+              # this job runs (2.5 min on the first sync), so a one-shot curl
+              # would fail the release before CODE is ready. This part is
+              # read-only, so failing here costs nothing.
               i=0
               status=000
               while [ "$i" -lt 60 ]; do
@@ -114,8 +98,29 @@ spec:
               if [ "$status" != "200" ] || ! grep -q '<wopi-discovery>' /tmp/discovery.xml; then
                 echo "coolwsd never served a usable discovery document (last HTTP $status)" >&2
                 cat /tmp/discovery.xml >&2 || true
-                echo "check: the CODE pod, the collabora Ingress, and ts-operator-proxy-egress (9980)" >&2
+                echo "the cached discovery document was left untouched" >&2
                 exit 1
+              fi
+              # The Save button's job: re-fetch discovery + capabilities and
+              # rewrite what the app caches. Safe to run only because the gate
+              # above proved coolwsd answers — a FAILED activate-config DELETES
+              # the cached discovery document (observed on 12.0.1), so running it
+              # against an unreachable CODE is the one way this job could break
+              # a working install, and deleting the cache here as a fallback
+              # made that worse.
+              if php occ list richdocuments 2>/dev/null | grep -q 'richdocuments:activate-config'; then
+                php occ richdocuments:activate-config
+                # Proof it did the work instead of reporting a no-op.
+                cached="$(ls /var/www/html/data/appdata_*/richdocuments/remoteData/discovery 2>/dev/null | head -n1)"
+                if [ -z "$cached" ] || ! grep -q '<wopi-discovery>' "$cached"; then
+                  echo "activate-config reported success but no discovery document was cached" >&2
+                  exit 1
+                fi
+              else
+                # Not shipped by this richdocuments version. The app re-fetches
+                # on its own when a document is opened, so an existing cache is
+                # left alone rather than deleted.
+                echo "richdocuments:activate-config not available — the app will fetch discovery on first use" >&2
               fi
               echo "collabora reachable and discovery document healthy"
           resources:
