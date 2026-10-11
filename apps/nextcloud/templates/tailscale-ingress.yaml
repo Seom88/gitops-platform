@@ -1,8 +1,15 @@
-{{- if .Values.tailscaleIngress.nextcloud.enabled }}
+{{- range $name, $cfg := .Values.tailscaleIngress }}
+{{- if $cfg.enabled }}
+---
+# Per-app Tailscale Ingress (ADR-018). Rendered from the values above so a
+# second app (Collabora Online) only needs a values entry, not a template.
+# Short hostname only: the operator appends .lonk-mirfak.ts.net via magicDNS.
+# `service`/`port` fall back to the entry name / 8080 for the chart's own
+# Service and stay explicit for the subchart's 9980.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: nextcloud
+  name: {{ $name }}
   namespace: nextcloud
 spec:
   ingressClassName: tailscale
@@ -13,10 +20,11 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: nextcloud
+                name: {{ $cfg.service | default $name }}
                 port:
-                  number: 8080
+                  number: {{ $cfg.port | default 8080 }}
   tls:
   - hosts:
-    - {{ .Values.tailscaleIngress.nextcloud.hostname }}
+    - {{ $cfg.hostname }}
+{{- end }}
 {{- end }}

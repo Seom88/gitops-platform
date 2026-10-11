@@ -187,12 +187,82 @@ nextcloud:
     enabled: false
   mariadb:
     enabled: false
+  # Collabora Online (CODE) — ADR-023. The collabora-online subchart ships
+  # inside the upstream chart tgz, so enabling it needs no
+  # `helm dependency update`. It renders Deployment + Service
+  # `nextcloud-collabora` (ClusterIP 9980) and a ConfigMap that injects
+  # aliasgroups/server_name/extra_params as coolwsd env vars (envFrom).
+  # The Service is `nextcloud-collabora`, not `-collabora-online`: the upstream
+  # chart declares the dependency with `alias: collabora`, and Helm rewrites
+  # the subchart's Chart.Name to the alias, so the fullname helper builds
+  # "<release>-<alias>".
   collabora:
-    enabled: false
+    enabled: true
+    # HPA stays off on purpose: the chart README documents that scaling breaks
+    # collaborative editing (a document session must stay on one pod). With one
+    # replica there is nothing to balance, and per-document affinity hashing
+    # belongs to an ingress controller, which the tailscale proxy does not
+    # expose. Note the subchart's own default is `true`, so this is pinned.
+    autoscaling:
+      enabled: false
+    # Single-user, single-replica sizing. CODE recommends 2Gi/1800m per pod for
+    # an HA footprint; these limits cap one editing session on this node inside
+    # the memory it currently has free (ADR-019).
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1500m
+        memory: 2Gi
+    # URL this Nextcloud instance advertises for the Collabora server, wired by
+    # templates/collabora-occ-job.yaml. It must be the EXTERNAL https hostname:
+    # the office/richdocuments app puts it in the iframe the browser loads and
+    # in the discovery document it caches, so an in-cluster Service name here
+    # sends the browser somewhere it cannot resolve. This value and coolwsd's
+    # `server_name` below describe the same host and change together.
+    wopiUrl: https://collabora.lonk-mirfak.ts.net
+    collabora:
+      # The editor iframe is served by coolwsd, so CODE has to be reachable on
+      # its own tailnet hostname (second Ingress below) — never through
+      # Nextcloud's. This is the host coolwsd advertises in its discovery
+      # document. :443 stays in the value because the tailscale proxy
+      # terminates TLS and forwards plain HTTP to the pod on :9980.
+      server_name: collabora.lonk-mirfak.ts.net:443
+      # The integrator (WOPI host) Collabora accepts: the Nextcloud URL exactly
+      # as the browser sees it. coolwsd validates the Origin of every editor
+      # request against this list, so one entry is required per host that can
+      # serve Nextcloud.
+      aliasgroups:
+        - host: "https://nextcloud.lonk-mirfak.ts.net:443"
+      # TLS terminates at the tailscale proxy, which forwards plain HTTP and
+      # sets X-Forwarded-Proto: https (tailscale/tailscale#8224, >=1.44).
+      # ssl.termination=true makes coolwsd emit https URLs in the discovery
+      # document — which is what the richdocuments/office app hands the
+      # browser. Leaving it out makes the discovery document self-describe as
+      # http and the browser blocks a mixed-content iframe on an https page.
+      # net.post_allow needs no entry: the pod CIDR (10.42.0.0/16) is already
+      # inside CODE's default allowlist (10.0.0.0/8), so the WOPI POSTs back to
+      # Nextcloud pass without widening the list.
+      extra_params: --o:ssl.enable=false --o:ssl.termination=true
 
 # Per-app Tailscale Ingress (ADR-018). Short hostname: the operator appends
 # .lonk-mirfak.ts.net via magicDNS → nextcloud.lonk-mirfak.ts.net
+# `service`/`port` default to the entry name and 8080, which is exactly the
+# upstream chart's Service `nextcloud`, so only the Collabora entry spells
+# them out. One proxy StatefulSet is created per entry.
 tailscaleIngress:
   nextcloud:
     enabled: true
     hostname: nextcloud
+  # CODE cannot ride Nextcloud's Ingress: coolwsd serves the editor iframe
+  # itself, so the browser must reach it on its own hostname. The upstream
+  # chart declares the dependency with `alias: collabora`, so Helm names the
+  # rendered Service after the alias — `nextcloud-collabora`, ClusterIP on
+  # 9980: the only object in this namespace that is neither named like the
+  # entry nor listening on 8080.
+  collabora:
+    enabled: true
+    hostname: collabora
+    service: nextcloud-collabora
+    port: 9980

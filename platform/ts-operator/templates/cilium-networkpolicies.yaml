@@ -239,7 +239,13 @@ spec:
             k8s:io.kubernetes.pod.namespace: nextcloud
       toPorts:
         - ports:
+            # nextcloud web/cron (pod 80, service 8080)
             - port: "80"
+              protocol: TCP
+            # Collabora Online (coolwsd): the app's own Ingress
+            # (ADR-023) has this namespace in its backend, so the proxy needs
+            # the same egress the nextcloud entry already had, plus 9980.
+            - port: "9980"
               protocol: TCP
     - toEndpoints:
         - matchLabels:

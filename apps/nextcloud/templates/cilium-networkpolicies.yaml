@@ -1,8 +1,9 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
 # CiliumNetworkPolicies for nextcloud — per-app zero-trust (ADR-014) + per-app
 # Tailscale ingress (ADR-018).
-# Covers: web/cron container 80 (service 8080); CNPG postgres 5432 + metrics
-# 8000; shared valkey 6379 (egress only, namespace valkey — ADR-021).
+# Covers: web/cron container 80 (service 8080); Collabora Online 9980; CNPG
+# postgres 5432 + metrics 8000; shared valkey 6379 (egress only, namespace
+# valkey — ADR-021).
 # Pod ports only (post-DNAT).
 ---
 apiVersion: cilium.io/v2
@@ -65,7 +66,9 @@ spec:
               protocol: TCP
     # Internet 443 only: app store (apps.nextcloud.com), app updates,
     # notification/shares federation. Nothing else in the namespace needs
-    # generic egress — backups go through the CNPG policy below.
+    # generic egress — backups go through the CNPG policy below. Collabora's
+    # WOPI traffic both ways rides on this rule too: the WOPISrc Nextcloud
+    # hands out is the external tailnet hostname, so it is a non-cluster IP.
     - toEntities:
         - world
       toPorts:
@@ -114,7 +117,9 @@ spec:
               protocol: TCP
     # Per-app Tailscale Ingress proxy (ADR-018): proxy pods run in the
     # tailscale namespace with label tailscale.com/managed=true — web UI/API
-    # only. Pod port 80 (service port 8080 is DNATed away before the policy).
+    # only. Pod ports 80 (nextcloud) and 9980 (Collabora Online); the Service
+    # ports 8080/9980 are DNATed away before the policy sees them. One proxy
+    # StatefulSet exists per Ingress, both carry the same label.
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
@@ -123,7 +128,10 @@ spec:
         - ports:
             - port: "80"
               protocol: TCP
-    # Kubelet probes + apiserver: chart's livenessProbe/readinessProbe hit /status.php on 80
+            - port: "9980"
+              protocol: TCP
+    # Kubelet probes + apiserver: nextcloud's livenessProbe/readinessProbe hit
+    # /status.php on 80, coolwsd's hit / on 9980.
     - fromEntities:
         - host
         - remote-node
@@ -131,6 +139,8 @@ spec:
       toPorts:
         - ports:
             - port: "80"
+              protocol: TCP
+            - port: "9980"
               protocol: TCP
     # Prometheus scraping from monitoring -> CNPG metrics 8000
     - fromEndpoints:
