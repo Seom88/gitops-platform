@@ -173,7 +173,8 @@ Wave 1 (Healthy required):
   └── vault          ← Depends on wave 0 (paused by default — ADR-017; SOPS is the live secrets path)
 
 Wave 2 (Healthy required):
-  └── seaweedfs      ← Depends on wave 1
+  ├── seaweedfs      ← Depends on wave 1
+  └── valkey         ← Shared cache service (namespace valkey); consumed by immich (and future nextcloud) over valkey.valkey.svc.cluster.local
 
 Wave 3 (Sync-only):
   ├── monitoring     ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); owns grafana/prometheus Ingresses; depends on wave 2
@@ -195,7 +196,7 @@ No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress
 - Platform apps: [`gitops/templates/platform/`](../gitops/templates/platform/)
   - `-1-ts-operator.yaml`, `-1-cert-manager.yaml`, `-1-longhorn.yaml`
   - `00-external-secrets.yaml`, `00-velero.yaml`
-  - `01-vault.yaml`, `02-seaweedfs.yaml`, `03-monitoring.yaml`, `03-trivy-operator.yaml`, `04-cloudnative-pg.yaml`
+  - `01-vault.yaml`, `02-seaweedfs.yaml`, `02-valkey.yaml`, `03-monitoring.yaml`, `03-trivy-operator.yaml`, `04-cloudnative-pg.yaml`
 - User apps: [`gitops/templates/apps/`](../gitops/templates/apps/) — `03-homepage.yaml`, `05-immich.yaml`
 - Helm chart: [`gitops/Chart.yaml`](../gitops/Chart.yaml)
 - Configuration: [`gitops/values.yaml`](../gitops/values.yaml) (prod) and [`gitops/values-dev.yaml`](../gitops/values-dev.yaml) (dev)

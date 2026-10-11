@@ -1,0 +1,8 @@
+apiVersion: v2
+name: valkey
+description: Shared Valkey cache consumed by immich and (future) nextcloud.
+type: application
+version: 1.0.0
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88

@@ -169,6 +169,7 @@ immich:
           main:
             image: { repository: ghcr.io/immich-app/immich-server, tag: v3.3.1, pullPolicy: IfNotPresent }
             env:
+              REDIS_HOSTNAME: valkey.valkey.svc.cluster.local
               DB_HOSTNAME:
                 valueFrom: { secretKeyRef: { name: immich-database-app, key: host } }
               DB_USERNAME:
@@ -183,6 +184,8 @@ immich:
         containers:
           main:
             image: { repository: ghcr.io/immich-app/immich-machine-learning, tag: v3.3.1, pullPolicy: IfNotPresent }
+            env:
+              REDIS_HOSTNAME: valkey.valkey.svc.cluster.local
     # ML stays on CPU on purpose: OpenVINO on this Gen9.5 UHD 630 measured
     # identical throughput to CPU (same iGPU benchmarked in
     # immich-app/immich#8104). Migration path if a Gen12+/NVIDIA node joins
@@ -198,8 +201,13 @@ immich:
           #             app.kubernetes.io/name: server
           #             app.kubernetes.io/controller: main
           #         topologyKey: kubernetes.io/hostname
+  # Valkey moved to the shared platform/valkey Application (ADR-021), deployed
+  # in its own `valkey` namespace and consumed by immich today and (future)
+  # nextcloud. The subchart's Deployment/Service (immich-valkey) are pruned by
+  # ArgoCD. The server and machine-learning components now point at
+  # valkey.valkey.svc.cluster.local via REDIS_HOSTNAME above.
   valkey:
-    enabled: true
+    enabled: false
 
 tailscaleIngress:
   immich:

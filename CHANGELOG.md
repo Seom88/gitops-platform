@@ -52,6 +52,7 @@ This project has never been released. There is no version tag and no published b
 **Storage and applications**
 
 - **Velero** — automated backup (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 02:00, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`). Vault is excluded by policy — Raft restores from Velero corrupt the cluster. **Backup is running; restore is not verified** — no drill has been run. See [What blocks v1.0.0](./docs/roadmap.md#what-blocks-v100).
+- **Shared Valkey cache service** — `platform/valkey` (wave 2, `wave-policy: healthy`, namespace `valkey`, PVC 1Gi `longhorn-encrypted`) consumed by immich today and nextcloud later; no `requirepass`, isolation via per-namespace Cilium policy generated from a `consumers` list. immich now points at `valkey.valkey.svc.cluster.local` on server + machine-learning, and its bundled `immich-valkey` subchart resources are disabled and pruned. See [ADR-021](./docs/adrs/021-shared-valkey-cache-service.md).
 - **Barman** — Postgres WAL archiving + PITR for stateful app databases.
 - **Homepage** — digest-pinned dashboard (wave 3), tailnet suffix centralized via `myDomain` for dashboard links only.
 - **Immich + CloudNativePG** — `apps/immich` (wave 5) on the `04-cloudnative-pg` operator (wave 4); library PVC 100Gi→30Gi, DB PVCs 5Gi→2Gi each; `existingClaim` double-nesting fix for the `immich.immich` wrapper/subchart values.
