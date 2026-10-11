@@ -20,7 +20,8 @@ persistence:
   size: 1Gi
   storageClass: longhorn-encrypted
 
-# Lean sizing per ADR-015: the cache holds thumbnails/metadata keys, not bulk data.
+# Small requests because the cache holds thumbnails/metadata keys, not bulk data.
+# Sizing is evidence-driven — ADR-015 (lean-by-watts) is deprecated since 2026-10-10.
 resources:
   requests:
     cpu: 25m

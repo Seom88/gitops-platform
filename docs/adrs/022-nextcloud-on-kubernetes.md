@@ -1,6 +1,6 @@
 # ADR-022: Nextcloud on Kubernetes — Dedicated CNPG Cluster, Shared Valkey, Per-App Ingress
 
-**Status:** Accepted · **Date:** 2026-10-10 · **Deciders:** Seom88 · **Related:** [ADR-014](014-cilium-cni-and-identity-networkpolicies.md) (zero-trust policies), [ADR-015](015-lean-cpu-sizing-homelab-vs-datacenter.md) (lean sizing), [ADR-018](018-per-app-tailscale-ingress.md) (per-app ingress), [ADR-019](019-single-node-bare-metal-migration.md) (single node), [ADR-021](021-shared-valkey-cache-service.md) (shared cache)
+**Status:** Accepted · **Date:** 2026-10-10 · **Deciders:** Seom88 · **Related:** [ADR-014](014-cilium-cni-and-identity-networkpolicies.md) (zero-trust policies), [ADR-015](015-lean-cpu-sizing-homelab-vs-datacenter.md) (deprecated 2026-10-10), [ADR-018](018-per-app-tailscale-ingress.md) (per-app ingress), [ADR-019](019-single-node-bare-metal-migration.md) (single node), [ADR-021](021-shared-valkey-cache-service.md) (shared cache)
 
 ## Context
 
@@ -16,7 +16,7 @@ The user asked for Nextcloud on the homelab cluster: files, calendar, contacts a
 - **Cache + file locking: the shared Valkey, redis `dbindex: 1`.** immich's Bull queues own db0; nextcloud gets db1 via a custom `redis.config.php` (the chart only renders redis settings from `REDIS_HOST*` env and has no dbindex knob). No `requirepass` — the same accepted trade-off as ADR-021: isolation by Cilium, not by a shared password with no distribution mechanism. `consumers` in `platform/valkey/values.yaml` gains `nextcloud`, which is the entire ingress surface.
 - **Data: PVC 8Gi `longhorn-encrypted`**, chart default `Recreate` strategy (RWO volume). Same class as immich-library because these are personal files; 8Gi is a starting point (Longhorn expands volumes online).
 - **Exposure: per-app Ingress `nextcloud.lonk-mirfak.ts.net`** (ADR-018), `phpClientHttpsFix.enabled: true` because TLS terminates at the tailscale proxy and Nextcloud must generate `https://` URLs behind it.
-- **Resources: lean per ADR-015** — requests 200m/1Gi, limits 1500m/2Gi (+ cron sidecar 50m–200m/128–256Mi). The node had ~10.6Gi free at decision time.
+- **Resources:** requests 200m/1Gi, limits 1500m/2Gi (+ cron sidecar 50m–200m/128–256Mi), sized when the node had ~10.6Gi free. The node now reports ~31 GiB allocatable with ~12.5 GB headroom (ADR-019 amendment 2026-10-10), and these numbers stay because no throttling or OOMKill evidence justifies changing them. The lean-by-watts rule they were sized against (ADR-015) is deprecated as of 2026-10-10; sizing authority is now measurement.
 - **Postgres role: plain owner.** No extensions (immich needs vchord/vector; nextcloud needs none), so no `managed.roles`, no `Database` CR, no superuser. Postgres minor upgrade path stays clean.
 - **The app secret flow reuses the house pattern:** CNPG generates `nextcloud-database-app` (keys `host/dbname/username/password` → the chart's `externalDatabase.existingSecret`), admin credentials come from a namespace-local SOPS secret `nextcloud-admin`, and the Deployment is delayed to wave 2 by `deploymentAnnotations` so both exist before it is applied.
 

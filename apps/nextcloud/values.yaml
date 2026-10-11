@@ -133,8 +133,9 @@ nextcloud:
             'password' => '',
           ),
         );
-    # Lean homelab sizing (ADR-015): single-user Nextcloud idles near zero;
-    # limits cap PHP bursts (previews, occ, sync client) on the single node.
+    # Requests stay small because single-user Nextcloud idles near zero; limits
+    # cap PHP bursts (previews, occ, sync client) on the single node. Sizing is
+    # evidence-driven — ADR-015 (lean-by-watts) is deprecated since 2026-10-10.
     resources:
       requests:
         cpu: 200m

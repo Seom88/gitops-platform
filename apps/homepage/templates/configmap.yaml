@@ -74,10 +74,9 @@ data:
             href: https://nextcloud{{ .Values.myDomain }}/
             description: Files, calendar, contacts and office sync
     - Infrastructure:
-        - Proxmox:
-            icon: proxmox
-            href: https://pve01.lonk-mirfak.ts.net/
-            description: Hypervisor, VMs, LXC containers and cluster management
+        - AlmaLinux:
+            icon: si-almalinux
+            description: Bare-metal node aleph, AlmaLinux 10.
         - TrueNAS:
             icon: truenas-scale
             href: https://truenas-scale.lonk-mirfak.ts.net/
@@ -109,4 +108,3 @@ data:
         provider: duckduckgo
         target: _blank
   docker.yaml: ""
-  proxmox.yaml: ""
