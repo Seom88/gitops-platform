@@ -1,0 +1,146 @@
+{{- if .Values.nextcloud.collabora.enabled }}
+# Nextcloud-side wiring for Collabora Online (ADR-023), as a helm hook Job.
+#
+# The upstream chart renders the WOPI client (coolwsd) and nothing on the
+# Nextcloud side: the editing app is not bundled in the image, its server URL
+# lives in the database rather than in config.php, and the discovery document
+# is only fetched when an admin presses Save in the UI. This job is that press,
+# and it is designed to run on every upgrade because every step is idempotent:
+#
+#   app:install     no-op when already installed (a real failure surfaces on
+#                   app:enable, which is strict)
+#   app:enable      idempotent
+#   app:disable     idempotent, and required: the image ships an `office`
+#                   overview app that conflicts with richdocuments 12.x on
+#                   NC 35 (documents stop opening)
+#   config:app:set  idempotent
+#   activate-config re-fetches /hosting/discovery + /hosting/capabilities and
+#                   rewrites the cached documents — the CLI equivalent of the
+#                   UI's Save button
+#
+# post-install AND post-upgrade on purpose, not just post-install: a discovery
+# fetch that runs while CODE (or its Ingress, or ts-operator-proxy-egress) is
+# not reachable yet caches an empty document, and every file open then 500s.
+# Re-running the job replaces that cache, which makes it the repair path too.
+#
+# The job mounts the same PVC subPaths the app Deployment mounts, so it sees
+# the real config.php and data/ directory: no env replication and no database
+# credentials in this template. ReadWriteOnce is satisfied because the cluster
+# is single node (ADR-019) and both pods land on it.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nextcloud-collabora-occ
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "1"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nextcloud
+        app.kubernetes.io/instance: nextcloud
+        app.kubernetes.io/component: collabora-occ
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: occ
+          image: "{{ .Values.nextcloud.image.registry }}/{{ .Values.nextcloud.image.repository }}:{{ .Values.nextcloud.image.tag }}"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              # The app pod owns the PVC; occ needs the database behind
+              # config.php before it answers anything.
+              i=0
+              until php occ status >/dev/null 2>&1; do
+                i=$((i+1))
+                if [ "$i" -gt 60 ]; then
+                  echo "nextcloud never became reachable through 'occ status'" >&2
+                  exit 1
+                fi
+                sleep 5
+              done
+              # The only step that touches the internet: richdocuments comes
+              # from apps.nextcloud.com. Tolerate "already installed" so the
+              # job is re-runnable; a genuine failure surfaces on app:enable.
+              php occ app:install richdocuments || true
+              php occ app:enable richdocuments
+              # Bundled with the image, enabled by default, and breaks
+              # document editing next to richdocuments 12.x on NC 35.
+              php occ app:disable office
+              # BEFORE the activation, not after: the CLI carries no Host, so
+              # activate-config cannot detect the server on its own — run it
+              # with wopi_url unset and it reports "Could not detect any host",
+              # fails to fetch the discovery endpoint, and caches nothing.
+              # This is also what the admin UI's Save button does, just
+              # non-interactively.
+              php occ config:app:set richdocuments wopi_url --value={{ .Values.nextcloud.collabora.wopiUrl | quote }}
+              if php occ richdocuments:activate-config 2>/dev/null; then
+                echo "discovery and capabilities re-fetched"
+              else
+                # Not every release ships the command. When it is missing the
+                # app re-fetches the discovery document itself on the next
+                # file open, so drop any cached one to force that fetch instead
+                # of serving a stale document. Observed path on 12.0.1 (no
+                # .xml suffix, and under remoteData/): the older
+                # richdocuments/richdocuments/discovery.xml layout this used to
+                # be does not exist, and clearing it was a silent no-op.
+                rm -f /var/www/html/data/appdata_*/richdocuments/remoteData/discovery \
+                      /var/www/html/data/appdata_*/richdocuments/remoteData/capabilities \
+                      2>/dev/null || true
+              fi
+              # Gate instead of pretending. activate-config exits 0 even when
+              # the fetch returns nothing, and an empty discovery cache turns
+              # every file open into a 500 much later. Prove from inside the
+              # Nextcloud pod that coolwsd answers and returns a real document.
+              # The loop matters: a cold kit image is still booting while this
+              # job runs — it took a couple of minutes on the first sync — and a
+              # one-shot curl would fail the release before CODE is ready.
+              i=0
+              status=000
+              while [ "$i" -lt 60 ]; do
+                status="$(curl -s -o /tmp/discovery.xml -w '%{http_code}' \
+                  --max-time 15 {{ .Values.nextcloud.collabora.wopiUrl | quote }}/hosting/discovery)" || status=000
+                if [ "$status" = "200" ] && grep -q '<wopi-discovery>' /tmp/discovery.xml; then
+                  break
+                fi
+                i=$((i+1))
+                sleep 5
+              done
+              if [ "$status" != "200" ] || ! grep -q '<wopi-discovery>' /tmp/discovery.xml; then
+                echo "coolwsd never served a usable discovery document (last HTTP $status)" >&2
+                cat /tmp/discovery.xml >&2 || true
+                echo "check: the CODE pod, the collabora Ingress, and ts-operator-proxy-egress (9980)" >&2
+                exit 1
+              fi
+              echo "collabora reachable and discovery document healthy"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            # Same PVC and subPaths as the app Deployment, so occ reads the
+            # real config.php and writes appdata on the shared data PVC.
+            - name: nextcloud-main
+              mountPath: /var/www/html
+              subPath: html
+            - name: nextcloud-main
+              mountPath: /var/www/html/config
+              subPath: config
+              readOnly: true
+            - name: nextcloud-main
+              mountPath: /var/www/html/data
+              subPath: data
+      volumes:
+        - name: nextcloud-main
+          persistentVolumeClaim:
+            # Rendered by the upstream chart from persistence.*.
+            claimName: nextcloud-nextcloud
+{{- end }}
