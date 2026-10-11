@@ -24,6 +24,8 @@ tailscale-operator:
       limits:
         cpu: 500m
         memory: 256Mi
+  apiServerProxyConfig:
+    mode: "true"
   proxyConfig:
     defaultTags: "tag:k8s"
 
