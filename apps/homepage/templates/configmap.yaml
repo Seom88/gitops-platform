@@ -108,3 +108,9 @@ data:
         provider: duckduckgo
         target: _blank
   docker.yaml: ""
+  # NOT a Proxmox integration (see services.yaml: bare-metal since 5fb2315).
+  # Empty placeholder required by homepage v2's config migration: on startup it
+  # copies any /app/src/skeleton/*.yaml missing from /app/config into it. Under
+  # runAsNonRoot: true, /app/config is root:root and that copy fails EACCES,
+  # exiting 1. So every skeleton file must exist here, even when empty.
+  proxmox.yaml: ""

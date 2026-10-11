@@ -75,6 +75,13 @@ spec:
             - mountPath: /app/config/docker.yaml
               name: homepage-config
               subPath: docker.yaml
+            # Empty placeholder, not a Proxmox integration. Required because
+            # homepage v2 materializes any missing /app/src/skeleton/*.yaml into
+            # /app/config at startup, which is EACCES under runAsNonRoot: true.
+            # Dropping this mount CrashLooped the container (commit 5fb2315).
+            - mountPath: /app/config/proxmox.yaml
+              name: homepage-config
+              subPath: proxmox.yaml
             - mountPath: /app/config/kubernetes.yaml
               name: homepage-config
               subPath: kubernetes.yaml
