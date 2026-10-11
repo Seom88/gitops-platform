@@ -4,6 +4,8 @@ kind: Ingress
 metadata:
   name: immich
   namespace: immich
+  annotations:
+    tailscale.com/proxy-group: ingress-proxies
 spec:
   ingressClassName: tailscale
   rules:

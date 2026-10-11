@@ -11,6 +11,8 @@ kind: Ingress
 metadata:
   name: {{ $name }}
   namespace: nextcloud
+  annotations:
+    tailscale.com/proxy-group: ingress-proxies
 spec:
   ingressClassName: tailscale
   rules:

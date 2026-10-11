@@ -4,6 +4,8 @@ kind: Ingress
 metadata:
   name: seaweedfs-s3
   namespace: seaweedfs
+  annotations:
+    tailscale.com/proxy-group: ingress-proxies
 spec:
   ingressClassName: tailscale
   rules:
@@ -27,6 +29,8 @@ kind: Ingress
 metadata:
   name: seaweedfs-admin
   namespace: seaweedfs
+  annotations:
+    tailscale.com/proxy-group: ingress-proxies
 spec:
   ingressClassName: tailscale
   rules:

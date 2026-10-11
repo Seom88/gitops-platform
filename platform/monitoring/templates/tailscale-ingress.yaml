@@ -4,6 +4,8 @@ kind: Ingress
 metadata:
   name: grafana
   namespace: monitoring
+  annotations:
+    tailscale.com/proxy-group: ingress-proxies
 spec:
   ingressClassName: tailscale
   rules:
@@ -27,6 +29,8 @@ kind: Ingress
 metadata:
   name: prometheus
   namespace: monitoring
+  annotations:
+    tailscale.com/proxy-group: ingress-proxies
 spec:
   ingressClassName: tailscale
   rules:
