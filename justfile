@@ -481,8 +481,8 @@ scan:
       else
         # Same two-tier gate as CI Security: digest-pinned first-party images
         # block; upstream subchart images are advisory (fixed upstream only).
-        case "$image" in
-          ghcr.io/gethomepage/homepage*|bitnami/kubectl*|nginx:*|docker.io/library/nginx:*|velero/velero-plugin-for-aws*|amazon/aws-cli:*)
+          case "$image" in
+            ghcr.io/gethomepage/homepage*|bitnami/kubectl*|nginx:*|docker.io/library/nginx:*|docker.io/library/nextcloud:*|velero/velero-plugin-for-aws*|amazon/aws-cli:*)
             failed=1 ;;
           *)
             advisory=1 ;;

@@ -1,0 +1,22 @@
+{{- if .Values.tailscaleIngress.nextcloud.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nextcloud
+  namespace: nextcloud
+spec:
+  ingressClassName: tailscale
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nextcloud
+                port:
+                  number: 8080
+  tls:
+  - hosts:
+    - {{ .Values.tailscaleIngress.nextcloud.hostname }}
+{{- end }}

@@ -1,0 +1,188 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for nextcloud — per-app zero-trust (ADR-014) + per-app
+# Tailscale ingress (ADR-018).
+# Covers: web/cron container 80 (service 8080); CNPG postgres 5432 + metrics
+# 8000; shared valkey 6379 (egress only, namespace valkey — ADR-021).
+# Pod ports only (post-DNAT).
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nextcloud-allow-dns
+  namespace: nextcloud
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nextcloud-allow-egress
+  namespace: nextcloud
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # Intra-nextcloud: app container <-> CNPG instance (5432 + metrics 8000).
+    # valkey is cross-namespace (below), so 6379 is NOT in this list.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: nextcloud
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+    # Shared Valkey cache (platform/valkey, namespace valkey — ADR-021): only
+    # nextcloud egresses to it, on 6379. Valkey initiates nothing back.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: valkey
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+    # Internet 443 only: app store (apps.nextcloud.com), app updates,
+    # notification/shares federation. Nothing else in the namespace needs
+    # generic egress — backups go through the CNPG policy below.
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Hubble
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: hubble-relay
+      toPorts:
+        - ports:
+            - port: "4244"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nextcloud-allow-ingress
+  namespace: nextcloud
+spec:
+  endpointSelector: {}
+  ingress:
+    # Intra-nextcloud (app <-> CNPG + metrics)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: nextcloud
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+    # CNPG operator reconciliation (lives in cnpg-system) -> postgres 5432 + metrics 8000
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
+    # Per-app Tailscale Ingress proxy (ADR-018): proxy pods run in the
+    # tailscale namespace with label tailscale.com/managed=true — web UI/API
+    # only. Pod port 80 (service port 8080 is DNATed away before the policy).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+            k8s:tailscale.com/managed: "true"
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # Kubelet probes + apiserver: chart's livenessProbe/readinessProbe hit /status.php on 80
+    - fromEntities:
+        - host
+        - remote-node
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # Prometheus scraping from monitoring -> CNPG metrics 8000
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+---
+# CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
+# Patrón Velero: FQDN:443 L4 puro (any rules: turns this L7 and Cilium diverts
+# raw TLS through Envoy, breaking the handshake) + toCIDR tailnetIp/32:443 as
+# FQDN-independent fallback (Cilium only learns FQDN->IP by observing DNS) +
+# world:443. DNS is already allowed by nextcloud-allow-dns (port 53).
+{{- if .Values.backup.enabled }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nextcloud-backup-to-rustfs-s3
+  namespace: nextcloud
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: nextcloud-database
+  egress:
+    - toFQDNs:
+        - matchName: rustfs.lonk-mirfak.ts.net
+        - matchPattern: "*.lonk-mirfak.ts.net"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # S3 vía tailnet IP (FQDN-independent fallback, 443 only — patrón velero).
+    - toCIDR:
+        - {{ required "backup.tailnetIp is required (set backup.tailnetIp in apps/nextcloud values.yaml)" .Values.backup.tailnetIp }}/32
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+{{- end }}
+{{- end }}

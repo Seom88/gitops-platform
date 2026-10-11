@@ -174,7 +174,7 @@ Wave 1 (Healthy required):
 
 Wave 2 (Healthy required):
   ├── seaweedfs      ← Depends on wave 1
-  └── valkey         ← Shared cache service (namespace valkey); consumed by immich (and future nextcloud) over valkey.valkey.svc.cluster.local
+  └── valkey         ← Shared cache service (namespace valkey); consumed by immich (redis db 0, Bull queues) and nextcloud (redis db 1, cache + locking) over valkey.valkey.svc.cluster.local
 
 Wave 3 (Sync-only):
   ├── monitoring     ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); owns grafana/prometheus Ingresses; depends on wave 2
@@ -185,7 +185,10 @@ Wave 4 (Healthy required):
   └── cloudnative-pg ← PostgreSQL operator for apps
 
 Wave 5 (Sync-only):
-  └── immich         ← User app on CloudNativePG (library 30Gi×2, DB 2Gi×3)
+  └── immich         ← User app on CloudNativePG (library 30Gi×2, DB 3Gi×2) + shared valkey
+
+Wave 6 (Sync-only):
+  └── nextcloud      ← User app on CloudNativePG (data 8Gi longhorn-encrypted, DB 3Gi×2) + shared valkey (redis db 1); own Ingress nextcloud.lonk-mirfak.ts.net
 
 No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress (ADR-018 + consolidation amendment).
 ```
@@ -197,7 +200,7 @@ No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress
   - `-1-ts-operator.yaml`, `-1-cert-manager.yaml`, `-1-longhorn.yaml`
   - `00-external-secrets.yaml`, `00-velero.yaml`
   - `01-vault.yaml`, `02-seaweedfs.yaml`, `02-valkey.yaml`, `03-monitoring.yaml`, `03-trivy-operator.yaml`, `04-cloudnative-pg.yaml`
-- User apps: [`gitops/templates/apps/`](../gitops/templates/apps/) — `03-homepage.yaml`, `05-immich.yaml`
+- User apps: [`gitops/templates/apps/`](../gitops/templates/apps/) — `03-homepage.yaml`, `05-immich.yaml`, `06-nextcloud.yaml`
 - Helm chart: [`gitops/Chart.yaml`](../gitops/Chart.yaml)
 - Configuration: [`gitops/values.yaml`](../gitops/values.yaml) (prod) and [`gitops/values-dev.yaml`](../gitops/values-dev.yaml) (dev)
 - ADR: [ADR-006: App Health and Vault Ordering](./adrs/006-app-health-and-vault-ordering.md)

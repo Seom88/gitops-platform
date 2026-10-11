@@ -1,0 +1,12 @@
+apiVersion: v2
+name: nextcloud
+description: "Nextcloud files and sync wired to the nextcloud-database CNPG cluster and the shared platform/valkey cache"
+type: application
+version: 1.0.0
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88
+dependencies:
+  - name: nextcloud
+    version: 9.4.0
+    repository: https://nextcloud.github.io/helm/

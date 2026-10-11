@@ -6,10 +6,12 @@ image: docker.io/valkey/valkey:9.1.2-alpine@sha256:48332870af354a799964c0012ae11
 ciliumNetworkPolicy:
   enabled: true
 
-# Namespaces allowed to reach the cache on 6379. Add `nextcloud` when that
-# Application lands. Zero-trust means this list is the entire ingress surface.
+# Namespaces allowed to reach the cache on 6379. immich uses redis db0
+# (Bull queues); nextcloud uses dbindex 1 (config in apps/nextcloud/values.yaml).
+# Zero-trust means this list is the entire ingress surface.
 consumers:
   - immich
+  - nextcloud
 
 # longhorn-encrypted is the app volume class (longhorn-cnpg is databases only).
 # Data is a rebuildable cache; the volume only avoids cold restarts.
