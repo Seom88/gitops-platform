@@ -28,8 +28,8 @@ Stated precisely, because the previous "10 charts — Complete" claim was wrong 
 
 | | Count | Detail |
 |---|---|---|
-| First-party charts in this repo | 12 | `gitops` + 11 under `platform/` and `apps/` |
-| …that render `cilium-networkpolicies.yaml` | **11** | `platform/{vault,velero,longhorn,seaweedfs,monitoring,trivy-operator,ts-operator,valkey}`, `apps/{homepage,immich,nextcloud}` |
+| First-party charts in this repo | 11 | `gitops` + 10 under `platform/` and `apps/` |
+| …that render `cilium-networkpolicies.yaml` | **10** | `platform/{vault,velero,longhorn,monitoring,trivy-operator,ts-operator,valkey}`, `apps/{homepage,immich,nextcloud}` |
 | …that do not | **1** | `gitops` (the App-of-Apps chart) — see note below |
 
 The `argocd` and `external-secrets` workloads are **not first-party charts in this repo**; there is no `platform/argocd/` or `platform/external-secrets/` directory to add a template to. They are:
@@ -129,7 +129,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 |---|---|---|---|
 | `k8s-nameserver` | Former `DNSConfig` device for MagicDNS `ts.net` → CoreDNS sibling `ts.net:53` (removed with `platform/coredns-patch`, ADR-011 historical) | ❌ removed | — |
 | `rustfs-egress` | `ExternalName` `rustfs.lonk-mirfak.ts.net` for Velero/S3 via Tailscale | ✅ present | ✅ stays (future optional: consolidate via `TCPRoute`; out of scope for v2) |
-| per-app Ingresses | One `Ingress` + device per app, owned by each chart via `tailscaleIngress` values (`argocd`/`grafana`/`prometheus`/`longhorn`/`seaweedfs-s3`/`seaweedfs-admin`/`homepage`/`nextcloud`/`hubble`/`vault`, each at `/` root; orphans in `ts-operator/templates/infra/`, ADR-018) | ✅ present (10 devices) | 🔀 consolidated — merged into `gateway-envoy` |
+| per-app Ingresses | One `Ingress` + device per app, owned by each chart via `tailscaleIngress` values (`argocd`/`grafana`/`prometheus`/`longhorn`/`homepage`/`nextcloud`/`hubble`/`vault`, each at `/` root; orphans in `ts-operator/templates/infra/`, ADR-018) | ✅ present (8 devices) | 🔀 consolidated — merged into `gateway-envoy` |
 | `gateway-envoy` | Envoy Gateway `LoadBalancer` with `loadBalancerClass: tailscale` (BYOD) | — | ✅ **single device** serving all 9 app hostnames |
 
 > Operator itself is control-plane only and not counted. `k8s-nameserver`/`DNSConfig` removed with `coredns-patch`; `rustfs-egress` is unchanged in v2.
@@ -137,7 +137,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 **BYOD architecture (brief):**
 
 - Envoy Gateway chart provides `GatewayClass: tailscale` and a `LoadBalancer` (`loadBalancerClass: tailscale`) — single Tailscale device `gateway-envoy` replaces the nine per-app L7 devices above. See [Tailscale BYOD Gateway API](https://tailscale.com/docs/solutions/kubernetes-operator-byod-gateway-api).
-- One `Gateway` with multiple `listeners` / `hostnames` (one per app: `argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `nextcloud`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`), each terminating its own TLS cert. One `HTTPRoute` per service (replaces the per-app `Ingress`es).
+- One `Gateway` with multiple `listeners` / `hostnames` (one per app: `argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `nextcloud`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`), each terminating its own TLS cert. One `HTTPRoute` per service (replaces the per-app `Ingress`es).
 - The NGINX gateway is already gone (ADR-018 removed `Deployment`/`Service`/`ConfigMap` + `sub_filter`/`rewrite` hacks); v2 only swaps the L7 frontend from per-app `Ingress`es to `HTTPRoute`s on `gateway-envoy`. Vault stays a standard hostname-routed route throughout.
 - Substrate ready: Cilium Gateway API CRDs `v1.2.3` are already installed in the cluster (ADR-014); no CNI/storage change needed.
 
@@ -152,7 +152,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 **Checklist — v2:**
 
 - [ ] Install Envoy Gateway chart (Gateway API provider) and define `GatewayClass: tailscale`
-- [ ] Define single `Gateway: gateway-envoy` (`LoadBalancer`, `loadBalancerClass: tailscale`) with per-app TLS listeners/hostnames and per-service `HTTPRoute`s (argocd, grafana, prometheus, longhorn, seaweedfs-s3, seaweedfs-admin, homepage, nextcloud, hubble, vault)
+- [ ] Define single `Gateway: gateway-envoy` (`LoadBalancer`, `loadBalancerClass: tailscale`) with per-app TLS listeners/hostnames and per-service `HTTPRoute`s (argocd, grafana, prometheus, longhorn, homepage, nextcloud, hubble, vault)
 - [x] Remove L7 gateway hacks — done early via ADR-018 (NGINX `Deployment`/`Service`/`ConfigMap` deleted; per-app `Ingress`es at `/` root, no `sub_filter`/`rewrite`)
 - [ ] Update docs/runbooks (URLs, `helm template` verification, `kubectl get gateway/httproute` checks, rollback to per-app `Ingress`es)
 

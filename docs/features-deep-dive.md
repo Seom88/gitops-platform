@@ -58,7 +58,7 @@ Vault is the industry standard for secrets management. Implementing it from scra
 ### What's Implemented
 
 **Tailscale Operator** for mesh VPN ingress — one Ingress + device per app:
-- One MagicDNS device/hostname per app (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev), each served at `/` root — no subpath routing — see [ADR-018](./adrs/018-per-app-tailscale-ingress.md)
+- One MagicDNS device/hostname per app (`argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev), each served at `/` root — no subpath routing — see [ADR-018](./adrs/018-per-app-tailscale-ingress.md)
 - No public port exposure — ingress only via Tailscale mesh
 - Per-user access control — OAuth scopes integrated with Tailscale
 - Subnet routing — cluster pods accessible directly from Tailscale network
@@ -93,7 +93,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 
 - Operator deployment: [`platform/ts-operator/Chart.yaml`](../platform/ts-operator/Chart.yaml) (wave `-1`)
 - Per-app Ingresses: each chart renders its own `tailscale-ingress.yaml` (one Ingress + device per app)
-  - `homepage`, `monitoring` (`grafana` + `prometheus`), `longhorn`, `seaweedfs` (`s3` + `admin`), `vault` — hostnames via `tailscaleIngress` values (`-dev` in dev)
+  - `homepage`, `monitoring` (`grafana` + `prometheus`), `longhorn`, `vault` — hostnames via `tailscaleIngress` values (`-dev` in dev)
   - Orphans (`argocd`, `hubble`) ship from [`platform/ts-operator/templates/infra/`](../platform/ts-operator/templates/infra/)
 - Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress` (managed-proxy selector); no `ts-ingress` chart remains
 - ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-018: Per-App Tailscale Ingresses](./adrs/018-per-app-tailscale-ingress.md) (supersedes ADR-012), [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
@@ -106,7 +106,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 
 **Cilium CNI (`v1.20.1`) + Gateway API `v1.2.3` with Identity-Aware NetworkPolicies**:
 - **eBPF Kube-Proxy Replacement (strict)** — Service routing and load-balancing in kernel space without iptables; `socketLB: hostNamespaceOnly`, `cgroup.hostRoot: /sys/fs/cgroup`.
-- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across 9 charts (`vault`, `longhorn-system`, `seaweedfs`, `monitoring`, `tailscale`, `tailscale-operator`, `velero`, `cert-manager`, `external-secrets`); gated by `ciliumNetworkPolicy.enabled=true`.
+- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across 8 charts (`vault`, `longhorn-system`, `monitoring`, `tailscale`, `tailscale-operator`, `velero`, `cert-manager`, `external-secrets`); gated by `ciliumNetworkPolicy.enabled=true`.
 - **L7 DNS Visibility & Scoping** — Egress DNS restricted to `kube-system/k8s-app=kube-dns` on UDP/TCP 53 with Cilium L7 DNS rules (`toFQDNs.matchPattern: "*"` + `rules.dns`), blocking DNS-based exfiltration while allowing MagicDNS (`*.ts.net`).
 - **Zero-Trust Default Posture** — `endpointSelector: {}` default-deny per namespace; explicit allows for intra-namespace, kube-apiserver (443/6443), and Hubble relay (4244/4245).
 - **Observability Integration** — Hubble relay whitelisted (`ports 4244/4245`) for real-time flow tracing (`hubble observe`).
@@ -116,16 +116,16 @@ open https://prometheus.lonk-mirfak.ts.net/
 1. **eBPF Datapath vs iptables** — Cilium replaces kube-proxy (`kubeProxyReplacement: strict`) with eBPF programs attached to the kernel. With `ipam: kubernetes`, Cilium owns pod address allocation and service routing end to end.
 2. **Policy Lifecycle — 3-Rule Template per Namespace** — Each chart renders `platform/*/templates/cilium-networkpolicies.yaml` (gated by `ciliumNetworkPolicy.enabled`):
    - `allow-dns` — `endpointSelector: {}` + `toEndpoints: {k8s-app: kube-dns, k8s:io.kubernetes.pod.namespace: kube-system}` on port 53 (UDP/TCP) with `toFQDNs: [{matchPattern: "*"}]` and `rules.dns`.
-   - `allow-egress` — kube-apiserver (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (e.g., Vault Raft, Longhorn/SeaweedFS storage ports).
+    - `allow-egress` — kube-apiserver (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (e.g., Vault Raft, Longhorn storage ports).
    - `allow-ingress` — intra-namespace and `toEntities: {host, remote-node, kube-apiserver}` + `health` probes.
 3. **Identity & DNS Details** — Cilium assigns cryptographic endpoint identities (not volatile Pod IPs). Egress uses `toFQDNs` + `rules.dns` for FQDN-aware filtering and `toEntities` (`host`, `remote-node`, `kube-apiserver`) for node-level probes. `kube-apiserver` entity covers the API server regardless of IP.
 4. **Hubble Observability** — Hubble parses eBPF flow events. Relay listens on `4244` (gRPC) and `4245` (Hubble UI/health); policies whitelist these ports. Verify flows with `hubble observe -n <ns> --follow` or `hubble observe --verdict DROPPED` to debug silent drops. UI exposed via its own per-chart Ingress at `https://hubble.lonk-mirfak.ts.net` (see ADR-014).
-5. **Operational Notes** — New inter-service traffic must be added explicitly to the caller's `cilium-networkpolicies.yaml`. Storage data planes (Longhorn 9500/8000/8500-8503, SeaweedFS 8333/9333) stay unrestricted intra-namespace to avoid attachment deadlocks on ephemeral ports (ADR-014 storage invariant). Renovate automerges Cilium/Gateway API patch updates; Cilium major bumps require manual review.
+5. **Operational Notes** — New inter-service traffic must be added explicitly to the caller's `cilium-networkpolicies.yaml`. Storage data planes (Longhorn 9500/8000/8500-8503) stay unrestricted intra-namespace to avoid attachment deadlocks on ephemeral ports (ADR-014 storage invariant). Renovate automerges Cilium/Gateway API patch updates; Cilium major bumps require manual review.
 
 ### Key Files
 
 - Fallback (non-Cilium clusters): `platform/*/templates/networkpolicy.yaml` (`networking.k8s.io/v1`) — retained for non-Cilium clusters, not enforced when Cilium is active
-- Cilium (enforced): `platform/*/templates/cilium-networkpolicies.yaml` (9 charts, gated by `ciliumNetworkPolicy.enabled=true`) + `platform/*/values.yaml` (`ciliumNetworkPolicy.enabled: true` default)
+- Cilium (enforced): `platform/*/templates/cilium-networkpolicies.yaml` (8 charts, gated by `ciliumNetworkPolicy.enabled=true`) + `platform/*/values.yaml` (`ciliumNetworkPolicy.enabled: true` default)
 - ADRs: [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md) · [Networking guide](./networking.md)
 
 ---
@@ -172,12 +172,11 @@ Wave 0 (Healthy required):
 Wave 1 (Healthy required):
   └── vault          ← Depends on wave 0 (paused by default — ADR-017; SOPS is the live secrets path)
 
-Wave 2 (Healthy required):
-  ├── seaweedfs      ← Depends on wave 1
+Wave 2 (Sync-only):
   └── valkey         ← Shared cache service (namespace valkey); consumed by immich (redis db 0, Bull queues) and nextcloud (redis db 1, cache + locking) over valkey.valkey.svc.cluster.local
 
 Wave 3 (Sync-only):
-  ├── monitoring     ← Prometheus + Grafana + Loki (SeaweedFS S3) + Alloy DaemonSet (stateless, RBAC auto); owns grafana/prometheus Ingresses; depends on wave 2
+  ├── monitoring     ← Prometheus + Grafana + Loki (external RustFS S3) + Alloy DaemonSet (stateless, RBAC auto); owns grafana/prometheus Ingresses
   ├── trivy-operator ← In-cluster scan every 6h (CRDs + Prometheus metrics); complements CI-time Trivy
   └── homepage       ← User app (dashboard); `myDomain` suffix for links only
 
@@ -199,7 +198,7 @@ No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress
 - Platform apps: [`gitops/templates/platform/`](../gitops/templates/platform/)
   - `-1-ts-operator.yaml`, `-1-cert-manager.yaml`, `-1-longhorn.yaml`
   - `00-external-secrets.yaml`, `00-velero.yaml`
-  - `01-vault.yaml`, `02-seaweedfs.yaml`, `02-valkey.yaml`, `03-monitoring.yaml`, `03-trivy-operator.yaml`, `04-cloudnative-pg.yaml`
+  - `01-vault.yaml`, `02-valkey.yaml`, `03-monitoring.yaml`, `03-trivy-operator.yaml`, `04-cloudnative-pg.yaml`
 - User apps: [`gitops/templates/apps/`](../gitops/templates/apps/) — `03-homepage.yaml`, `05-immich.yaml`, `06-nextcloud.yaml`
 - Helm chart: [`gitops/Chart.yaml`](../gitops/Chart.yaml)
 - Configuration: [`gitops/values.yaml`](../gitops/values.yaml) (prod) and [`gitops/values-dev.yaml`](../gitops/values-dev.yaml) (dev)
@@ -214,7 +213,7 @@ No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress
 **Complete observability stack:**
 - **Prometheus** — Metrics collection and storage (time-series database)
 - **Grafana** — Dashboard and visualization engine
-- **Loki** — Log aggregation (logs as a dimension, not indexed text) — SingleBinary with S3 (SeaweedFS) backend and gateway (`monitoring-loki-gateway`)
+- **Loki** — Log aggregation (logs as a dimension, not indexed text) — SingleBinary with S3 (external RustFS) backend and gateway (`monitoring-loki-gateway`)
 - **Grafana Alloy** — Stateless DaemonSet log collector (`discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`). No PVC (WAL disabled, ephemeral `/tmp/alloy`), RBAC auto-created by the alloy chart, **replaces Promtail (deprecated)**
 - **Integration** — Vault metrics, ArgoCD health, Longhorn status; Loki datasource in Grafana with `X-Scope-OrgID` header
 - **Secure Ingress** — All dashboards behind Tailscale zero-trust (single-host gateway)
@@ -295,9 +294,9 @@ podSpec:
         storageClassName: longhorn
 ```
 
-### SeaweedFS: S3-Compatible Object Storage
+### RustFS: External S3-Compatible Object Storage
 
-**What it is:** Distributed object storage (like AWS S3) that runs in the cluster.
+**What it is:** External S3-compatible object storage running outside the cluster.
 
 **Why it matters:**
 - Log aggregation backend (Loki stores logs in S3)
@@ -306,32 +305,29 @@ podSpec:
 - S3 API compatibility — works with any S3 client library
 
 **How it works:**
-1. **Deployment** — SeaweedFS runs as StatefulSet with Longhorn PVCs
-2. **S3 API** — Exposes S3-compatible endpoint inside cluster (`seaweedfs:8333`)
+1. **Deployment** — Runs on a VM outside the cluster (managed externally)
+2. **S3 API** — Exposes S3-compatible endpoint at `rustfs.lonk-mirfak.ts.net`
 3. **Credentials** — Vault stores S3 access keys, External Secrets syncs to K8s
 4. **Applications** — Use standard S3 client (boto3, AWS SDK) with cluster endpoint
 
-### Integration: Loki + SeaweedFS
+### Integration: Loki + RustFS
 
 ```yaml
-# Loki writes logs to SeaweedFS S3 backend
+# Loki writes logs to RustFS S3 backend
 loki:
   config:
     storage_config:
       s3:
-        endpoint: seaweedfs:8333
+        endpoint: rustfs.lonk-mirfak.ts.net
         s3forcepathstyle: true
         insecure: true
-        access_key_id: ${SEAWEEDFS_ACCESS_KEY}
-        secret_access_key: ${SEAWEEDFS_SECRET_KEY}
+        access_key_id: ${RUSTFS_ACCESS_KEY}
+        secret_access_key: ${RUSTFS_SECRET_KEY}
 ```
 
 ### Key Files
 
 - Longhorn deployment: [`gitops/templates/platform/-1-longhorn.yaml`](../gitops/templates/platform/-1-longhorn.yaml) (wave -1, CSI-gated)
-- SeaweedFS chart: [`platform/seaweedfs/`](../platform/seaweedfs/)
-  - Configuration: [`platform/seaweedfs/values.yaml`](../platform/seaweedfs/values.yaml)
-  - S3 credentials management: Vault integration via External Secrets
 - ADR: [ADR-005: Longhorn Back to GitOps](./adrs/005-longhorn-back-to-gitops.md)
 
 ---
