@@ -43,7 +43,7 @@ Both are currently disabled by default (`vault.enabled: false`, `eso.enabled: fa
 
 ## Where the project stands today
 
-The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, SOPS + age as the default secrets path (Vault paused, not deleted — ADR-017), Tailscale per-app ingress (one device per app), and distributed storage via Longhorn + SeaweedFS. On top of that there's a CI layer that validates every push (`ci.yaml`: lint + Trivy in one run), and a controlled workflow for deploys (`deploy.yaml`).
+The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, SOPS + age as the default secrets path (Vault paused, not deleted — ADR-017), Tailscale per-app ingress (one device per app), and distributed storage via Longhorn + external RustFS S3. On top of that there's a CI layer that validates every push (`ci.yaml`: lint + Trivy in one run), and a controlled workflow for deploys (`deploy.yaml`).
 
 **Topology.** The cluster was reduced from 3 workers to 1 node ([ADR-019](./adrs/019-single-node-bare-metal-migration.md)). This repo therefore delivers **pod-level** HA — PDBs, multi-replica stateless workloads, Longhorn snapshots, and off-cluster S3 backups — but **not node-level HA**. Node failure is total downtime: there is no pod redistribution and no Raft quorum. Multi-node HA is a property of the cluster, not of this repository. The migration target is single-node bare metal; the substrate choice is a maintainer concern and is not a v1.0.0 gate.
 
@@ -72,7 +72,7 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 - [x] ArgoCD with custom health checks
 - [x] Longhorn as distributed storage (wave 0)
 - [x] Prometheus + Grafana + Loki
-- [x] SeaweedFS as S3-compatible storage
+- [x] External RustFS as S3-compatible storage (Loki + Velero buckets)
 - [x] Architecture Decision Records (ADRs)
 
 ### Phase 2 — Automation & Observability ✅ Complete
@@ -85,8 +85,8 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 ### Phase 3 — Storage & Scale ✅ Complete
 
 - [x] Longhorn — distributed block storage
-- [x] SeaweedFS — S3-compatible object storage
-- [x] Loki → SeaweedFS integration for centralized logging (SingleBinary + gateway, buckets `loki-chunks`/`loki-ruler`)
+- [x] External RustFS — S3-compatible object storage
+- [x] Loki → RustFS integration for centralized logging (SingleBinary + gateway, bucket `loki`)
 - [x] Velero — **automated backup** (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 02:00, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`) — deployed and running. Vault is excluded by policy; its hourly protection is the Longhorn `vault-hourly-snapshot` RecurringJob, not a Velero schedule. **Restore is not verified**: no drill has been run. See [What blocks v1.0.0](#what-blocks-v100).
 
 ### Phase 4 — Hardening & Developer Experience (in progress, v1.0)
@@ -160,7 +160,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 
 - Not removing Tailscale entirely — `rustfs-egress` and tailnet ACLs remain (`k8s-nameserver`/`DNSConfig` removed).
 - Not touching the `rustfs-egress` device.
-- No change to storage (Longhorn/SeaweedFS), Vault HA, or ArgoCD waves beyond ingress.
+- No change to storage (Longhorn + RustFS), Vault HA, or ArgoCD waves beyond ingress.
 
 ### Compliance & policy
 
@@ -203,7 +203,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 **Already complete:**
 - [x] ArgoCD App-of-Apps
 - [x] Zero-trust ingress via Tailscale
-- [x] Longhorn + SeaweedFS
+- [x] Longhorn + RustFS (external S3)
 - [x] Prometheus + Grafana + Loki + Alloy (DaemonSet log collector)
 - [x] Velero — **automated backup** (Wave 0, RustFS S3 `velero-homelab`, chart `12.2.0` / app `1.18.2`)
 - [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014)

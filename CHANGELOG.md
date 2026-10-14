@@ -22,7 +22,7 @@ This project has never been released. There is no version tag and no published b
 - **App-of-Apps** — ApplicationSets driven by Helm values, platform local/helm split, per-environment values (`values.yaml` / `values-dev.yaml`)
 - **GitOps-only architecture** — ArgoCD and Longhorn installation moved out to the provisioning repo; this repo is a pure App-of-Apps layer consuming cluster prerequisites
 - **Longhorn** — distributed block storage (plus local-path for dev environments)
-- **SeaweedFS** — S3-compatible object storage; Loki backed by SeaweedFS S3
+- **RustFS (external)** — S3-compatible object storage (LAN/Tailscale), all in one external endpoint; Loki backed by RustFS S3
 - **Monitoring stack** — kube-prometheus-stack (Prometheus + Grafana), Loki, and Alloy as a stateless `DaemonSet` log collector
 - **cert-manager** — automated TLS certificates
 - **Tailscale operator** — secure `.tailnet` ingress for platform services, no public ports
@@ -58,10 +58,11 @@ This project has never been released. There is no version tag and no published b
 - **Immich + CloudNativePG** — `apps/immich` (wave 5) on the `04-cloudnative-pg` operator (wave 4); library PVC 100Gi→30Gi, DB PVCs 5Gi→2Gi each; `existingClaim` double-nesting fix for the `immich.immich` wrapper/subchart values.
 - **Nextcloud** — `apps/nextcloud` (wave 6, `sync-only`): upstream chart `nextcloud/nextcloud 9.4.0` (appVersion 35.0.1, apache flavor, digest-pinned) over a dedicated `nextcloud-database` CNPG cluster (initdb, PG 18.6, Barman to the shared `cnpg-db-backups` bucket with prefix `nextcloud/`), cache + file locking on the shared Valkey (redis `dbindex: 1`), data PVC 8Gi `longhorn-encrypted`, per-app Ingress `nextcloud.lonk-mirfak.ts.net`, and a Homepage entry. See [ADR-022](./docs/adrs/022-nextcloud-on-kubernetes.md).
 - **Collabora Online (CODE) on Nextcloud** — the bundled `collabora` subchart enabled (1 replica, HPA off, `collabora/code:25.04.9.4.1`), exposed at `collabora.lonk-mirfak.ts.net` through its own per-app Ingress; 9980 opened on the app ingress policy and on `ts-operator-proxy-egress`, which is the one that silently breaks it. The ingress template now loops over the `tailscaleIngress` values block instead of hardcoding one object. The Nextcloud-side wiring (`richdocuments`, disabling the conflicting bundled `office` app, and `wopi_url`) is an idempotent `post-install,post-upgrade` helm hook Job — `apps/nextcloud/templates/collabora-occ-job.yaml` — that mounts the same PVC subPaths the app Deployment does, so `occ` reads the real `config.php` with no credentials in git, and gates on coolwsd actually serving a discovery document. See [ADR-023](./docs/adrs/023-collabora-online-code.md).
-- **Measured storage rightsizing** — Longhorn `default-disk` reserve 30%→15% (~70Gi freed), encrypted volumes enrolled in daily remote backup; Prometheus 15Gi→12Gi, Loki 5Gi→2Gi, SeaweedFS data1 26Gi→10Gi / filer 5Gi→2Gi.
-- **Tailscale ingress per chart** — `platform/ts-ingress` chart deleted; each chart owns its own Tailscale Ingress (amends ADR-018).
+- **Measured storage rightsizing** — Longhorn `default-disk` reserve 30%→15% (~70Gi freed), encrypted volumes enrolled in daily remote backup; Prometheus 15Gi→12Gi, Loki 5Gi→2Gi (chunks/rules on RustFS `loki` bucket).
+- **Tailscale ingress per chart** — `platform/ts-ingress` chart deleted; each chart owns its own Tailscale Ingress (amends ADR-018). All Ingresses now share a 2-replica `ProxyGroup` (`ingress-proxies`) + `ProxyClass` (`prod-proxies`), annotated `tailscale.com/proxy-group: ingress-proxies`.
 
 ### Fixed
 
 - **Cilium double-block on Tailscale proxies** — the per-app Ingress migration left all apps unreachable (tailnet healthy, proxies running); proxy traffic allow-listed through Cilium policies.
 - **detect-secrets false positive** — `backupTargetCredentialSecret` (a Secret *name*, not a secret) marked `# pragma: allowlist secret`.
+- **Loki RustFS cutover (IAM)** — the `loki` bucket-init Job now creates the `loki` bucket itself, so the RustFS `loki-backup` key needs `s3:CreateBucket` on `arn:aws:s3:::loki` in addition to object-level verbs; see `docs/rustfs-iam.md`.

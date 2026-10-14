@@ -1,5 +1,7 @@
 # ADR-013: Grafana Alloy Replaces Promtail for Loki Log Collection
 
+> **Amendment (2026-10-13).** The S3 backend is now external RustFS (`rustfs.lonk-mirfak.ts.net`, bucket `loki`); the SeaweedFS endpoint cited below (`seaweedfs-s3.seaweedfs.svc:8333`) is the pre-removal layout (see commit 0759031 and ADR-024).
+
 **Status:** Accepted · **Date:** 2026-09-01 · **Deciders:** Seom88 · **Related:** [ADR-012](012-single-host-cluster-gateway.md)
 
 ## Context

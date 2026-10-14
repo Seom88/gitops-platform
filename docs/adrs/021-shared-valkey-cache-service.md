@@ -11,7 +11,7 @@ The immich chart (0.13.4) bundles a Valkey subchart that renders `immich-valkey`
 1. **Single consumer.** As soon as nextcloud (or any other app) needs a cache, it gets a second copy of the same stateful container, in its own namespace, with its own lifecycle, its own values, and its own policy surface — N Valkey deployments to patch and scan.
 2. **Blast radius.** Valkey carries the intra-namespace policy slots (6379 in both the immich egress and ingress policies). Keeping a cache inside an application namespace couples the application's update cadence to a shared stateful service.
 
-The repo already solves this shape for other platform capabilities: each shared dependency (SeaweedFS, CloudNativePG, monitoring) lives in `platform/` as its own chart, own namespace, own wave. Valkey was the last stateful service embedded in an app.
+The repo already solves this shape for other platform capabilities: each shared dependency (RustFS as the external S3 endpoint, CloudNativePG, monitoring, Longhorn) is either a `platform/` chart or an out-of-cluster service with its own ownership. Valkey was the last stateful service embedded in an app. (SeaweedFS was removed 2026-10-13 and replaced by the external RustFS endpoint.)
 
 ## Decision
 

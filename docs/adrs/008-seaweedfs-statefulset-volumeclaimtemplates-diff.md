@@ -1,5 +1,7 @@
 # ADR-008: SeaweedFS StatefulSet volumeClaimTemplates diff with ServerSideApply
 
+> **Historical (2026-10-13).** The `platform/seaweedfs` chart and its namespace were removed in commit 0759031; S3-compatible storage now comes from the external RustFS endpoint. This ADR is retained as a record of the ArgoCD `ignoreDifferences` / ServerSideApply behaviour; none of the chart, Service, or Namespace paths it references exist anymore.
+
 **Status:** Accepted · **Date:** 2026-08-30
 
 ## Context

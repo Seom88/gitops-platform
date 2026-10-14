@@ -1,5 +1,7 @@
 # ADR-011: Tailscale DNS Scoping via CoreDNS Sibling + NetworkPolicy
 
+> **Amendment (2026-10-13).** The `seaweedfs` device/list entries below are historical; the in-cluster chart was removed (see ADR-024) and RustFS is now the external S3 endpoint.
+
 **Status:** Accepted · **Date:** 2026-09-01 · **Deciders:** Seom88
 
 ## Context

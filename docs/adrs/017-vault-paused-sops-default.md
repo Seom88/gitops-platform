@@ -8,7 +8,7 @@ Vault is paused, not deleted. SOPS + age is the default secrets path until veloc
 
 Vault HA with Raft, TLS, autounseal, bootstrap Job, and per-service ESO `ClusterSecretStore` (ADR-002, ADR-009) is production-grade. It is also expensive per feature: every new secret touches policy + role + seed Job + `ClusterSecretStore` + `ExternalSecret`, plus raft, unseal, and backup concerns.
 
-The last required Vault change made the cost explicit: migrate unseal keys to S3, add a raft-snapshot CronJob for backups, and auto-restore in `bootstrap-vault` — several repo changes across `platform/vault/`, bootstrap, and CI. That work is valuable but not scheduled today, and more app secrets (SeaweedFS, Loki, Grafana, homepage) need to land now.
+The last required Vault change made the cost explicit: migrate unseal keys to S3, add a raft-snapshot CronJob for backups, and auto-restore in `bootstrap-vault` — several repo changes across `platform/vault/`, bootstrap, and CI. That work is valuable but not scheduled today, and more app secrets (Loki, Grafana, homepage, and the formerly-SeaweedFS S3 state (now RustFS-side)) need to land now.
 
 Decision: freeze `platform/vault/` in place, disable Vault/ESO via flags, and ship new secrets with SOPS + age.
 

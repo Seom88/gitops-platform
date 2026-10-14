@@ -1,5 +1,7 @@
 # ADR-018: Per-App Tailscale Ingresses (Revert ADR-012 Gateway)
 
+> **Amendment (2026-10-11).** The ingress proxies were pooled behind a single 2-replica `ProxyGroup` (`ingress-proxies`) + `ProxyClass` (`prod-proxies`); every per-app Tailscale Ingress gained `tailscale.com/proxy-group: ingress-proxies` instead of provisioning its own proxy pod. MagicDNS per-app hostnames are preserved via each Ingress's TLS host. The `seaweedfs-s3`/`seaweedfs-admin` Ingresses referenced below are historical (chart removed 2026-10-13).
+
 **Status:** Accepted · **Date:** 2026-09-22 · **Deciders:** Seom88 · **Supersedes:** [ADR-012](012-single-host-cluster-gateway.md) (gateway + vault amendment) · **Related:** [ADR-001](001-tailscale-ingress-placement.md), [ADR-014](014-cilium-cni-and-identity-networkpolicies.md)
 
 ## Context

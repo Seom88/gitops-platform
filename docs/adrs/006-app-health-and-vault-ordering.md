@@ -1,5 +1,7 @@
 # ADR-006: Application health for sync-waves and plain Applications for Vault ordering
 
+> **Amendment (2026-10-13).** The wave stack no longer contains `seaweedfs`; wave 2 is now `platform/valkey` (ADR-021). The SeaweedFS-specific ApplicationSet ordering discussion below is historical.
+
 **Status:** Accepted · **Date:** 2026-08-28
 
 ## Context
@@ -9,7 +11,7 @@
 ```
 wave 0: cert-manager, external-secrets, longhorn
 wave 1: vault
-wave 2: seaweedfs
+wave 2: seaweedfs (removed 2026-10-13; replaced by Valkey in `platform/valkey`)
 wave 3: monitoring
 wave 4: tailscale
 ```

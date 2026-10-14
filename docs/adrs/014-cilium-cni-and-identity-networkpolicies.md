@@ -1,5 +1,7 @@
 # ADR-014: Cilium CNI Migration and Identity-Aware NetworkPolicies
 
+> **Amendment (2026-10-13).** The `platform/seaweedfs` chart was removed in commit 0759031; the `seaweedfs` namespace no longer exists and S3 storage is now the external RustFS endpoint. Namespaces without a policy owed to that chart (`longhorn-system`, `ts-operator-proxy`, `monitoring`, …) are unchanged. Section 2's transport rules for `seaweedfs` apply to the historical chart only.
+
 **Status:** Accepted · **Date:** 2026-09-02 · **Deciders:** Seom88 · **Related:** [ADR-011](011-tailscale-dns-np.md), [ADR-012](012-single-host-cluster-gateway.md)
 
 ## Context

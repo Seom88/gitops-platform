@@ -1,5 +1,7 @@
 # ADR-012: Single-Host Cluster Gateway via Path-Based Ingress
 
+> **Amendment (2026-10-13).** Every `seaweedfs*` path/Service referenced below is historical: the chart was removed and its S3 backend is now external RustFS.
+
 **Status:** Superseded by [ADR-018](018-per-app-tailscale-ingress.md) (2026-09-22) · **Date:** 2026-09-02 · **Deciders:** Seom88 · **Supersedes:** part of [ADR-001](001-tailscale-ingress-placement.md) · **Related:** [ADR-010](010-tailscale-oauth-ci-generated.md), [ADR-011](011-tailscale-dns-np.md)
 
 > **Superseded 2026-09-22 ([ADR-018](018-per-app-tailscale-ingress.md)):** the gateway is removed. Each app gets its own Tailscale `Ingress` + device at `/` root. This document is preserved as archive.

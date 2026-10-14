@@ -46,7 +46,7 @@ Vault is the industry standard for secrets management. Implementing it from scra
 - Templates: [`platform/vault/templates/`](../platform/vault/templates/)
   - StatefulSet (3 replicas): `statefulset.yaml`
   - Network Policies: `networkpolicy.yaml`
-  - ClusterSecretStores: `clustersecretstore.yaml`
+  - ClusterSecretStores: `clustersecretstore.yaml` # pragma: allowlist secret
   - Auto-unseal CronJob: `autounseal-cronjob.yaml`
 - Bootstrap: [`bootstrap/init-gitops.sh`](../bootstrap/init-gitops.sh) (Vault init & auth setup)
 - ADR: [ADR-002: Vault Config Decentralization](./adrs/002-vault-config-decentralization.md)
@@ -236,7 +236,7 @@ Observability is non-negotiable in production:
    - Vault status (sealed/unsealed, replication, lease count)
    - ArgoCD app sync status and drift
    - Longhorn replication and volume usage
-5. **Logs** — Alloy (DaemonSet) discovers pods via Kubernetes API (`discovery.kubernetes` role `pod`), tails logs via `loki.source.kubernetes`, and pushes to Loki via `loki.write` (`/loki/api/v1/push` with `X-Scope-OrgID: fake`). Loki (SingleBinary, S3/SeaweedFS) stores chunks via gateway. No host `varlog` mounts — Alloy uses the API, not the filesystem.
+5. **Logs** — Alloy (DaemonSet) discovers pods via Kubernetes API (`discovery.kubernetes` role `pod`), tails logs via `loki.source.kubernetes`, and pushes to Loki via `loki.write` (`/loki/api/v1/push` with `X-Scope-OrgID: fake`). Loki (SingleBinary, S3/RustFS) stores chunks via gateway. No host `varlog` mounts — Alloy uses the API, not the filesystem.
 6. **Explore & LogQL** — Grafana Explore queries Loki via LogQL; dashboard Logs panels correlate metrics and logs for the same workload
 
 ### Example Dashboard
@@ -248,14 +248,14 @@ Includes:
 - ArgoCD: App health, sync time, missed syncs
 - Kubernetes: Node CPU/memory, pod count, error rates
 - Longhorn: Replica count, rebuild progress, volume usage
-- **Logs (Loki + Alloy):** Explore with LogQL (`{namespace="vault"}` etc.), dashboard Logs panels backed by Alloy-shipped pod logs stored in SeaweedFS S3
+- **Logs (Loki + Alloy):** Explore with LogQL (`{namespace="vault"}` etc.), dashboard Logs panels backed by Alloy-shipped pod logs stored in RustFS S3
 
 > Alloy is stateless — no PVC, no WAL. RBAC (`ServiceAccount` + `ClusterRole`/`ClusterRoleBinding` for pods/nodes discovery) is created automatically by the `alloy` chart (`rbac.create=true`). It replaces Promtail by design decision.
 
 ### Key Files
 
 - Chart: [`platform/monitoring/Chart.yaml`](../platform/monitoring/Chart.yaml) — dependencies: `loki:7.3.0`, `kube-prometheus-stack:88.6.1`, `alloy:1.12.1`
-- Values: [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) — Loki SingleBinary + S3 (SeaweedFS), Grafana Loki datasource (`X-Scope-OrgID: fake`), Alloy `discovery.kubernetes`/`loki.source.kubernetes`/`loki.write` pipeline
+- Values: [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) — Loki SingleBinary + S3 (RustFS), Grafana Loki datasource (`X-Scope-OrgID: fake`), Alloy `discovery.kubernetes`/`loki.source.kubernetes`/`loki.write` pipeline
 - Templates: [`platform/monitoring/templates/`](../platform/monitoring/templates/)
   - Prometheus config: `prometheus-configmap.yaml`
   - Grafana datasources: `grafana-datasources.yaml`
@@ -265,7 +265,7 @@ Includes:
 
 ---
 
-## 💾 Storage: Longhorn + SeaweedFS
+## 💾 Storage: Longhorn + RustFS (external S3)
 
 ### Longhorn: Distributed Block Storage
 
