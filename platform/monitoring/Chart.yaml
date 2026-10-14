@@ -22,3 +22,6 @@ dependencies:
   - name: alloy
     version: 1.13.1
     repository: https://grafana.github.io/helm-charts
+  - name: s3-bucket-lib
+    version: 0.1.0
+    repository: file://../s3-bucket-lib

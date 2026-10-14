@@ -1,4 +1,8 @@
 {{- if .Values.loki.loki.storage.bucketNames }}
+{{- $bucket := .Values.loki.loki.storage.bucketNames.chunks | default "loki" }}
+{{- $region := .Values.loki.loki.storage.s3.region | default "us-east-1" }}
+{{- $endpoint := .Values.loki.loki.storage.s3.endpoint | default "" }}
+{{- $fqdn := $endpoint | trimPrefix "https://" | trimPrefix "http://" }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -13,7 +17,7 @@ metadata:
     helm.sh/hook-weight: "-1"
 spec:
   backoffLimit: 3
-  ttlSecondsAfterFinished: 600
+  ttlSecondsAfterFinished: 86400
   activeDeadlineSeconds: 600
   template:
     metadata:
@@ -32,18 +36,6 @@ spec:
           image: amazon/aws-cli:2.37.12@sha256:ce44b800602264c12298bbf3399055a4cefdb9ed4a098abe564afe26e7071bce
           imagePullPolicy: IfNotPresent
           env:
-            - name: AWS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: loki-s3-credentials
-                  key: AWS_ACCESS_KEY_ID
-                  optional: true
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: loki-s3-credentials
-                  key: AWS_SECRET_ACCESS_KEY
-                  optional: true
             - name: AWS_EC2_METADATA_DISABLED
               value: "true"
             - name: AWS_S3_ADDRESSING_STYLE
@@ -51,60 +43,17 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              set -e
-              echo "[bucket-init] Starting Loki bucket init (RustFS)..."
-              # Wait for credentials injected as env vars from Secret loki-s3-credentials
-              # (ExternalSecret wave -1 from Vault secret/loki/s3). Secret uses
-              # optional:true so Job can be created before ESO syncs; we poll 60s.
-              WAIT_SECS=0
-              WAIT_MAX=60
-              while [ $WAIT_SECS -lt $WAIT_MAX ]; do
-                if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
-                  echo "[bucket-init] Credentials available."
-                  break
-                fi
-                echo "[bucket-init] Waiting for credentials env AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY ($WAIT_SECS/$WAIT_MAX s)..."
-                sleep 5
-                WAIT_SECS=$((WAIT_SECS + 5))
-              done
-              if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-                echo "[bucket-init] ERROR: credentials not available after $WAIT_MAX s (Secret loki-s3-credentials missing?)"
-                echo "[bucket-init] Hint: ensure ExternalSecret loki-s3-credentials (wave -1) synced from Vault secret/loki/s3."
-                exit 1
-              fi
-              export AWS_DEFAULT_REGION="{{ .Values.loki.loki.storage.s3.region | default "us-east-1" }}"
-              export AWS_EC2_METADATA_DISABLED="true"
-              export AWS_S3_ADDRESSING_STYLE="path"
-              # Ensure aws-cli uses path-style addressing (required by S3-compatible storage)
-              aws configure set default.s3.addressing_style path || true
-              aws configure set default.s3.addressing_style path --profile default || true
-              ENDPOINT="{{ .Values.loki.loki.storage.s3.endpoint | default "https://rustfs.lonk-mirfak.ts.net" }}"
-              # Buckets templatable with hardcode fallback; extend list for future admin bucket
-              BUCKETS="{{ .Values.loki.loki.storage.bucketNames.chunks | default "loki" }} {{ .Values.loki.loki.storage.bucketNames.ruler | default "loki" }}"
-              echo "[bucket-init] Endpoint: $ENDPOINT (region $AWS_DEFAULT_REGION)"
-              echo "[bucket-init] Buckets: $BUCKETS"
-
-              for BUCKET in $BUCKETS; do
-                echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."
-                set +e
-                OUTPUT="$(aws s3api create-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>&1)"
-                RC=$?
-                set -e
-                echo "$OUTPUT"
-                if [ $RC -eq 0 ]; then
-                  echo "[bucket-init] Bucket $BUCKET created successfully."
-                else
-                  if echo "$OUTPUT" | grep -qiE 'BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists'; then
-                    echo "[bucket-init] Bucket $BUCKET already exists — continuing (idempotent)."
-                  else
-                    echo "[bucket-init] ERROR: create-bucket $BUCKET failed with exit $RC"
-                    exit $RC
-                  fi
-                fi
-                echo "[bucket-init] Verifying bucket $BUCKET with head-bucket..."
-                aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION"
-                echo "[bucket-init] Verification OK — bucket $BUCKET is accessible."
-                aws s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" || true
-              done
-              echo "[bucket-init] Done — all Loki buckets ready."
+              {{- include "s3-bucket-lib.bucketInitScript" (dict "fqdn" $fqdn "region" $region "bucket" $bucket "tag" "loki-bucket-init" "credFile" "/etc/monitoring/cloud") | nindent 14 }}
+          volumeMounts:
+            - name: loki-s3-credentials # pragma: allowlist secret
+              mountPath: /etc/monitoring
+              readOnly: true
+      volumes:
+        - name: loki-s3-credentials # pragma: allowlist secret
+          secret:
+            secretName: loki-s3-credentials # pragma: allowlist secret
+            optional: true
+            items:
+              - key: cloud
+                path: cloud
 {{- end }}

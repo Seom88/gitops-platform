@@ -169,8 +169,17 @@ is gone with `charts/cnpg` (deleted 2026-09-28).
 
 Loki writes chunks and rules to S3. One bucket, one key — `bucketNames.chunks`
 and `bucketNames.ruler` both point to `loki`. Loki separates data internally
-by key prefix. No `s3:CreateBucket`: the `job-bucket-init.yaml` Job in
-`platform/monitoring` creates the bucket idempotently with the same scoped key.
+by key prefix.
+
+`s3:CreateBucket` **is** required here: `platform/monitoring/templates/job-bucket-init.yaml`
+creates the `loki` bucket idempotently with this same scoped key (mirrors the
+Velero recipe in `platform/velero/templates/job-bucket-init.yaml`, where
+`velero-bucket-init` does the same with its own scoped key). The earlier wording
+("No `s3:CreateBucket`") was wrong and is the direct cause of the
+`AccessDenied`/exit-254 failures observed when cutting Loki over from SeaweedFS
+to RustFS. Grant `s3:CreateBucket` on `arn:aws:s3:::loki` to the `loki-backup`
+key, or pre-create the bucket once in the RustFS console before the first sync.
+The key still cannot create or touch any other bucket (scoped to this single ARN).
 
 Observed 2026-10-10: Loki needs the same object-level verbs as CNPG (`GetObject`,
 `PutObject`, `DeleteObject`, `AbortMultipartUpload`, `ListMultipartUploadParts`)
@@ -190,7 +199,8 @@ harmless.
         "s3:ListBucket",
         "s3:ListBucketVersions",
         "s3:ListBucketMultipartUploads",
-        "s3:GetBucketVersioning"
+        "s3:GetBucketVersioning",
+        "s3:CreateBucket"
       ],
       "Resource": ["arn:aws:s3:::loki"]
     },

@@ -8,5 +8,8 @@ dependencies:
 - name: alloy
   repository: https://grafana.github.io/helm-charts
   version: 1.13.1
-digest: sha256:42063cf4291664fd9441d9d163adf78ae3669a91b4bd9ec554fed17486ef5039
-generated: "2026-10-10T03:06:33.271110631Z"
+- name: s3-bucket-lib
+  repository: file://../s3-bucket-lib
+  version: 0.1.0
+digest: sha256:7e226d1aab15d3cc12968743c0bff8368b1a15e3106e227123aabee6e05ec526
+generated: "2026-10-13T20:58:40.046984262-05:00"
