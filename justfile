@@ -110,14 +110,14 @@ secrets-apply:
       echo "  ⏭️  Tailscale: no valid credentials (K8S_TS_OAUTH_CLIENT_ID / K8S_TS_OAUTH_SECRET) — skipping"
       echo "     Tip: fill in .env and retry, or export the vars in the shell"
     else
-      echo "  🔐 Tailscale: creando/actualizando Secret tailscale/operator-oauth..."
+      echo "  🔐 Tailscale: creating/updating Secret tailscale/operator-oauth..."
       kubectl get namespace tailscale >/dev/null 2>&1 || kubectl create namespace tailscale >/dev/null 2>&1
       kubectl create secret generic operator-oauth \
         --namespace tailscale \
         --from-literal=client_id="$TS_ID" \
         --from-literal=client_secret="$TS_SECRET" \
         --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-      echo "  ✅ Tailscale: Secret tailscale/operator-oauth listo"
+      echo "  ✅ Tailscale: Secret tailscale/operator-oauth ready"
       kubectl rollout restart deployment/tailscale-operator -n tailscale >/dev/null 2>&1 || \
         kubectl rollout restart deployment/operator -n tailscale >/dev/null 2>&1 || true
     fi
@@ -134,7 +134,7 @@ secrets-apply:
       if [ -z "$VELERO_ID" ] || [ -z "$VELERO_SECRET_VAL" ] || [ "$VELERO_ID" = "..." ] || [ "$VELERO_SECRET_VAL" = "..." ]; then
         echo "  ⏭️  Velero: no valid S3 credentials (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) — skipping"
       else
-        echo "  🛡️  Velero: creando Secret velero/cloud-credentials (fallback, no SOPS)..."
+        echo "  🛡️  Velero: creating Secret velero/cloud-credentials (fallback, no SOPS)..."
         kubectl get namespace velero >/dev/null 2>&1 || kubectl create namespace velero >/dev/null 2>&1
         CLOUD_CONTENT="[default]
       aws_access_key_id=${VELERO_ID}
@@ -143,7 +143,7 @@ secrets-apply:
           --namespace velero \
           --from-literal=cloud="$CLOUD_CONTENT" \
           --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-        echo "  ✅ Velero: Secret velero/cloud-credentials listo"
+        echo "  ✅ Velero: Secret velero/cloud-credentials ready"
       fi
     fi
 

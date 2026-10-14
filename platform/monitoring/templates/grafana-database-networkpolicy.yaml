@@ -122,10 +122,10 @@ spec:
 ---
 # CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
 # Velero pattern: FQDN:443 pure L4 (without rules: — any rules: turns it
-# L7 y Cilium desvía el TLS crudo por Envoy, rompiendo el handshake) +
-# toCIDR tailnetIp/32:443 como fallback FQDN-independiente (Cilium solo
-# aprende FQDN->IP observando DNS) + world:443. DNS va por
-# monitoring-allow-dns (puerto 53) — no hay rules.dns aquí.
+# L7 and Cilium diverts raw TLS through Envoy, breaking the handshake) +
+# toCIDR tailnetIp/32:443 as an FQDN-independent fallback (Cilium only
+# learns FQDN->IP by observing DNS) + world:443. DNS goes through
+# monitoring-allow-dns (port 53) — no rules.dns here.
 # TODO: single-source tailnetIp desde gitops/values.yaml sharedS3.tailnetIp
 # (hoy sin wiring en 03-monitoring.yaml, value local backup.tailnetIp).
 {{- if .Values.backup.enabled }}

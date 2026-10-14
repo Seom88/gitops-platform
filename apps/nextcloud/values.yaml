@@ -24,7 +24,7 @@ backup:
   prefix: nextcloud
   secretName: cnpg-backup-s3-credentials # pragma: allowlist secret
   # Tailnet IP of the RustFS host (S3 API :443). FQDN-independent egress
-  # fallback (Cilium toCIDR, patrón velero) — same literal as immich.
+  # fallback (Cilium toCIDR, velero pattern) — same literal as immich.
   tailnetIp: "100.89.39.31"
   # 01:55 UTC daily, ahead of Velero `daily-full` (02:00). Barman first leaves
   # an orphaned file recoverable on disk; Velero first would capture the row
@@ -33,7 +33,7 @@ backup:
   # Recovery-window retention; 30d matches Velero and the other CNPG clusters.
   retentionPolicy: "30d"
 
-# Patrón 2 — recovery por flag (same as platform/monitoring grafana-database).
+# Pattern 2 — recovery by flag (same as platform/monitoring grafana-database).
 # `spec.bootstrap` is WRITE-ONE in CNPG, so a cluster born from initdb can later
 # only move to recovery by hand. The branch is templated and gated OFF here:
 # when a future restore is needed, flip this to true + set targetTime, and
