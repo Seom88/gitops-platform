@@ -398,14 +398,35 @@ alloy:
           // and Grafana variables ({namespace=..., pod=..., container=...}) and
           // Explore queries can filter/group logs instead of ingesting unlabeled
           // filename-only streams.
-          rule { source_labels = ["__meta_kubernetes_namespace"]; target_label = "namespace" }
-          rule { source_labels = ["__meta_kubernetes_pod_name"]; target_label = "pod" }
-          rule { source_labels = ["__meta_kubernetes_pod_container_name"]; target_label = "container" }
-          rule { source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]; target_label = "app" }
-          rule { source_labels = ["__meta_kubernetes_pod_node_name"]; target_label = "node" }
+          rule {
+            source_labels = ["__meta_kubernetes_namespace"]
+            target_label  = "namespace"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_name"]
+            target_label  = "pod"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_container_name"]
+            target_label  = "container"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            target_label  = "app"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_node_name"]
+            target_label  = "node"
+          }
 
-          rule { source_labels = ["__meta_kubernetes_pod_controller_kind"]; target_label = "workload_type" }
-          rule { source_labels = ["__meta_kubernetes_pod_controller_name"]; target_label = "workload" }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_controller_kind"]
+            target_label  = "workload_type"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_controller_name"]
+            target_label  = "workload"
+          }
           // Strip ReplicaSet hash so workload matches the owning Deployment.
           rule {
             source_labels = ["workload_type", "workload"]
@@ -422,10 +443,19 @@ alloy:
             target_label  = "workload"
           }
 
-          rule { source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_instance"]; target_label = "instance" }
-          rule { source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_component"]; target_label = "component" }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_instance"]
+            target_label  = "instance"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_component"]
+            target_label  = "component"
+          }
 
-          rule { source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]; target_label = "service_name" }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            target_label  = "service_name"
+          }
           rule {
             source_labels = ["service_name", "__meta_kubernetes_pod_container_name"]
             regex         = "^$;(.+)"
@@ -498,13 +528,13 @@ backup:
   prefix: grafana
   secretName: cnpg-backup-s3-credentials # pragma: allowlist secret
   # Tailnet IP of the RustFS host (S3 API :443). FQDN-independent egress
-  # fallback (Cilium toCIDR, patrón velero): Cilium solo aprende FQDN->IP
-  # observando DNS, así que sin toCIDR el SYN cae si la resolución no pasa
-  # por DNS observado.
-  # TODO: single-source desde gitops/values.yaml sharedS3.tailnetIp como
-  # helm parameter (s3.tailnetIp) igual que gitops/templates/platform/00-velero.yaml;
-  # hoy 03-monitoring.yaml no pasa parameters, así que este literal es la
-  # fuente. Si el host RustFS cambia, actualizar ambos.
+  # fallback (Cilium toCIDR, velero pattern): Cilium only learns FQDN->IP
+  # by observing DNS, so without toCIDR the SYN fails if resolution does not
+  # traverse observed DNS.
+  # TODO: single-source from gitops/values.yaml sharedS3.tailnetIp as a
+  # helm parameter (s3.tailnetIp), like gitops/templates/platform/00-velero.yaml;
+  # today 03-monitoring.yaml passes no parameters, so this literal remains the
+  # source. If the RustFS host changes, update both.
   tailnetIp: "100.89.39.31"
   # 01:55 UTC daily, ahead of Velero `daily-full` (02:00). Nothing coordinates
   # the two backups, so the gap between them is only safe in one direction:
@@ -516,30 +546,30 @@ backup:
   # back the same distance on restore.
   retentionPolicy: "30d"
 
-# Patrón 2 — recovery por flag.
+# Pattern 2 — recovery by flag.
 #
-# ATENCIÓN: este flag queda en `true` de forma permanente, y NO es un descuido.
-# `grafana-database` fue bootstrapeado por recovery (PITR a 2026-09-29, ejecutado
-# el 2026-10-08). `.spec.bootstrap` en CNPG es WRITE-ONCE: el webhook rechaza
-# tener dos métodos de bootstrap a la vez, así que Git NO puede volver a
-# `initdb` sin romper el apply de ArgoCD para siempre
-# ("Only one bootstrap method can be specified at a time"). Decir la verdad es
-# la única salida: el cluster SÍ nació de un recovery, y Git lo declara.
+# ATTENTION: this flag stays `true` permanently, and that is NOT an oversight.
+# `grafana-database` was bootstrapped by recovery (PITR to 2026-09-29, executed
+# on 2026-10-08). `.spec.bootstrap` in CNPG is WRITE-ONCE: the webhook rejects
+# specifying two bootstrap methods at once, so Git CANNOT return to
+# `initdb` without breaking ArgoCD apply forever
+# ("Only one bootstrap method can be specified at a time"). Telling the truth is
+# the only way out: the cluster WAS born from a recovery, and Git declares it.
 #
-# Consecuencia práctica buena: si alguien borra el Cluster, ArgoCD lo recrea
-# restaurando desde el archivo (que es lo correcto para una base que tiene
-# backups) en vez de crear una base vacía que Grafana no podría distinguir de
-# una sana. Si el archivo no existiera, falla ruidosamente — mejor que un initdb
-# silencioso.
+# Good practical consequence: if someone deletes the Cluster, ArgoCD recreates it
+# by restoring from the backup file (correct for a database that has backups)
+# instead of creating an empty database that Grafana could not distinguish from
+# a healthy one. If the backup file did not exist, it fails loudly — better than
+# a silent initdb.
 #
-# `plugins` y `cnpg.io/skipEmptyWalArchiveCheck` NO se gatean con este flag: se
-# declaran siempre que backup.enabled. Antes `plugins` se gateaba con
-# `not recovery.enabled` y eso fue exactamente la causa del silencio del
-# 2026-10-08 (todas las copias fallando, WAL archivando a la nada).
+# `plugins` and `cnpg.io/skipEmptyWalArchiveCheck` are NOT gated by this flag:
+# they are declared whenever backup.enabled. Previously `plugins` was gated by
+# `not recovery.enabled`, and that was exactly the cause of the silence on
+# 2026-10-08 (every copy failing, WAL archiving to nothing).
 #
-# targetTime vacío = latest (replay hasta el final del WAL disponible); con un
-# valor, PITR a ese timestamp. Dejarlo vacío a propósito: un recreate tiene que
-# ir al final del archivo, no clavarse en 2026-09-29.
+# Empty targetTime = latest (replay to the end of the available WAL); with a
+# value, PITR to that timestamp. Leaving it empty on purpose: a recreate must
+# go to the end of the backup, not pin to 2026-09-29.
 recovery:
   enabled: true
   source: grafana-backup-origin

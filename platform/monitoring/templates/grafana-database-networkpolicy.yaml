@@ -121,7 +121,7 @@ spec:
               protocol: TCP
 ---
 # CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
-# Patrón Velero: FQDN:443 L4 puro (sin rules: — cualquier rules: lo vuelve
+# Velero pattern: FQDN:443 pure L4 (without rules: — any rules: turns it
 # L7 y Cilium desvía el TLS crudo por Envoy, rompiendo el handshake) +
 # toCIDR tailnetIp/32:443 como fallback FQDN-independiente (Cilium solo
 # aprende FQDN->IP observando DNS) + world:443. DNS va por
@@ -149,7 +149,7 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    # S3 vía tailnet IP (fallback FQDN-independiente, solo 443 — patrón velero).
+    # S3 via tailnet IP (FQDN-independent fallback, 443 only — velero pattern).
     - toCIDR:
         - {{ required "backup.tailnetIp is required (set backup.tailnetIp in platform/monitoring values.yaml)" .Values.backup.tailnetIp }}/32
       toPorts:
