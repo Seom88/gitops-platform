@@ -2,7 +2,7 @@
 # CiliumNetworkPolicies for nextcloud — per-app zero-trust (ADR-014) + per-app
 # Tailscale ingress (ADR-018).
 # Covers: web/cron container 80 (service 8080); Collabora Online 9980; CNPG
-# postgres 5432 + metrics 8000; shared valkey 6379 (egress only, namespace
+# postgres 5432 + metrics 8000/9187; shared valkey 6379 (egress only, namespace
 # valkey — ADR-021).
 # Pod ports only (post-DNAT).
 ---
@@ -142,13 +142,15 @@ spec:
               protocol: TCP
             - port: "9980"
               protocol: TCP
-    # Prometheus scraping from monitoring -> CNPG metrics 8000
+    # Prometheus scraping from monitoring -> CNPG metrics 8000/9187
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
             - port: "8000"
+              protocol: TCP
+            - port: "9187"
               protocol: TCP
 ---
 # CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
