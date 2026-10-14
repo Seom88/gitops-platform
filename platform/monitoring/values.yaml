@@ -141,9 +141,9 @@ kube-prometheus-stack:
     annotations:
       argocd.argoproj.io/sync-wave: "2"
     admin:
-      existingSecret: "grafana-admin-credentials"
+      existingSecret: "grafana-admin-credentials" # pragma: allowlist secret
       userKey: admin-user
-      passwordKey: admin-password
+      passwordKey: admin-password # pragma: allowlist secret
 
     # Per-app Ingress root — each app on its own device at / (no subpath)
     grafana.ini:
@@ -386,12 +386,51 @@ alloy:
         discovery.relabel "local_pods" {
           targets = discovery.kubernetes.pods.targets
 
-          // NEW: path of the container log file on the node
+          // Path of the container log file on the node
           rule {
             source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
             separator     = "/"
             replacement   = "/var/log/pods/*$1/*.log"
             target_label  = "__path__"
+          }
+
+          // Propagate Kubernetes pod metadata to Loki stream labels so dashboards
+          // and Grafana variables ({namespace=..., pod=..., container=...}) and
+          // Explore queries can filter/group logs instead of ingesting unlabeled
+          // filename-only streams.
+          rule { source_labels = ["__meta_kubernetes_namespace"]; target_label = "namespace" }
+          rule { source_labels = ["__meta_kubernetes_pod_name"]; target_label = "pod" }
+          rule { source_labels = ["__meta_kubernetes_pod_container_name"]; target_label = "container" }
+          rule { source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]; target_label = "app" }
+          rule { source_labels = ["__meta_kubernetes_pod_node_name"]; target_label = "node" }
+
+          rule { source_labels = ["__meta_kubernetes_pod_controller_kind"]; target_label = "workload_type" }
+          rule { source_labels = ["__meta_kubernetes_pod_controller_name"]; target_label = "workload" }
+          // Strip ReplicaSet hash so workload matches the owning Deployment.
+          rule {
+            source_labels = ["workload_type", "workload"]
+            regex         = "ReplicaSet;(.*)-[a-z0-9]+"
+            replacement   = "$1"
+            target_label  = "workload"
+          }
+          // Pods without a controller (bare/Job without owner, static pods) still
+          // get a workload label so dashboard variables and stream filters match.
+          rule {
+            source_labels = ["workload", "pod"]
+            regex         = "^$;(.+)"
+            replacement   = "$1"
+            target_label  = "workload"
+          }
+
+          rule { source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_instance"]; target_label = "instance" }
+          rule { source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_component"]; target_label = "component" }
+
+          rule { source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]; target_label = "service_name" }
+          rule {
+            source_labels = ["service_name", "__meta_kubernetes_pod_container_name"]
+            regex         = "^$;(.+)"
+            replacement   = "$1"
+            target_label  = "service_name"
           }
         }
 
