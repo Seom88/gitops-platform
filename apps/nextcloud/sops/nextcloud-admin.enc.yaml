@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: nextcloud-admin
+    namespace: nextcloud
+stringData:
+    username: ENC[AES256_GCM,data:eQj2e2U=,iv:vk3Ugxs0Kadhnw3TCQUZ7dg+Z63Q+4WQrth4byxQ63g=,tag:xEZK6wxdTABOn08JXoJamQ==,type:str] #ENC[AES256_GCM,data:2HcU0PqQyAPhm/QJNQYs+SZImZnMtn2kcw==,iv:tcSSI4YmzC5VPZePq+6eXRYXoPmKWW03gvPcz9o6FUU=,tag:vHxmFjJwO/6zWXr3uHlh8Q==,type:comment]
+    password: ENC[AES256_GCM,data:VUKpwekr36OgDEjgEztj0sTaJnIO52g8FMR0RuxWttQ=,iv:ccAddKXKFVDflKLQ3FDcLSWrK/rI6jKHrUTNrFrrKic=,tag:vrcHTrQ5wLvRpoLLasnwpA==,type:str] #ENC[AES256_GCM,data:zdf1KAvjyEV8gNQDBbdqogELOthrUOorDg==,iv:pI78DiER1wvRC34gVxY3JVIUSMr3+DY+MoFW2nOAV5s=,tag:Nziks5hyulRdtm0lnLQCGw==,type:comment]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBld2UweGdla1lrWEFSMzla
+            dlpYcWJOM2JSZ2g0d1Uzb3BBcWxpNWgrang0CjhNZWNOYWlwcnB1b01FY0dBbnR5
+            VVpET0RZNFFBeU1EK2N5UHJ5ZU5LZU0KLS0tIGREdGM4dVZ6S2ZKRGlhREE5dzlG
+            NjJ0Q3JBUENrb2w3RnJuZUI5azNlY1UK666xBSvvnTSsmAIP05J0Es7txtTKo7yH
+            j8gQzczrXh2v0blJj6+ewTezDnr9YlEa6vxFM1ERAu2mJ0PUpH2Z2Q==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1l8urdgwakvjweqwxuzma2k3lnz0rym2juyjn9uls330keufsqc7s65c5j5
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-11T01:56:10Z"
+    mac: ENC[AES256_GCM,data:m4fqV4B4jVICP2nVcJ6krGtxMStQj2HcMpUeM64fI7DZGaTWScJpxlH1XmH3cKcaMdpw/w6v6coKVzYLc0a4NnMby7mIQyMeuSFBEbB9FP2H2gjsPqmHgzRU5+CK6h8PS6Ye4nXpgbT0JMsKodnkr8GDodl7OlsfvoYUwgmVZ+E=,iv:vK68XVLLQ5tcZqZqLMSz1W12af05wHQeFvG4GVJgnsQ=,tag:L2JLR4LZDlOwzgcjmsYGYQ==,type:str]
+    version: 3.13.3

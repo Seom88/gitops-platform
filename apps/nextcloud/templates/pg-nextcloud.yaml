@@ -1,0 +1,172 @@
+# Nextcloud CNPG Cluster (wave 1, inside this app) + shared RustFS backups.
+# Direct manifests — no library chart. Backup model: single shared bucket
+# `cnpg-db-backups` + single key `cnpg-backup` (manual, see docs/rustfs-iam.md),
+# per-DB prefix `nextcloud/`. Secret `cnpg-backup-s3-credentials` is
+# namespace-local (SOPS: apps/nextcloud/sops/cnpg-backup-credentials.enc.yaml).
+#
+# Bootstrap is initdb today (ADR-022). The recovery branch below is templated
+# from `.Values.recovery.enabled`, following the grafana-database pattern:
+# `.spec.bootstrap` is WRITE-ONE in CNPG, so a cluster born from initdb can
+# only move to recovery by flipping that flag (recreate from the archive),
+# never by adding a second bootstrap method to an existing cluster.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: nextcloud-database
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # `.spec.bootstrap` is WRITE-ONCE in CNPG and `recoveryTarget` is inert
+    # once set: server-side apply cannot remove it, so without this the
+    # application is OutOfSync forever on a field that cannot be reconciled.
+    # Scope is narrow: ONLY recoveryTarget is ignored; everything else is
+    # still compared.
+    argocd.argoproj.io/compare-options: |
+      {
+        "ignoreDifferences": {
+          "jqPathExpressions": [".spec.bootstrap.recovery.recoveryTarget"]
+        }
+      }
+    {{- if .Values.backup.enabled }}
+    # REQUIRED whenever `backup.enabled` is true, and NOT about recovery.
+    # barman-cloud-wal-archive refuses to archive into a non-empty archive
+    # ("Expected empty archive") and CNPG re-runs that check on every
+    # instance-manager start of an already-bootstrapped cluster: the moment
+    # this cluster's own archive exists, the next pod recreation kills WAL
+    # archiving for good while base backups keep reporting success. This
+    # happened to immich on 2026-10-05 and wedged its primary two days later.
+    # Value must be the literal string `enabled`, not `"true"`.
+    cnpg.io/skipEmptyWalArchiveCheck: "enabled"
+    {{- end }}
+spec:
+  # enablePodMonitor is deprecated by the CNPG operator ("migrate to manually
+  # managing your PodMonitor resources") and the operator-owned PodMonitor
+  # lacks the `release: monitoring` label kube-prometheus-stack selects on —
+  # which is why nextcloud-database-mirror below exists. So it stays false and
+  # the mirror is the single scrape path.
+  monitoring:
+    enablePodMonitor: false
+  instances: {{ .Values.cnpg.instances }}
+  imageName: {{ .Values.cnpg.imageName }}
+  {{- if .Values.backup.enabled }}
+  # WAL archiving via the plugin-barman-cloud CNPG-I plugin (ObjectStore
+  # nextcloud-backup-store below). Deliberately NOT gated on
+  # `.Values.recovery.enabled`: gating it that way drops `.spec.plugins` the
+  # moment recovery is turned on, every ScheduledBackup then fails ("the
+  # cluster has no plugin configured"), WAL archiving stops, and the archive
+  # silently goes stale while base backups keep reporting success — the exact
+  # 2026-10-08 grafana outage. Upstream docs bless plugins on a recovered
+  # cluster so archiving resumes immediately after recovery.
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      enabled: true
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: nextcloud-backup-store
+  {{- end }}
+  bootstrap:
+    {{- if .Values.recovery.enabled }}
+    recovery:
+      # CNPG defaults these to `app`/`app`; leaving them out does NOT mean
+      # "reuse what was there" — the API server materialises `app` and
+      # Nextcloud authenticates as `nextcloud` with the `app` role's password.
+      # Always state them.
+      database: {{ .Values.cnpg.database }}
+      owner: {{ .Values.cnpg.owner }}
+      source: {{ .Values.recovery.source }}
+      {{- if .Values.recovery.targetTime }}
+      recoveryTarget:
+        targetTime: {{ .Values.recovery.targetTime | quote }}
+      {{- end }}
+    {{- else }}
+    initdb:
+      database: {{ .Values.cnpg.database }}
+      owner: {{ .Values.cnpg.owner }}
+    {{- end }}
+  {{- if .Values.recovery.enabled }}
+  externalClusters:
+    - name: {{ .Values.recovery.source }}
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        enabled: true
+        isWALArchiver: false
+        parameters:
+          barmanObjectName: nextcloud-backup-store
+          serverName: {{ .Values.recovery.serverName }}
+  {{- end }}
+  {{- with .Values.cnpg.postgresql }}
+  postgresql:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  storage:
+    storageClass: {{ .Values.cnpg.storage.class }}
+    size: {{ .Values.cnpg.storage.size }}
+---
+# CNPG PodMonitor mirror (release label for kube-prometheus-stack).
+# The operator auto-creates a PodMonitor named <cluster> without the
+# `release: monitoring` label, so this mirror carries the same selector with
+# the release label. Named <cluster>-mirror to avoid colliding.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: nextcloud-database-mirror
+  namespace: nextcloud
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    release: monitoring
+    app.kubernetes.io/name: nextcloud-database
+    app.kubernetes.io/part-of: nextcloud
+spec:
+  jobLabel: cnpg.io/cluster
+  namespaceSelector:
+    matchNames:
+      - nextcloud
+  selector:
+    matchLabels:
+      cnpg.io/cluster: nextcloud-database
+      cnpg.io/podRole: instance
+  podMetricsEndpoints:
+    - port: metrics
+      scheme: http
+      interval: 60s
+      scrapeTimeout: 10s
+
+{{- if .Values.backup.enabled }}
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: nextcloud-backup-store
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  configuration:
+    # NO trailing slash: barman joins destinationPath with subpaths and a
+    # trailing '/' produces '//' prefixes in ListObjectsV2, which RustFS
+    # rejects with InvalidArgument.
+    destinationPath: s3://{{ .Values.backup.bucket }}/{{ .Values.backup.prefix }}
+    endpointURL: {{ .Values.backup.endpoint }}
+    s3Credentials:
+      accessKeyId:
+        name: {{ .Values.backup.secretName }}
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: {{ .Values.backup.secretName }}
+        key: SECRET_ACCESS_KEY
+  retentionPolicy: {{ .Values.backup.retentionPolicy | quote }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: nextcloud-database-daily
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  cluster:
+    name: nextcloud-database
+  schedule: {{ .Values.backup.schedule | quote }}
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+{{- end }}

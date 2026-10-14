@@ -9,6 +9,9 @@ tailscale-operator:
       - "tag:k8s-operator"
   proxyConfig:
     defaultTags: "tag:k8s"
+    # Same default as values.yaml — stated explicitly so the dev overlay
+    # never drifts if its proxyConfig block grows.
+    defaultProxyClass: "prod-proxies"
 
 tailscaleIngress:
   argocd:

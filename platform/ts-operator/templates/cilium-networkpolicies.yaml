@@ -92,6 +92,17 @@ spec:
           type: 128
         - family: IPv6
           type: 129
+    # ICMP PMTU (frag-needed / packet-too-big) — Cilium drops ICMP not
+    # covered by L4 rules. Type-level only: no `code` field exists.
+    # Note: IPv4 type 3 opens ALL DestinationUnreachable codes (accepted).
+    - toEntities:
+        - world
+      icmps:
+      - fields:
+        - type: DestinationUnreachable
+          family: IPv4
+        - type: PacketTooBig
+          family: IPv6
     - toFQDNs:
         - matchName: controlplane.tailscale.com
         - matchPattern: "*.controlplane.tailscale.com"
@@ -171,6 +182,16 @@ spec:
               protocol: UDP
             - port: "1053"
               protocol: TCP
+    # ICMP PMTU (frag-needed / packet-too-big) from path routers —
+    # ingress sibling of the egress allowance above (same type-3 caveat).
+    - fromEntities:
+        - world
+      icmps:
+      - fields:
+        - type: DestinationUnreachable
+          family: IPv4
+        - type: PacketTooBig
+          family: IPv6
 {{- end }}
 ---
 # Tailscale ingress proxies -> backend pods (moved from platform/ts-ingress, ADR-018):
@@ -236,6 +257,19 @@ spec:
               protocol: TCP
     - toEndpoints:
         - matchLabels:
+            k8s:io.kubernetes.pod.namespace: nextcloud
+      toPorts:
+        - ports:
+            # nextcloud web/cron (pod 80, service 8080)
+            - port: "80"
+              protocol: TCP
+            # Collabora Online (coolwsd): the app's own Ingress
+            # (ADR-023) has this namespace in its backend, so the proxy needs
+            # the same egress the nextcloud entry already had, plus 9980.
+            - port: "9980"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
@@ -271,4 +305,14 @@ spec:
         - ports:
             - port: "8081"
               protocol: TCP
+    # ICMP PMTU (frag-needed / packet-too-big) — mirrors the namespace-wide
+    # egress allowance so managed proxies keep working standalone.
+    - toEntities:
+        - world
+      icmps:
+      - fields:
+        - type: DestinationUnreachable
+          family: IPv4
+        - type: PacketTooBig
+          family: IPv6
 {{- end }}

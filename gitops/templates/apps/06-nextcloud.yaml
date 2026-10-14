@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nextcloud
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+    argocd.argoproj.io/tracking-id: gitops:argoproj.io/Application:argocd/nextcloud
+  labels:
+    wave-policy: sync-only
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ if .Values.developmentApp.enabled }}dev{{ else }}main{{ end }}
+    path: apps/nextcloud
+    helm:
+      ignoreMissingValueFiles: true
+      valueFiles:
+        - values.yaml
+        {{- if .Values.developmentApp.enabled }}
+        - values-dev.yaml
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nextcloud
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - Retry=true

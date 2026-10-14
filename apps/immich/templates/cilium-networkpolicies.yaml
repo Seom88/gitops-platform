@@ -1,7 +1,8 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
 # CiliumNetworkPolicies for immich — per-app zero-trust (ADR-014) + per-app Tailscale ingress (ADR-018)
 # Covers: server 2283 http, 8081 metrics-api, 8082 metrics-ms; machine-learning 3003;
-# valkey 6379; CNPG postgres 5432 + metrics 8000/9187. Pod ports only (post-DNAT).
+# shared valkey 6379 (egress only, namespace valkey — ADR-021); CNPG postgres 5432
+# + metrics 8000/9187. Pod ports only (post-DNAT).
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -41,7 +42,8 @@ spec:
               protocol: TCP
             - port: "6443"
               protocol: TCP
-    # Intra-immich: server <-> ml <-> valkey <-> CNPG (server 2283/8081/8082, ml 3003, valkey 6379, pg 5432/8000)
+    # Intra-immich: server <-> ml <-> CNPG intra-namespace; valkey is cross-namespace
+    # (server 2283/8081/8082, ml 3003, pg 5432/8000)
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: immich
@@ -51,8 +53,6 @@ spec:
               protocol: TCP
             - port: "3003"
               protocol: TCP
-            - port: "6379"
-              protocol: TCP
             - port: "5432"
               protocol: TCP
             - port: "8000"
@@ -60,6 +60,15 @@ spec:
             - port: "8081"
               protocol: TCP
             - port: "8082"
+              protocol: TCP
+    # Shared Valkey cache (platform/valkey, namespace valkey — ADR-021): only
+    # immich egresses to it, on 6379. Valkey initiates nothing back.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: valkey
+      toPorts:
+        - ports:
+            - port: "6379"
               protocol: TCP
     # Machine-learning model pulls (HuggingFace) + GHCR image metadata — world 443 only
     - toEntities:
@@ -86,7 +95,7 @@ metadata:
 spec:
   endpointSelector: {}
   ingress:
-    # Intra-immich (server <-> ml <-> valkey <-> CNPG)
+    # Intra-immich (server <-> ml <-> CNPG); valkey is cross-namespace (ADR-021)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: immich
@@ -95,8 +104,6 @@ spec:
             - port: "2283"
               protocol: TCP
             - port: "3003"
-              protocol: TCP
-            - port: "6379"
               protocol: TCP
             - port: "5432"
               protocol: TCP

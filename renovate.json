@@ -24,6 +24,13 @@
     },
     {
       "customType": "regex",
+      "description": "Nextcloud inline image map (registry/repository/tag with digest) in apps/nextcloud values — map on one line so validate-images stays green; digest rides inside tag because the chart has no image.digest field",
+      "managerFilePatterns": ["/^apps\\/nextcloud\\/values.*\\.yaml$/"],
+      "matchStrings": ["repository:\\s*['\\\"]?(?<depName>[^'\\\"\\s]+)['\\\"]?,\\s*tag:\\s*['\\\"]?(?<currentValue>[^@'\\\"\\s]+)@sha256:(?<currentDigest>[a-f0-9]+)"],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
       "description": "HELM_VERSION env in workflows",
       "managerFilePatterns": ["/^\\.github\\/workflows\\/.*\\.ya?ml$/"],
       "matchStrings": ["HELM_VERSION:\\s*v(?<currentValue>[\\d.]+)"],

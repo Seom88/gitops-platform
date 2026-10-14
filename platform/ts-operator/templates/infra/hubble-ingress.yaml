@@ -6,6 +6,7 @@ metadata:
   namespace: kube-system
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    tailscale.com/proxy-group: ingress-proxies
 spec:
   ingressClassName: tailscale
   rules:

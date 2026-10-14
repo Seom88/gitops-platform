@@ -1,6 +1,34 @@
 # ADR-015: Lean CPU Sizing in Prod, Full Sizing in Dev
 
-**Status:** Accepted · **Date:** 2026-09-14 · **Deciders:** Seom88 · **Related:** [ADR-012](012-single-host-cluster-gateway.md), [ADR-014](014-cilium-cni-and-identity-networkpolicies.md)
+**Status:** Deprecated (2026-10-10) · **Date:** 2026-09-14 · **Deciders:** Seom88 · **Related:** [ADR-012](012-single-host-cluster-gateway.md) (itself superseded by [ADR-018](018-per-app-tailscale-ingress.md)), [ADR-014](014-cilium-cni-and-identity-networkpolicies.md), [ADR-019](019-single-node-bare-metal-migration.md)
+
+> **Deprecation (2026-10-10): premise retired, decision voided.**
+> This ADR sized prod lean against a topology that no longer exists: three worker
+> VMs, 22 CPUs, and a "every reserved millicore costs watts" energy constraint.
+> The cluster is now a single bare-metal node (`aleph`, AlmaLinux 10.2, k3s
+> v1.36.5) reporting **12 CPU and ~31 GiB allocatable RAM**; at rest it sits at
+> 5.4 cores (45%) and ~19.9 Gi (62%), leaving roughly 6.5 cores and ~12.5 GB of
+> headroom. The cluster is not resource-constrained, so the reason to be lean is
+> gone.
+>
+> **Retired in full:** the "reserve as few millicores as possible to save power"
+> rule and its justification. No sizing value in `platform/*/values.yaml` or in
+> the app charts was changed by this deprecation.
+>
+> **What still applies:** only the mechanism this ADR happened to establish —
+> the prod/dev value split (`values.yaml` base, `values-dev.yaml` overlay). That
+> is a delivery concern, not a sizing decision, and it keeps working.
+>
+> **What replaces it:** evidence-driven sizing. A request or limit changes only
+> on measured pressure — CPU throttling, OOMKills, or scheduling failures — and
+> never on thrift, and never on "we have headroom now". Raising requests without
+> that evidence consumes allocatable headroom for no benefit; the headroom itself
+> is what protects the node, so consuming it is the opposite of safety.
+>
+> **Supersedes:** none · **Superseded by:** none. Retired without a replacement
+> decision — sizing authority is now the measurement itself, which is what this
+> ADR's own checklist already required. Live topology and numbers: ADR-019
+> amendment 2026-10-10.
 
 Prod (`platform/*/values.yaml`) carries lean CPU requests and limits measured on this energy-constrained homelab. Dev (`platform/*/values-dev.yaml`) carries full requests and limits so tests get rich metrics and catch throttling or OOM pressure before prod.
 
@@ -13,6 +41,8 @@ Prod (`platform/*/values.yaml`) carries lean CPU requests and limits measured on
 ## Details
 
 ### Why prod is lean
+
+> Superseded by the deprecation note above — this section is kept as the record of why the numbers existed, not as guidance.
 
 This homelab runs under a hard energy constraint: every reserved millicore keeps a CPU from sleeping and costs watts around the clock. Prometheus evidence at rightsizing time showed the cluster averaging 13–17% of 22 CPUs, with peaks of 40–47% driven almost entirely by Trivy scan bursts, and zero CPU throttling anywhere. That profile justified trimming idle reservations to the floor while keeping burst limits — a power and bin-packing optimization, not a performance one.
 

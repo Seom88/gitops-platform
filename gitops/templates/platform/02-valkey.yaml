@@ -1,0 +1,38 @@
+{{- if .Values.platformApps.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: valkey
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/tracking-id: gitops:argoproj.io/Application:argocd/valkey
+  labels:
+    wave-policy: healthy
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ if .Values.developmentApp.enabled }}dev{{ else }}main{{ end }}
+    path: platform/valkey
+    helm:
+      ignoreMissingValueFiles: true
+      valueFiles:
+        - values.yaml
+        {{- if .Values.developmentApp.enabled }}
+        - values-dev.yaml
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: valkey
+  # Shared Valkey cache (ADR-021) consumed by immich today, nextcloud later;
+  # wave 2 so consumers (waves 3+) resolve valkey.valkey.svc.cluster.local.
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - Retry=true
+{{- end }}

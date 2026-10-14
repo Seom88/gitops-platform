@@ -1,0 +1,17 @@
+# Default ProxyClass for Tailscale proxies — real requests/limits instead of
+# the 1m/1Mi operator defaults. Cluster-scoped: no namespace field.
+# Wired as the operator-wide default via proxyConfig.defaultProxyClass
+# (values.yaml), so per-Ingress proxy-class labels are unnecessary.
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyClass
+metadata:
+  name: prod-proxies
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  statefulSet:
+    pod:
+      tailscaleContainer:
+        resources:
+          requests: {cpu: "100m", memory: "128Mi"}
+          limits: {cpu: "500m", memory: "512Mi"}

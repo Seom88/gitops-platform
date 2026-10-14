@@ -1,0 +1,22 @@
+ciliumNetworkPolicy:
+  enabled: true
+
+developmentApp:
+  enabled: true
+
+# Dev backup identity: same shared bucket + key as prod, separate prefix so
+# dev and prod never share a backup path. Schedule/retention mirror prod.
+backup:
+  prefix: nextcloud-dev
+
+tailscaleIngress:
+  nextcloud:
+    hostname: nextcloud-dev
+
+# The chart writes NEXTCLOUD_TRUSTED_DOMAINS from values, so dev needs the dev
+# FQDN here too (the tailscale operator appends the tailnet domain to the
+# short hostname above) — otherwise the dev device gets a trusted-domain loop.
+nextcloud:
+  host: nextcloud-dev.lonk-mirfak.ts.net
+  trustedDomains:
+    - nextcloud-dev.lonk-mirfak.ts.net

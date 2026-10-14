@@ -65,16 +65,14 @@ data:
             icon: immich
             href: https://immich{{ .Values.myDomain }}/
             description: Photo backup, albums, sharing and mobile sync
-        # Nextcloud (coming soon, uncomment when deployed):
-        # - Nextcloud:
-        #     icon: nextcloud
-        #     href: https://nextcloud{{ .Values.myDomain }}/
-        #     description: Files, calendar, contacts and office sync
+        - Nextcloud:
+            icon: nextcloud
+            href: https://nextcloud{{ .Values.myDomain }}/
+            description: Files, calendar, contacts and office sync
     - Infrastructure:
-        - Proxmox:
-            icon: proxmox
-            href: https://pve01.lonk-mirfak.ts.net/
-            description: Hypervisor, VMs, LXC containers and cluster management
+        - AlmaLinux:
+            icon: si-almalinux
+            description: Bare-metal node aleph, AlmaLinux 10.
         - TrueNAS:
             icon: truenas-scale
             href: https://truenas-scale.lonk-mirfak.ts.net/
@@ -106,4 +104,9 @@ data:
         provider: duckduckgo
         target: _blank
   docker.yaml: ""
+  # NOT a Proxmox integration (see services.yaml: bare-metal since 5fb2315).
+  # Empty placeholder required by homepage v2's config migration: on startup it
+  # copies any /app/src/skeleton/*.yaml missing from /app/config into it. Under
+  # runAsNonRoot: true, /app/config is root:root and that copy fails EACCES,
+  # exiting 1. So every skeleton file must exist here, even when empty.
   proxmox.yaml: ""

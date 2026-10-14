@@ -1,0 +1,14 @@
+# HA ingress proxies — 2 replicas serve all annotated Ingresses; per-Ingress
+# MagicDNS names are preserved via each Ingress spec.tls.hosts.
+# Cluster-scoped: no namespace field.
+# DISRUPTIVE on first sync: briefly recreates proxy pods.
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyGroup
+metadata:
+  name: ingress-proxies
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  type: ingress
+  replicas: 2
+  proxyClass: prod-proxies

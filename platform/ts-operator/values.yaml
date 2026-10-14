@@ -24,8 +24,14 @@ tailscale-operator:
       limits:
         cpu: 500m
         memory: 256Mi
+  apiServerProxyConfig:
+    mode: "true"
   proxyConfig:
     defaultTags: "tag:k8s"
+    # Cluster-wide default ProxyClass for Ingress/Service proxies
+    # (templates/proxyclass.yaml). Supported by subchart 1.102.4 via
+    # PROXY_DEFAULT_CLASS env — no per-Ingress labels needed.
+    defaultProxyClass: "prod-proxies"
 
 # Orphan-app Tailscale Ingresses (moved from platform/ts-ingress, ADR-018):
 # argocd + hubble-ui Apps are not declared here, so their Ingresses ship here

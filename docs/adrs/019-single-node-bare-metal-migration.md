@@ -1,6 +1,6 @@
 # ADR-019: Single-Node Bare-Metal Migration (3w to 1w Topology)
 
-**Status:** Accepted · **Date:** 2026-09-26 · **Deciders:** Seom88 · **Related:** [ADR-016](016-two-node-prod-trial.md), [ADR-015](015-lean-cpu-sizing-homelab-vs-datacenter.md)
+**Status:** Accepted · **Date:** 2026-09-26 · **Deciders:** Seom88 · **Related:** [ADR-016](016-two-node-prod-trial.md), [ADR-015](015-lean-cpu-sizing-homelab-vs-datacenter.md) (deprecated 2026-10-10)
 
 > **Outcome:** cluster reduced from 3 workers to 1 worker. Vault standalone (1 replica), Longhorn 1 replica, all podAntiAffinity commented out. Motivation: resource savings and migration from k8s-on-VM to bare metal.
 
@@ -83,3 +83,34 @@ The homelab runs on 3 worker VMs. The user plans to migrate to bare metal with a
 - [ ] Verify Longhorn volumes are healthy with 1 replica.
 - [ ] Test backup/restore cycle (Longhorn → RustFS).
 - [ ] Monitor resource usage on single node.
+
+---
+
+## Amendment 2026-10-10: Topology Live — "Resource Savings" Motivation Retired
+
+**Status:** Accepted · **Date:** 2026-10-10 · **Deciders:** Seom88 · **Amends:** Context and motivation only · **Related:** [ADR-015](015-lean-cpu-sizing-homelab-vs-datacenter.md) (deprecated the same day)
+
+This ADR described a destination; this amendment records the destination as it actually runs. Measured 2026-10-10 with `kubectl get nodes -o wide` and `kubectl top nodes`.
+
+### Live topology
+
+| Host | Role | Verified capacity |
+|---|---|---|
+| `aleph` — AlmaLinux 10.2 (Lavender Lion), kernel `6.12.0-211.64.1.el10_2.x86_64`, k3s `v1.36.5`, containerd `2.3.4`, roles `control-plane,etcd` | The single Kubernetes node — every workload in this repo | **12 CPU, ~31 GiB allocatable RAM** (`32464324Ki`) |
+| TrueNAS (companion host, 6 GB) | Backups only — Velero BSL and Longhorn/RustFS S3 target; unchanged from the main ADR | Not observable from the cluster |
+| Second AlmaLinux companion host (2 GB) | Serves the RustFS S3 endpoint behind `rustfs.lonk-mirfak.ts.net` (`100.89.39.31`, verified resolvable and reachable from the tailnet); not a Kubernetes node | Not observable from the cluster |
+
+The k3s allocation is tracked as ~24 GB; the node's own `MemTotal` reports ~31 GiB allocatable. The measured figure governs sizing decisions, and the ~24 GB figure is a VM-sizing artifact — record both so a future reader does not re-derive capacity from the wrong one.
+
+### Measured at rest
+
+| Resource | In use | Of capacity | Headroom |
+|---|---|---|---|
+| CPU | 5.4 cores (45%) | 12 cores | ~6.5 cores |
+| RAM | ~19.9 Gi (62%) | ~31 GiB allocatable | ~12.5 GB |
+
+### Consequences
+
+- **The "reduce resource consumption" motivation is retired.** The single node is what the hardware is, not an optimization. Any future sizing decision is evidence-driven — CPU throttling, OOMKills, scheduling pressure — never thrift. See the ADR-015 deprecation, same day.
+- **Node-level redundancy is unchanged and remains the accepted cost.** The node is not resource-constrained, but a node failure is still total downtime, and a second physical disk is still the only redundancy upgrade available inside this box (main ADR, *Future: Second Disk for Longhorn*).
+- **Nothing else changes.** Vault standalone at 1 replica, Longhorn at 1 replica, Loki gateway at 1 replica, PDBs for voluntary disruptions, and off-cluster backups all stand exactly as decided. This amendment changed no values.
