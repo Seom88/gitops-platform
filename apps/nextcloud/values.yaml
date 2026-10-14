@@ -98,9 +98,9 @@ nextcloud:
       enabled: true
       secretName: nextcloud-database-app # pragma: allowlist secret
       usernameKey: username
-      passwordKey: password
+      passwordKey: password # pragma: allowlist secret
       hostKey: host
-      databaseKey: dbname
+      databaseKey: dbname # pragma: allowlist secret
 
   nextcloud:
     host: nextcloud.lonk-mirfak.ts.net
@@ -111,9 +111,9 @@ nextcloud:
     # before committing.
     existingSecret:
       enabled: true
-      secretName: nextcloud-admin
+      secretName: nextcloud-admin # pragma: allowlist secret
       usernameKey: username
-      passwordKey: password
+      passwordKey: password # pragma: allowlist secret
     # Redis for cache + file locking. The chart renders redis settings from
     # REDIS_HOST* env only and has no dbindex knob, so the default config is
     # disabled and a custom file pins dbindex 1: immich's Bull queues own db0
