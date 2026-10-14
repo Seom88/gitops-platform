@@ -78,5 +78,5 @@ argocd app get ts-operator  # should be Healthy/Synced at wave -1
 
 Additional secrets can be added following these patterns:
 
-- **Vault/ESO path (services that need audit/versioning):** Create them in Vault UI under `secret/` (e.g. `secret/seaweedfs`, `secret/monitoring`) and define a corresponding `ExternalSecret` in the cluster (`platform/*/templates/` + `platform/vault/templates/eso/` `ClusterSecretStore`/`vault-config-*` Job). See [ADR-002](adrs/002-vault-config-decentralization.md).
+- **Vault/ESO path (services that need audit/versioning):** Create them in Vault UI under `secret/` (e.g. `secret/monitoring`) and define a corresponding `ExternalSecret` in the cluster (`platform/*/templates/` + `platform/vault/templates/eso/` `ClusterSecretStore`/`vault-config-*` Job). See [ADR-002](adrs/002-vault-config-decentralization.md).
 - **Bootstrap ephemeral outside Vault (Velero precedent, now also Tailscale):** For secrets that must exist *before* Vault/ESO is Ready (Velero backs up Vault; Tailscale operator gates Velero DNS), create an ephemeral plain `Secret` via `bootstrap/init-gitops.sh` (`ensureVeleroCredentials()` / `ensureTailscaleCredentials()`) and reference it via `credentials.existingSecret` / `oauthSecretName`. Follow [ADR-010](adrs/010-tailscale-oauth-ci-generated.md) and [ADR-009](adrs/009-vault-dr-and-velero-backup.md).

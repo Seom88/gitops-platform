@@ -29,7 +29,7 @@ Stated precisely, because the previous "10 charts — Complete" claim was wrong 
 | | Count | Detail |
 |---|---|---|
 | First-party charts in this repo | 10 | `gitops` + 9 under `platform/` and `apps/` |
-| …that render `cilium-networkpolicies.yaml` | **9** | `platform/{vault,velero,longhorn,seaweedfs,monitoring,trivy-operator,ts-operator}`, `apps/{homepage,immich}` |
+| …that render `cilium-networkpolicies.yaml` | **8** | `platform/{vault,velero,longhorn,monitoring,trivy-operator,ts-operator}`, `apps/{homepage,immich}` |
 | …that do not | **1** | `gitops` (the App-of-Apps chart) — see note below |
 
 The `argocd` and `external-secrets` workloads are **not first-party charts in this repo**; there is no `platform/argocd/` or `platform/external-secrets/` directory to add a template to. They are:
@@ -43,7 +43,7 @@ Both are currently disabled by default (`vault.enabled: false`, `eso.enabled: fa
 
 ## Where the project stands today
 
-The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, SOPS + age as the default secrets path (Vault paused, not deleted — ADR-017), Tailscale per-app ingress (one device per app), and distributed storage via Longhorn + SeaweedFS. On top of that there's a CI layer that validates every push (`ci.yaml`: lint + Trivy in one run), and a controlled workflow for deploys (`deploy.yaml`).
+The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, SOPS + age as the default secrets path (Vault paused, not deleted — ADR-017), Tailscale per-app ingress (one device per app), distributed block storage via Longhorn, and externalized object storage via RustFS. On top of that there's a CI layer that validates every push (`ci.yaml`: lint + Trivy in one run), and a controlled workflow for deploys (`deploy.yaml`).
 
 **Topology.** The cluster was reduced from 3 workers to 1 node ([ADR-019](./adrs/019-single-node-bare-metal-migration.md)). This repo therefore delivers **pod-level** HA — PDBs, multi-replica stateless workloads, Longhorn snapshots, and off-cluster S3 backups — but **not node-level HA**. Node failure is total downtime: there is no pod redistribution and no Raft quorum. Multi-node HA is a property of the cluster, not of this repository. The migration target is single-node bare metal; the substrate choice is a maintainer concern and is not a v1.0.0 gate.
 
@@ -72,7 +72,7 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 - [x] ArgoCD with custom health checks
 - [x] Longhorn as distributed storage (wave 0)
 - [x] Prometheus + Grafana + Loki
-- [x] SeaweedFS as S3-compatible storage
+- [x] External S3-compatible storage (RustFS)
 - [x] Architecture Decision Records (ADRs)
 
 ### Phase 2 — Automation & Observability ✅ Complete
@@ -85,8 +85,8 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 ### Phase 3 — Storage & Scale ✅ Complete
 
 - [x] Longhorn — distributed block storage
-- [x] SeaweedFS — S3-compatible object storage
-- [x] Loki → SeaweedFS integration for centralized logging (SingleBinary + gateway, buckets `loki-chunks`/`loki-ruler`)
+- [x] External S3-compatible object storage (RustFS)
+- [x] Loki → RustFS integration for centralized logging (SingleBinary + gateway, bucket `loki`)
 - [x] Velero — **automated backup** (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 02:00, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`) — deployed and running. Vault is excluded by policy; its hourly protection is the Longhorn `vault-hourly-snapshot` RecurringJob, not a Velero schedule. **Restore is not verified**: no drill has been run. See [What blocks v1.0.0](#what-blocks-v100).
 
 ### Phase 4 — Hardening & Developer Experience (in progress, v1.0)
@@ -129,7 +129,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 |---|---|---|---|
 | `k8s-nameserver` | Former `DNSConfig` device for MagicDNS `ts.net` → CoreDNS sibling `ts.net:53` (removed with `platform/coredns-patch`, ADR-011 historical) | ❌ removed | — |
 | `rustfs-egress` | `ExternalName` `rustfs.lonk-mirfak.ts.net` for Velero/S3 via Tailscale | ✅ present | ✅ stays (future optional: consolidate via `TCPRoute`; out of scope for v2) |
-| per-app Ingresses | One `Ingress` + device per app, owned by each chart via `tailscaleIngress` values (`argocd`/`grafana`/`prometheus`/`longhorn`/`seaweedfs-s3`/`seaweedfs-admin`/`homepage`/`hubble`/`vault`, each at `/` root; orphans in `ts-operator/templates/infra/`, ADR-018) | ✅ present (9 devices) | 🔀 consolidated — merged into `gateway-envoy` |
+| per-app Ingresses | One `Ingress` + device per app, owned by each chart via `tailscaleIngress` values (`argocd`/`grafana`/`prometheus`/`longhorn`/`homepage`/`hubble`/`vault`, each at `/` root; orphans in `ts-operator/templates/infra/`, ADR-018) | ✅ present (7 devices) | 🔀 consolidated — merged into `gateway-envoy` |
 | `gateway-envoy` | Envoy Gateway `LoadBalancer` with `loadBalancerClass: tailscale` (BYOD) | — | ✅ **single device** serving all 9 app hostnames |
 
 > Operator itself is control-plane only and not counted. `k8s-nameserver`/`DNSConfig` removed with `coredns-patch`; `rustfs-egress` is unchanged in v2.
@@ -137,7 +137,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 **BYOD architecture (brief):**
 
 - Envoy Gateway chart provides `GatewayClass: tailscale` and a `LoadBalancer` (`loadBalancerClass: tailscale`) — single Tailscale device `gateway-envoy` replaces the nine per-app L7 devices above. See [Tailscale BYOD Gateway API](https://tailscale.com/docs/solutions/kubernetes-operator-byod-gateway-api).
-- One `Gateway` with multiple `listeners` / `hostnames` (one per app: `argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`), each terminating its own TLS cert. One `HTTPRoute` per service (replaces the per-app `Ingress`es).
+- One `Gateway` with multiple `listeners` / `hostnames` (one per app: `argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`), each terminating its own TLS cert. One `HTTPRoute` per service (replaces the per-app `Ingress`es).
 - The NGINX gateway is already gone (ADR-018 removed `Deployment`/`Service`/`ConfigMap` + `sub_filter`/`rewrite` hacks); v2 only swaps the L7 frontend from per-app `Ingress`es to `HTTPRoute`s on `gateway-envoy`. Vault stays a standard hostname-routed route throughout.
 - Substrate ready: Cilium Gateway API CRDs `v1.2.3` are already installed in the cluster (ADR-014); no CNI/storage change needed.
 
@@ -152,7 +152,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 **Checklist — v2:**
 
 - [ ] Install Envoy Gateway chart (Gateway API provider) and define `GatewayClass: tailscale`
-- [ ] Define single `Gateway: gateway-envoy` (`LoadBalancer`, `loadBalancerClass: tailscale`) with per-app TLS listeners/hostnames and per-service `HTTPRoute`s (argocd, grafana, prometheus, longhorn, seaweedfs-s3, seaweedfs-admin, homepage, hubble, vault)
+- [ ] Define single `Gateway: gateway-envoy` (`LoadBalancer`, `loadBalancerClass: tailscale`) with per-app TLS listeners/hostnames and per-service `HTTPRoute`s (argocd, grafana, prometheus, longhorn, homepage, hubble, vault)
 - [x] Remove L7 gateway hacks — done early via ADR-018 (NGINX `Deployment`/`Service`/`ConfigMap` deleted; per-app `Ingress`es at `/` root, no `sub_filter`/`rewrite`)
 - [ ] Update docs/runbooks (URLs, `helm template` verification, `kubectl get gateway/httproute` checks, rollback to per-app `Ingress`es)
 
@@ -160,7 +160,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 
 - Not removing Tailscale entirely — `rustfs-egress` and tailnet ACLs remain (`k8s-nameserver`/`DNSConfig` removed).
 - Not touching the `rustfs-egress` device.
-- No change to storage (Longhorn/SeaweedFS), Vault HA, or ArgoCD waves beyond ingress.
+- No change to storage (Longhorn/RustFS), Vault HA, or ArgoCD waves beyond ingress.
 
 ### Compliance & policy
 
@@ -203,7 +203,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 **Already complete:**
 - [x] ArgoCD App-of-Apps
 - [x] Zero-trust ingress via Tailscale
-- [x] Longhorn + SeaweedFS
+- [x] Longhorn + RustFS
 - [x] Prometheus + Grafana + Loki + Alloy (DaemonSet log collector)
 - [x] Velero — **automated backup** (Wave 0, RustFS S3 `velero-homelab`, chart `12.2.0` / app `1.18.2`)
 - [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014)

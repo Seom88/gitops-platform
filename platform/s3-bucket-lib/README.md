@@ -56,7 +56,7 @@ the tgz or ensure the pipeline builds dependencies.
 s3:
   tailnetFqdn: "rustfs.lonk-mirfak.ts.net" # required, no default
   region: us-east-1
-  bucket: loki-chunks
+  bucket: loki
 
 bucketInit:
   enabled: true

@@ -52,9 +52,9 @@ spec:
           args:
             - |
               set -e
-              echo "[bucket-init] Starting Loki bucket init (SeaweedFS)..."
+              echo "[bucket-init] Starting Loki bucket init (RustFS)..."
               # Wait for credentials injected as env vars from Secret loki-s3-credentials
-              # (ExternalSecret wave -1 from Vault secret/seaweedfs/s3). Secret uses
+              # (ExternalSecret wave -1 from Vault secret/loki/s3). Secret uses
               # optional:true so Job can be created before ESO syncs; we poll 60s.
               WAIT_SECS=0
               WAIT_MAX=60
@@ -69,36 +69,20 @@ spec:
               done
               if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
                 echo "[bucket-init] ERROR: credentials not available after $WAIT_MAX s (Secret loki-s3-credentials missing?)"
-                echo "[bucket-init] Hint: ensure ExternalSecret loki-s3-credentials (wave -1) synced from Vault secret/seaweedfs/s3."
+                echo "[bucket-init] Hint: ensure ExternalSecret loki-s3-credentials (wave -1) synced from Vault secret/loki/s3."
                 exit 1
               fi
               export AWS_DEFAULT_REGION="{{ .Values.loki.loki.storage.s3.region | default "us-east-1" }}"
               export AWS_EC2_METADATA_DISABLED="true"
               export AWS_S3_ADDRESSING_STYLE="path"
-              # Ensure aws-cli uses path-style addressing (SeaweedFS S3 requires it)
+              # Ensure aws-cli uses path-style addressing (required by S3-compatible storage)
               aws configure set default.s3.addressing_style path || true
               aws configure set default.s3.addressing_style path --profile default || true
-              ENDPOINT="{{ .Values.loki.loki.storage.s3.endpoint | default "http://seaweedfs-s3.seaweedfs.svc:8333" }}"
+              ENDPOINT="{{ .Values.loki.loki.storage.s3.endpoint | default "https://rustfs.lonk-mirfak.ts.net" }}"
               # Buckets templatable with hardcode fallback; extend list for future admin bucket
-              BUCKETS="{{ .Values.loki.loki.storage.bucketNames.chunks | default "loki-chunks" }} {{ .Values.loki.loki.storage.bucketNames.ruler | default "loki-ruler" }}"
+              BUCKETS="{{ .Values.loki.loki.storage.bucketNames.chunks | default "loki" }} {{ .Values.loki.loki.storage.bucketNames.ruler | default "loki" }}"
               echo "[bucket-init] Endpoint: $ENDPOINT (region $AWS_DEFAULT_REGION)"
               echo "[bucket-init] Buckets: $BUCKETS"
-              # Wait for SeaweedFS S3 ClusterIP DNS to be ready
-              echo "[bucket-init] Waiting for seaweedfs-s3.seaweedfs.svc (max 120s)..."
-              DNS_WAIT=0
-              DNS_MAX=120
-              while [ $DNS_WAIT -lt $DNS_MAX ]; do
-                if nslookup seaweedfs-s3.seaweedfs.svc >/dev/null 2>&1 || getent hosts seaweedfs-s3.seaweedfs.svc >/dev/null 2>&1; then
-                  echo "[bucket-init] DNS resolved for seaweedfs-s3.seaweedfs.svc"
-                  break
-                fi
-                echo "[bucket-init] DNS not yet resolved ($DNS_WAIT/$DNS_MAX s)..."
-                sleep 5
-                DNS_WAIT=$((DNS_WAIT + 5))
-              done
-              if [ $DNS_WAIT -ge $DNS_MAX ]; then
-                echo "[bucket-init] WARNING: DNS still not resolved after $DNS_MAX s — proceeding anyway (may fail, Argo will retry)"
-              fi
 
               for BUCKET in $BUCKETS; do
                 echo "[bucket-init] Creating bucket $BUCKET at $ENDPOINT (region $AWS_DEFAULT_REGION)..."

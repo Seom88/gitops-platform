@@ -21,7 +21,7 @@ longhorn:
     # workload node; best-effort keeps scheduling flexible in a small homelab.
     defaultDataLocality: best-effort
     # Measured 2026-09-22: volumes average <10% fill (PrometheusDB 7%,
-    # Loki ~0%, SeaweedFS data1 <1%, Trivy 28%, Vault ~1%, ImmichDB ~2%).
+    # Loki ~0%, Trivy 28%, Vault ~1%, ImmichDB ~2%).
     # 15% (~24Gi/disk) still covers OS + bursts; frees ~70Gi cluster-wide.
     storageReservedPercentageForDefaultDisk: 15
     # Best-practices (Longhorn 1.12.1): 25% minimal-available is the root-disk

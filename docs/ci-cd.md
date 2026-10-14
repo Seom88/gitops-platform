@@ -155,7 +155,7 @@ jobs:
 | `secret scan` | `detect-secrets-hook --baseline .secrets.baseline` — fail on new secrets, never auto-updates |
 | `setup-helm` | `azure/setup-helm@v5` `version: v3.18.4` |
 | `helm dependency build (gitops)` | `helm dependency build gitops` (no-op if no deps) |
-| `helm dependency build (platform charts)` | `helm repo add` longhorn/grafana/prometheus-community/seaweedfs/tailscale/hashicorp + `helm repo update`; loop `platform/*/` → `helm dependency update/build` |
+| `helm dependency build (platform charts)` | `helm repo add` longhorn/grafana/prometheus-community/tailscale/hashicorp + `helm repo update`; loop `platform/*/` → `helm dependency update/build` |
 | `lint gitops (prod)` | `helm lint gitops -f gitops/values.yaml` |
 | `lint gitops (dev)` | `helm lint gitops -f gitops/values-dev.yaml` |
 | `render gitops (prod) — empty check` | `helm template gitops gitops -f gitops/values.yaml > /tmp/gitops-prod.yaml` + `test -s` + `wc -l` + `grep -c '^---'` + `head -n 80` |
@@ -248,7 +248,7 @@ Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summa
 | Vault HA Raft + TLS + auto-unseal — wave 1 healthy — needs manual review | `helm` `vault` | `manual-review/vault` | `false` |
 | Longhorn storage — needs manual validation (CSI-gated wave 0) | `helm` `longhorn` | `manual-review/longhorn` | `false` |
 | cert-manager wave-0 healthy — needs manual review before wave 1 | `helm` `cert-manager` | `manual-review/cert-manager` | `false` |
-| Group non-critical Helm charts (loki, kube-prometheus-stack, seaweedfs, tailscale-operator, external-secrets) | `helm` excl. vault/longhorn/cert-manager | `helm charts` (`helm-charts`), `helm` | grouped PR |
+| Group non-critical Helm charts (loki, kube-prometheus-stack, tailscale-operator, external-secrets) | `helm` excl. vault/longhorn/cert-manager | `helm charts` (`helm-charts`), `helm` | grouped PR |
 | Group GitHub Actions | `github-actions` | `github actions` (`github-actions`), `github-actions` | grouped PR |
 
 Regex managers also cover hardcoded images (`platform/*/templates`, `apps/*/templates`, `apps/*/values*`, Velero initContainers) and `HELM_VERSION` in workflows — so digest-pinned refs (`tag@sha256:…`) keep tag bumps flowing with refreshed digests. Validate Vault/Longhorn/cert-manager upgrades via `just validate` + `helm template` before merging.

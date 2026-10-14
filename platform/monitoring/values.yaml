@@ -10,9 +10,9 @@ loki:
   singleBinary:
     replicas: 1
     persistence:
-      size: 2Gi  # chunks live on SeaweedFS S3; local PVC holds WAL only (measured ~10Mi, 2026-09-22)
+      size: 2Gi  # chunks live on external RustFS S3; local PVC holds WAL only (measured ~10Mi, 2026-09-22)
       storageClass: ""
-    # Inject SeaweedFS S3 credentials from Vault via ESO
+    # Inject RustFS S3 credentials from SOPS-managed Secret
     extraEnvFrom:
       - secretRef:
           name: loki-s3-credentials
@@ -52,13 +52,12 @@ loki:
     storage:
       type: s3
       s3:
-        endpoint: http://seaweedfs-s3.seaweedfs.svc:8333
+        endpoint: https://rustfs.lonk-mirfak.ts.net
         region: us-east-1
         s3ForcePathStyle: true
-        insecure: true
       bucketNames:
-        chunks: loki-chunks
-        ruler: loki-ruler
+        chunks: loki
+        ruler: loki
       filesystem:
         chunks_directory: /var/loki/chunks
         rules_directory: /var/loki/rules

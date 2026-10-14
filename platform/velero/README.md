@@ -50,7 +50,7 @@ Nothing of Vault is stored in Velero: `daily-full` carries `vault` in `excludedN
 
 Restoring Raft state from Velero corrupts the cluster, and Vault holds no irreplaceable PKI/transit material, so DR is `platform/vault/scripts/bootstrap-vault.sh` (init when `initialized==false`, unseal, kv-v2 + k8s auth) followed by secret rotation — never a Velero restore.
 
-Hourly crash-consistency for Vault volumes is a Longhorn local snapshot instead: `platform/longhorn/templates/recurringjobs.yaml` (`RecurringJob` `vault-hourly-snapshot`, `task: snapshot`, `cron: 0 * * * *`, `retain: 24`). `snapshot` is local copy-on-write; `backup` would need an S3/NFS target that is intentionally unconfigured. Volumes opt in via the `vault-hourly` group label (`recurring-job-group.longhorn.io/vault-hourly=enabled`). Daily snapshot templates for `seaweedfs`/`monitoring` are commented out in the same file.
+Hourly crash-consistency for Vault volumes is a Longhorn local snapshot instead: `platform/longhorn/templates/recurringjobs.yaml` (`RecurringJob` `vault-hourly-snapshot`, `task: snapshot`, `cron: 0 * * * *`, `retain: 24`). `snapshot` is local copy-on-write; `backup` would need an S3/NFS target that is intentionally unconfigured. Volumes opt in via the `vault-hourly` group label (`recurring-job-group.longhorn.io/vault-hourly=enabled`). Daily snapshot templates for `monitoring` are commented out in the same file.
 
 ## Multi-bucket init
 

@@ -3,7 +3,7 @@
 # (immich-server, endpoints metrics-api 8081 + metrics-ms 8082) but without the
 # `release: monitoring` label that kube-prometheus-stack uses for selection,
 # so Prometheus never scrapes it. This mirror carries the same selector with
-# the release label, following the seaweedfs/cilium-servicemonitors pattern.
+# the release label, following the cilium-servicemonitors pattern.
 # NOTE: deliberately named *-mirror — same name+namespace as upstream would
 # collide with the object owned by the ArgoCD `immich` app (upstream wins and
 # the mirror never applies). Prometheus merges by selector, upstream is

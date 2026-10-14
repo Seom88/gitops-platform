@@ -1,6 +1,6 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
 # CiliumNetworkPolicies for monitoring namespace — portfolio-grade default-deny with scoped allowlists
-# Covers: Alloy DaemonSet -> kube-api + Loki gateway + DNS, Prometheus scraping, Grafana ingress, Loki -> SeaweedFS S3, Hubble
+# Covers: Alloy DaemonSet -> kube-api + Loki gateway + DNS, Prometheus scraping, Grafana ingress, Loki -> RustFS S3, Hubble
 
 # 1) DNS egress — allow all pods in monitoring to resolve via kube-dns (Cilium DNS-aware)
 ---
@@ -28,7 +28,7 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# 2) Egress allowlist — kube-apiserver, intra-monitoring, SeaweedFS S3, Hubble, and cluster scraping
+# 2) Egress allowlist — kube-apiserver, intra-monitoring, RustFS S3, Hubble, and cluster scraping
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -67,14 +67,21 @@ spec:
               protocol: TCP
             - port: "3000"
               protocol: TCP
-    # Loki -> SeaweedFS S3 (8333) — bucketNames loki-chunks / loki-ruler
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: seaweedfs
-            k8s:app.kubernetes.io/component: s3
+    # Loki -> RustFS S3 (443) — bucketNames loki (chunks + ruler share one bucket)
+    # Velero pattern: FQDN:443 L4 only + toCIDR tailnetIp/32 as FQDN-independent
+    # fallback (Cilium only learns FQDN->IP by observing DNS).
+    - toFQDNs:
+        - matchName: rustfs.lonk-mirfak.ts.net
+        - matchPattern: "*.lonk-mirfak.ts.net"
       toPorts:
         - ports:
-            - port: "8333"
+            - port: "443"
+              protocol: TCP
+    - toCIDR:
+        - {{ required "backup.tailnetIp is required (set backup.tailnetIp in platform/monitoring values.yaml)" .Values.backup.tailnetIp }}/32
+      toPorts:
+        - ports:
+            - port: "443"
               protocol: TCP
     # Prometheus scraping: allow egress to any pod in cluster on scrape ports (9100 node-exporter, 8080 kube-state-metrics, 9090, 9153 coredns, 10250 kubelet, 9187 CNPG metrics)
     # Uses toEntities cluster to avoid enumerating every namespace/selector — Hubble will show flows per-identity

@@ -56,7 +56,7 @@ Each chart renders `platform/<app>/templates/cilium-networkpolicies.yaml` gated 
 | Policy | Direction | Key rules |
 |--------|-----------|-----------|
 | `<app>-allow-dns` | Egress | `toEndpoints: {k8s-app: kube-dns, k8s:io.kubernetes.pod.namespace: kube-system}` on UDP/TCP 53 + `toFQDNs: [{matchPattern: "*"}]` + `rules.dns` |
-| `<app>-allow-egress` | Egress | `kube-apiserver` (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (Vault Raft, Longhorn, SeaweedFS) |
+| `<app>-allow-egress` | Egress | `kube-apiserver` (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (Vault Raft, Longhorn) |
 | `<app>-allow-ingress` | Ingress | Intra-namespace, `toEntities: {host, remote-node, kube-apiserver}` + `health` probes |
 
 Policy specifics (ADR-014): Vault ingress is allowed from the `vault` namespace (`fromEndpoints` same-ns), policies match both `app.kubernetes.io/name` and `app` labels, storage namespaces are unrestricted intra-namespace (see below), and Hubble `4244/4245` is whitelisted.
@@ -74,7 +74,7 @@ When `false`, the `CiliumNetworkPolicy` resources are not rendered; legacy `netw
 ## Tailscale integration
 
 - **Control plane / DERP / STUN:** Tailscale clients and `tailscale-operator` need egress to DERP and STUN. Policies allow UDP `1-65535` + TCP `80/443` for Tailscale control plane where required; MagicDNS (`*.ts.net`) is covered by the `allow-dns` FQDN rule (not a broad egress hole).
-- **Per-app Tailscale ingress:** each chart renders its own `Ingress` via `tailscaleIngress` values (`ingressClassName: tailscale`), each creating its own MagicDNS device (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` hostnames in dev). Orphan apps (`argocd`, `hubble-ui`) ship from `platform/ts-operator/templates/infra/`. Every app is served at `/` root — no subpath routing — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress`.
+- **Per-app Tailscale ingress:** each chart renders its own `Ingress` via `tailscaleIngress` values (`ingressClassName: tailscale`), each creating its own MagicDNS device (`argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` hostnames in dev). Orphan apps (`argocd`, `hubble-ui`) ship from `platform/ts-operator/templates/infra/`. Every app is served at `/` root — no subpath routing — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress`.
 
 ## Hubble
 
@@ -104,7 +104,6 @@ Distributed storage data planes use dynamic/ephemeral ports; strict per-port int
 | Namespace | Ports / ranges | Policy |
 |-----------|----------------|--------|
 | `longhorn-system` | `9500`, `8000`, `8500-8503` + ephemeral `10000-30000` (replica/engine/instance-manager) | Intra-namespace **unrestricted** (`k8s:io.kubernetes.pod.namespace: longhorn-system` without port restriction) |
-| `seaweedfs` | `8333` (S3), `9333` (Filer), inter-volume/master RPC ranges | Intra-namespace **unrestricted** |
 
 Cross-namespace to storage is still deny-by-default; only intra-namespace is open.
 
@@ -127,7 +126,7 @@ helm template vault platform/vault --set ciliumNetworkPolicy.enabled=true | grep
 helm template vault platform/vault --set ciliumNetworkPolicy.enabled=false | grep -c "CiliumNetworkPolicy"  # → 0
 
 # Tailscale per-app Ingresses
-kubectl -n tailscale get ingress -o wide  # argocd, grafana, prometheus, longhorn, seaweedfs-*, homepage, hubble, vault
+kubectl -n tailscale get ingress -o wide  # argocd, grafana, prometheus, longhorn, homepage, hubble, vault
 curl -k https://grafana.lonk-mirfak.ts.net/login  # 200 via tailnet
 ```
 

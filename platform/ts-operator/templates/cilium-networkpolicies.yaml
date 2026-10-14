@@ -259,17 +259,6 @@ spec:
               protocol: TCP
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: seaweedfs
-      toPorts:
-        - ports:
-            - port: "8333"
-              protocol: TCP
-            - port: "23646"
-              protocol: TCP
-            - port: "33646"
-              protocol: TCP
-    - toEndpoints:
-        - matchLabels:
             k8s:io.kubernetes.pod.namespace: vault
       toPorts:
         - ports:

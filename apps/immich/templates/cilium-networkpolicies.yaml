@@ -154,13 +154,13 @@ spec:
               protocol: TCP
 ---
 # CNPG backup data plane -> RustFS S3 (shared bucket cnpg-db-backups).
-# Patrón Velero: FQDN:443 L4 puro (sin rules: — cualquier rules: lo vuelve
-# L7 y Cilium desvía el TLS crudo por Envoy, rompiendo el handshake) +
-# toCIDR tailnetIp/32:443 como fallback FQDN-independiente (Cilium solo
-# aprende FQDN->IP observando DNS) + world:443. DNS ya permitido vía
-# immich-allow-dns (puerto 53) — no hay rules.dns aquí.
-# TODO: single-source tailnetIp desde gitops/values.yaml sharedS3.tailnetIp
-# (hoy sin wiring en 05-immich.yaml, value local backup.tailnetIp).
+# Velero pattern: FQDN:443 L4 only (no rules: — any rules: makes it
+# L7 and Cilium diverts raw TLS through Envoy, breaking the handshake) +
+# toCIDR tailnetIp/32:443 as FQDN-independent fallback (Cilium only
+# learns FQDN->IP by observing DNS) + world:443. DNS already allowed via
+# immich-allow-dns (port 53) — no rules.dns here.
+# TODO: single-source tailnetIp from gitops/values.yaml sharedS3.tailnetIp
+# (currently no wiring in 05-immich.yaml, local value backup.tailnetIp).
 {{- if .Values.backup.enabled }}
 ---
 apiVersion: cilium.io/v2
@@ -180,7 +180,7 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    # S3 vía tailnet IP (fallback FQDN-independiente, solo 443 — patrón velero).
+    # S3 via tailnet IP (FQDN-independent fallback, 443 only — velero pattern).
     - toCIDR:
         - {{ required "backup.tailnetIp is required (set backup.tailnetIp in apps/immich values.yaml)" .Values.backup.tailnetIp }}/32
       toPorts:

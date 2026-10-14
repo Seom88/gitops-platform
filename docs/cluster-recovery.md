@@ -10,7 +10,7 @@ Restore path: Velero for PVC/PV + file data, Barman for Postgres, ArgoCD for man
 | Postgres (CNPG) | Barman PITR, step 5 |
 | Vault | Re-bootstrap, see Vault at the end |
 
-Survival storage is external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Velero → `velero-homelab`, Barman → `cnpg-db-backups`. Loki is the only consumer of in-cluster SeaweedFS S3.
+Survival storage is external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Velero → `velero-homelab`, Barman → `cnpg-db-backups`, Loki → `loki`.
 
 **ArgoCD is reinstalled, never restored.** `daily-full` excludes `argocd` and `kube-system`; every `Application` already lives in Git under `gitops/templates/`.
 
@@ -210,11 +210,7 @@ In order: databases must be primary before their apps. The window froze syncs wi
 # 1. Manual syncs only — automatic ones stay blocked:
 argocd proj windows enable-manual-sync default <window-id>
 
-# 2. SeaweedFS first: Loki in `monitoring` needs its S3 serving.
-argocd app sync seaweedfs
-kubectl -n seaweedfs get pods   # serving before moving on
-
-# 3. Gate — both primary or stop here:
+# 2. Gate — both primary or stop here:
 kubectl -n immich get cluster immich-database -o jsonpath='{.status.phase}{"\n"}'
 kubectl -n monitoring get cluster grafana-database -o jsonpath='{.status.phase}{"\n"}'
 # Cluster in healthy state × 2.

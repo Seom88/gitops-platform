@@ -56,10 +56,6 @@ data:
             icon: longhorn
             href: https://longhorn{{ .Values.myDomain }}/
             description: Block storage, volumes, snapshots and backups
-        - SeaweedFS Admin:
-            icon: sh-seaweedfs
-            href: https://seaweedfs-admin{{ .Values.myDomain }}/
-            description: S3 object storage, buckets, volumes and filer
         - RustFS Console:
             icon: rustfs
             href: https://rustfs.lonk-mirfak.ts.net:8443/

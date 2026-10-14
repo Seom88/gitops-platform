@@ -29,7 +29,7 @@ just init-dev
 > The cluster must have **ArgoCD** installed **before** running the bootstrap. Longhorn is deployed by this repo as a wave -1 App-of-Apps app with a CSI readiness gate — the bootstrap script does not install ArgoCD or any storage component.
 
 > [!NOTE]
-> **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/apps/` ordered by `argocd.argoproj.io/sync-wave`: `00` cert-manager/external-secrets/longhorn (wave 0) → `01` vault (wave 1) → `02` seaweedfs (wave 2) → `03` monitoring (wave 3, `sync-only`) → `04` tailscale (wave 4, `sync-only`, always last). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua, ADR-006), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` and `tailscale` are `sync-only` leaves, Tailscale still exposes other apps even if monitoring is degraded.
+> **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/apps/` ordered by `argocd.argoproj.io/sync-wave`: `00` cert-manager/external-secrets/longhorn (wave 0) → `01` vault (wave 1) → `03` monitoring (wave 3, `sync-only`) → `04` tailscale (wave 4, `sync-only`, always last). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua, ADR-006), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` and `tailscale` are `sync-only` leaves, Tailscale still exposes other apps even if monitoring is degraded.
 
 ## 2. Configure Vault
 
@@ -87,7 +87,7 @@ If you have the Tailscale operator configured, your services will be reachable t
   open https://longhorn.lonk-mirfak.ts.net/
   open https://vault.lonk-mirfak.ts.net/
   ```
-   Per-app hostnames are used (`argocd`, `grafana`, `prometheus`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev). There is no shared gateway device.
+   Per-app hostnames are used (`argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev). There is no shared gateway device.
 
 ## Pre-commit (fast local checks)
 

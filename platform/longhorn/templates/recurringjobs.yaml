@@ -26,8 +26,7 @@
 #
 # IMPORTANT: the label must live on the Longhorn Volume CR in `longhorn-system`,
 # NOT on the PVC — the CSI provisioner does not copy PVC labels to Volume CRs,
-# so labeling PVCs/templates has no effect on recurring jobs. SeaweedFS
-# (platform/seaweedfs, incl. templates/master-pvc.yaml) and monitoring
+# so labeling PVCs/templates has no effect on recurring jobs. Monitoring
 # (platform/monitoring: Loki persistence, Prometheus volumeClaimTemplate) PVCs
 # are provisioned by subcharts, hence the opt-out is applied post-provisioning
 # with the kubectl commands above, not via PVC template labels.
@@ -59,7 +58,7 @@ spec:
 ---
 # Default snapshots every 2h, retain 12 = 24h coverage. Applies automatically
 # ONLY to volumes with no `recurring-job-group.longhorn.io/*` label. Vault uses
-# its own hourly job above (label: vault-hourly); SeaweedFS + monitoring are
+# its own hourly job above (label: vault-hourly); monitoring is
 # excluded via the marker label `recurring-job-group.longhorn.io/no-snapshot`
 # (no job bound to that group, so nothing runs on them).
 apiVersion: longhorn.io/v1beta2
@@ -86,31 +85,10 @@ spec:
 # Optional future jobs (uncomment when needed). Same opt-in pattern: label the
 # target volumes with `recurring-job-group.longhorn.io/<group>: enabled`,
 # remembering to REMOVE the default label so the volume leaves the default job.
-# NOTE: seaweedfs/monitoring stay intentionally EXCLUDED via the `no-snapshot`
+# NOTE: monitoring stays intentionally EXCLUDED via the `no-snapshot`
 # marker label (see header) — only uncomment these if that policy is reversed
 # and the volumes are relabeled to the corresponding group.
 # ---------------------------------------------------------------------------
-# ---
-# apiVersion: longhorn.io/v1beta2
-# kind: RecurringJob
-# metadata:
-#   name: seaweedfs-daily-snapshot
-#   namespace: longhorn-system
-#   labels:
-#     app.kubernetes.io/managed-by: Helm
-#     app.kubernetes.io/part-of: longhorn
-# spec:
-#   name: seaweedfs-daily-snapshot
-#   cron: "0 3 * * *"
-#   task: snapshot
-#   groups:
-#     - seaweedfs-daily
-#   retain: 7
-#   concurrency: 1
-#   labels:
-#     snapshot: daily
-#     volume: seaweedfs
-# ---
 # apiVersion: longhorn.io/v1beta2
 # kind: RecurringJob
 # metadata:

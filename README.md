@@ -48,9 +48,9 @@ This is **not just another Kubernetes homelab** — it's a reference implementat
 | **Secrets Management** | SOPS + age as the default path; Vault (Raft, auto-unseal, per-service auth) built and **frozen — disabled by default** (ADR-017) | [`platform/vault/`](./platform/vault/), [ADR-017](./docs/adrs/017-vault-paused-sops-default.md), [Docs](./docs/skills-demonstrated.md#-secrets-management--security) |
 | **GitOps & Orchestration** | ArgoCD App-of-Apps, sync-wave ordering, custom health checks | [`gitops/templates/apps/`](./gitops/templates/apps/), [ADR-006](./docs/adrs/006-app-health-and-vault-ordering.md) |
 | **Zero-Trust Networking** | Tailscale operator, per-app Ingresses (one MagicDNS device per app, every app at `/` root) | [`platform/ts-operator/`](./platform/ts-operator/), [ADR-001](./docs/adrs/001-tailscale-ingress-placement.md), [ADR-018](./docs/adrs/018-per-app-tailscale-ingress.md) |
-| **High-Availability** | **Pod-level** HA: PDBs, multi-replica stateless workloads, Longhorn snapshots + off-cluster S3 backups. **Node-level HA is a property of the cluster, not of this repo** — multi-node Kubernetes HA is not available on the single-node topology (ADR-019); node failure is total downtime. | [ADR-019](./docs/adrs/019-single-node-bare-metal-migration.md), [Features](./docs/features-deep-dive.md#-storage-longhorn--seaweedfs) |
+| **High-Availability** | **Pod-level** HA: PDBs, multi-replica stateless workloads, Longhorn snapshots + off-cluster S3 backups. **Node-level HA is a property of the cluster, not of this repo** — multi-node Kubernetes HA is not available on the single-node topology (ADR-019); node failure is total downtime. | [ADR-019](./docs/adrs/019-single-node-bare-metal-migration.md), [Features](./docs/features-deep-dive.md#-storage-longhorn) |
 | **Observability** | Prometheus + Grafana + Loki + Alloy (DaemonSet log collector) with Vault metrics | [`platform/monitoring/`](./platform/monitoring/) |
-| **Storage & Data** | Longhorn CSI, SeaweedFS S3, persistent volume management | [`platform/seaweedfs/`](./platform/seaweedfs/), [ADR-005](./docs/adrs/005-longhorn-back-to-gitops.md) |
+| **Storage & Data** | Longhorn CSI, external RustFS S3, persistent volume management | [RustFS IAM](./docs/rustfs-iam.md), [ADR-005](./docs/adrs/005-longhorn-back-to-gitops.md) |
 | **Multi-Environment Config** | Prod/dev value pairs, chart validation, CI/CD gates | [`gitops/values.yaml`](./gitops/values.yaml), [`gitops/values-dev.yaml`](./gitops/values-dev.yaml), [CI/CD](./docs/ci-cd.md) |
 | **DevSecOps Mindset** | Architecture Decisions documented, roadmap planned, phases tracked | [Roadmap](./docs/roadmap.md), [ADRs](./docs/adrs/) |
 
@@ -65,7 +65,7 @@ This is **not just another Kubernetes homelab** — it's a reference implementat
 - 🌐 **Cluster-Agnostic** — Runs on any CNCF-compliant Kubernetes distro
 - ⚡ **Production-Ready Patterns** — Demonstrates how real platforms scale secrets, networking, and deployments
 - 📊 **Complete Observability** — Prometheus metrics, Grafana dashboards, Loki log aggregation via Alloy (stateless DaemonSet)
-- 📦 **Storage Ready** — Longhorn distributed storage + SeaweedFS S3 backend (Loki) / RustFS S3 (Velero)
+- 📦 **Storage Ready** — Longhorn distributed storage + external RustFS S3 (Loki logs, Velero backups)
 - 🔄 **Idempotent Bootstrap** — Rerun scripts safely, designed for repeated deployments
 
 ## 🏗 Architecture
@@ -84,7 +84,6 @@ graph TD
         W0B[00 external-secrets<br/>wave 0 healthy]
         W0C[-1 longhorn<br/>wave -1 healthy<br/>CSI-gated]
         W1[01 vault<br/>wave 1 healthy<br/>1 replica, paused by default]
-        W2[02 seaweedfs<br/>wave 2 healthy]
         W3[03 monitoring + trivy-operator<br/>wave 3 sync-only<br/>Prometheus + Grafana + Loki + Alloy DaemonSet<br/>owns grafana/prometheus Ingresses]
         W4[04 cloudnative-pg → 05 immich<br/>waves 4-5<br/>PostgreSQL operator + photo app]
         WOP[-1 ts-operator<br/>wave -1<br/>operator + proxy-egress policies<br/>owns argocd/hubble Ingresses]
@@ -92,8 +91,7 @@ graph TD
         CILIUM -.->|CNI + NetworkPolicy| ROOT
         ROOT --> W0A & W0B & W0C
         W0A & W0B & W0C --> W1
-        W1 --> W2
-        W2 --> W3
+        W1 --> W3
         ROOT -.->|wave -1| WOP
     end
 
@@ -113,9 +111,9 @@ graph TD
 
 - **GitOps Automation** — ArgoCD manages everything declaratively via App-of-Apps. The bootstrap script deploys the root app and configures Vault in one idempotent step.
 - **Cluster-Agnostic Platform** — This layer runs on any Kubernetes distro — EKS, GKE, or any CNCF cluster — once ArgoCD is pre-installed.
-- **Zero-Trust Networking** — Tailscale operator provides per-app secure ingress (one MagicDNS device per app: `argocd`, `grafana`, `prometheus`, `vault`, `longhorn`, `seaweedfs-s3`, `seaweedfs-admin`, `homepage`, `hubble` on `*.lonk-mirfak.ts.net`, each served at `/` root). Every admin access goes through Tailscale mesh VPN. See [ADR-018](./docs/adrs/018-per-app-tailscale-ingress.md).
+- **Zero-Trust Networking** — Tailscale operator provides per-app secure ingress (one MagicDNS device per app: `argocd`, `grafana`, `prometheus`, `vault`, `longhorn`, `homepage`, `hubble` on `*.lonk-mirfak.ts.net`, each served at `/` root). Every admin access goes through Tailscale mesh VPN. See [ADR-018](./docs/adrs/018-per-app-tailscale-ingress.md).
 - **Enterprise Secrets Management** — **SOPS + age is the default path**: encrypted files in git, decrypted and applied by `bootstrap/init-sops.sh` / CI, never decrypted by ArgoCD. Vault (Raft, auto-unseal, per-service ClusterSecretStores) is also in the repo, **frozen and disabled by default** (`vault.enabled: false`, `eso.enabled: false`) per [ADR-017](./docs/adrs/017-vault-paused-sops-default.md); it returns under a flag flip plus a restore from the frozen archive. Vault runs at 1 replica, not a 3-node quorum ([ADR-019](./docs/adrs/019-single-node-bare-metal-migration.md)).
-- **Distributed Storage** — Longhorn CSI (wave-0) provides persistent volumes; SeaweedFS adds S3-compatible object storage for logs and backups.
+- **Distributed Storage** — Longhorn CSI (wave-0) provides persistent volumes; external RustFS provides S3-compatible object storage for logs and backups.
 - **Complete Observability** — Prometheus + Grafana + Loki + Alloy stack with Vault, ArgoCD, and cluster metrics (Alloy DaemonSet ships pod logs via `loki.source.kubernetes` → `loki.write` to Loki gateway). All dashboards secured behind Tailscale.
 - **Declarative Everything** — Infrastructure, secrets, applications — all defined in git, no imperative commands. Audit trail for compliance.
 
@@ -133,7 +131,7 @@ graph TD
 | **Networking (CNI)** | Cilium v1.20.1 (eBPF) | ✅ Deployed | Kube-proxy replacement, Gateway API & CiliumNetworkPolicy |
 | **Networking (Ingress)** | Tailscale Operator v1.9+ | ✅ Deployed | Zero-trust ingress (`.tailnet` domains) |
 | **Storage (Block)** | Longhorn v1.6+ | ✅ Deployed | Distributed, wave -1 with CSI gates; disk reserve 15% |
-| **Storage (Object)** | SeaweedFS v3.6+ | ✅ Deployed | S3-compatible, Loki backend |
+| **Storage (Object)** | External RustFS | ✅ Deployed | S3-compatible, Loki + Velero backend |
 | **Database** | CloudNativePG operator | ✅ Deployed | Wave 4, backs Immich |
 | **Apps** | Homepage dashboard + Immich | ✅ Deployed | Waves 3/5, per-app Tailscale Ingresses |
 | **In-cluster Security** | Trivy Operator | ✅ Deployed | Wave 3, scan every 6h (CRDs + Prometheus) |
@@ -189,7 +187,7 @@ kubectl port-forward -n monitoring svc/grafana 3000:80
 ```
 gitops-platform/
 ├── bootstrap/               # Bootstrap script (init-gitops.sh)
-├── platform/                # Helm charts (Vault, Monitoring, Tailscale, SeaweedFS)
+├── platform/                # Helm charts (Vault, Monitoring, Tailscale)
 ├── gitops/                  # Root App-of-Apps (wave-ordered deployments)
 ├── apps/                    # User application templates
 ├── docs/                    # Documentation, ADRs, guides
@@ -215,7 +213,7 @@ gitops-platform/
 |-------|--------|----------|
 | **Phase 1** — Foundation | ✅ Complete | Bootstrap, ArgoCD, cert-manager, Tailscale, ADRs. Vault + ESO built but paused (ADR-017) |
 | **Phase 2** — Automation & Observability | ✅ Complete | Prometheus + Grafana + Loki + Alloy (DaemonSet), Renovate, CI/CD gates |
-| **Phase 3** — Storage & Scale | 🟡 Backup done, restore unverified | Longhorn ✅, SeaweedFS ✅ (Loki), Velero backup ✅ (RustFS, Wave 0) — **restore drill not run** |
+| **Phase 3** — Storage & Scale | 🟡 Backup done, restore unverified | Longhorn ✅, RustFS ✅ (Loki + Velero), Velero backup ✅ (Wave 0) — **restore drill not run** |
 | **Phase 4** — Hardening & DX | 🟡 Partial | Bootstrap guard ✅, status verifier ✅, real apps ✅ (Homepage + Immich/CNPG), SOPS-default ✅ |
 | **Phase 5** — Python Automation | 🚧 Planned | Post-v1.0: ops CLI, tests, metrics, image scanning |
 

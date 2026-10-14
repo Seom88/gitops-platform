@@ -59,7 +59,7 @@ You can design and operate production secrets management systems. Vault is enter
 
 **Evidence:**
 - **ArgoCD App-of-Apps** — Root application deploying platform apps via sync-waves. See [`gitops/templates/root-prod-app.yaml`](../gitops/templates/root-prod-app.yaml)
-- **Helm Charts** — Each platform component (Vault, Monitoring, Tailscale, SeaweedFS) packaged as reusable Helm charts. See [`platform/`](../platform/) directory
+- **Helm Charts** — Each platform component (Vault, Monitoring, Tailscale) packaged as reusable Helm charts. See [`platform/`](../platform/) directory
 - **Values-Driven Config** — Environment-specific values (`values.yaml` for prod, `values-dev.yaml` for dev) drive all deployments. See [`gitops/values.yaml`](../gitops/values.yaml) and [`gitops/values-dev.yaml`](../gitops/values-dev.yaml)
 - **Sync-Wave Ordering** — Applications ordered deterministically via `argocd.argoproj.io/sync-wave` annotations and custom health checks. See [`docs/adrs/006-app-health-and-vault-ordering.md`](./adrs/006-app-health-and-vault-ordering.md)
 - **Health Probes** — Custom Lua logic for ArgoCD health checks (wave dependency). See [`platform/vault/templates/`](../platform/vault/templates/) for Vault health checks
@@ -87,10 +87,10 @@ You understand GitOps as a paradigm, not just a tool. Sync-wave ordering and hea
 **Evidence:**
 - **Tailscale Integration** — Mesh VPN operator (wave `-1`) + per-app Ingresses owned by each chart via `tailscaleIngress` values (one MagicDNS device per app, each at `/` root). See [`platform/ts-operator/`](../platform/ts-operator/) and ADRs 001/018
 - **Platform Ingress Templates** — Per-chart Ingress pattern (each chart renders its own `tailscale-ingress.yaml` → own device; orphan `argocd`/`hubble` live in `ts-operator/templates/infra/`). See [`platform/vault/templates/tailscale-ingress.yaml`](../platform/vault/templates/tailscale-ingress.yaml)
-- **Network Policies** — Identity-aware `CiliumNetworkPolicy` (`cilium.io/v2`) across 9 charts with allow-dns / allow-egress / allow-ingress (eBPF, kubeProxyReplacement strict, Hubble 4244/4245). See [`platform/*/templates/cilium-networkpolicies.yaml`](../platform/vault/templates/cilium-networkpolicies.yaml) (9 charts, gated by `ciliumNetworkPolicy.enabled=true`; Cilium 1.20.1, Gateway API 1.2.3). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` retained for non-Cilium clusters
-- **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (SingleBinary + S3/SeaweedFS + gateway) + Alloy (stateless DaemonSet log collector via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`; no PVC, RBAC auto-created; replaces Promtail — deprecated). See [`platform/monitoring/`](../platform/monitoring/) and [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) (`loki` + `alloy` blocks, chart `alloy:1.12.1`)
+- **Network Policies** — Identity-aware `CiliumNetworkPolicy` (`cilium.io/v2`) across 8 charts with allow-dns / allow-egress / allow-ingress (eBPF, kubeProxyReplacement strict, Hubble 4244/4245). See [`platform/*/templates/cilium-networkpolicies.yaml`](../platform/vault/templates/cilium-networkpolicies.yaml) (8 charts, gated by `ciliumNetworkPolicy.enabled=true`; Cilium 1.20.1, Gateway API 1.2.3). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` retained for non-Cilium clusters
+- **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (SingleBinary + external RustFS S3 + gateway) + Alloy (stateless DaemonSet log collector via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`; no PVC, RBAC auto-created; replaces Promtail — deprecated). See [`platform/monitoring/`](../platform/monitoring/) and [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) (`loki` + `alloy` blocks, chart `alloy:1.12.1`)
 - **Vault Metrics Export** — Prometheus endpoints for Vault health, sealed state, replication status
-- **Log Aggregation** — Loki with S3 backend (SeaweedFS) for centralized logging, shipped by Alloy. Grafana Explore + LogQL and dashboard Logs panels. See [`platform/monitoring/templates/loki-datasource.yaml`](../platform/monitoring/templates/loki-datasource.yaml)
+- **Log Aggregation** — Loki with external RustFS S3 backend for centralized logging, shipped by Alloy. Grafana Explore + LogQL and dashboard Logs panels. See [`platform/monitoring/templates/loki-datasource.yaml`](../platform/monitoring/templates/loki-datasource.yaml)
 
 **What Recruiters See:**
 Zero-trust isn't just a buzzword for you — you've implemented it. Metrics collection and observability show maturity in ops thinking.
@@ -110,7 +110,7 @@ Zero-trust isn't just a buzzword for you — you've implemented it. Metrics coll
 **Evidence:**
 - **Longhorn Deployment** — Wave -1 app with CSI readiness gates. See [`gitops/templates/platform/-1-longhorn.yaml`](../gitops/templates/platform/-1-longhorn.yaml) and ADR-005
 - **Longhorn Node Prep** — Nodes provide `iscsi-tools` and kubelet extraMounts for `/var/lib/longhorn`
-- **SeaweedFS S3** — Object storage with Vault-injected credentials. See [`platform/seaweedfs/`](../platform/seaweedfs/)
+- **External S3** — RustFS as externalized object storage for backups and logs. See [`docs/rustfs-iam.md`](../rustfs-iam.md)
 - **Vault Raft HA** — 3-node consensus for high-availability secrets. See [`platform/vault/templates/statefulset.yaml`](../platform/vault/templates/statefulset.yaml)
 - **Persistent Volume Management** — Applications using Longhorn PVCs for state. See Vault StatefulSet configuration
 
@@ -210,7 +210,7 @@ This isn't a one-off project. You're building for growth and learning continuous
 
 **What's Planned Next:**
 - **Phase 5 (v2.0)** — Python ops layer: CLI automation, infrastructure tests, custom metrics, image security scanning
-- **Velero Restore Drills** — RTO/RPO validation (Velero already deployed on RustFS S3 `velero-homelab`; Loki uses separate SeaweedFS S3)
+- **Velero Restore Drills** — RTO/RPO validation (Velero on RustFS S3 `velero-homelab`; Loki on RustFS S3 `loki`)
 - **Real Application Examples** — Demonstrating stateful workload patterns
 
 See [Roadmap](./roadmap.md) for detailed phase breakdown and timeline.

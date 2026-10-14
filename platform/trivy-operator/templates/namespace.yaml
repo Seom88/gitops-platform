@@ -1,6 +1,6 @@
 # trivy-system runs the node-collector DaemonSet with hostPID/hostPath access,
 # which the `restricted` Pod Security Standard forbids — hence `privileged`
-# (same pattern as the other infra namespaces: monitoring, seaweedfs,
+# (same pattern as the other infra namespaces: monitoring,
 # longhorn, velero, ts-operator). Audit + warn mirror enforce
 # so violations would surface even if enforcement ever tightens.
 apiVersion: v1
