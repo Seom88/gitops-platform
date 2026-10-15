@@ -1,20 +1,22 @@
 # Roadmap
 
-**Status:** v1.0.0 **not tagged** — blocked on the Velero restore drill · Cilium 1.20.1 (ADR-014) · Last updated: 28 Sep 2026
+**Status:** v1.0.0 **scope complete, not tagged** — manual Velero restore works; formal restore drill deferred to v2.0 · Cilium 1.20.1 (ADR-014) · Last updated: 15 Oct 2026
 
 This document tracks what is currently deployed in the cluster, what is required to complete the **v1.0.0** release, and what is planned for **v2.0**. The cluster uses Cilium 1.20.1 + Gateway API 1.2.3 + CiliumNetworkPolicy (ADR-014); subsequent releases are expected to be additive. The [README](../README.md) contains a short summary and links here.
 
-**This file is the single source of truth for the release state.** No other document in this repo carries its own version string or its own release date — they link here. There is no `VERSION` file, no `v1.0.0` git tag, and no `## [1.0.0]` CHANGELOG section; all three are created at declaration time, after the restore drill passes.
+**This file is the single source of truth for the release state.** No other document in this repo carries its own version string or its own release date — they link here. There is no `VERSION` file, no `v1.0.0` git tag, and no `## [1.0.0]` CHANGELOG section; all three are created at declaration time.
 
 ---
 
 ## What blocks v1.0.0
 
-One item. Everything else in the v1 scope is deployed.
+Nothing. The v1 scope is deployed and the manual restore path works.
 
-| # | Blocker | What is true today | What closes it |
+| # | Former blocker | What is true today | Where it lives now |
 |---|---------|--------------------|----------------|
-| 1 | **Velero restore drill has never been run** | Backup is running (Velero deployed, `daily-full` to S3-compatible RustFS, bucket `velero-homelab`). Restore is **undrilled** — no recovery from a Velero backup has ever been executed. | Restore into a clean cluster with evidence captured per [`docs/restore-verification.md`](./restore-verification.md), and [`docs/cluster-recovery.md` §2](./cluster-recovery.md#2-restore-runbook) updated with what the drill actually showed. |
+| 1 | **Velero restore** | Backup is running (Velero deployed, `daily-full` to S3-compatible RustFS, bucket `velero-homelab`). A manual restore was executed (immich pilot, Oct 2026 — see [`docs/cluster-recovery.md` §6](./cluster-recovery.md#6-lessons-learned-immich-pilot-oct-2026)): it works after the fixes documented in the runbook. No formal clean-cluster drill with captured RTO/RPO evidence has been run — deferred to v2.0 because the cluster holds sensitive data. | Formal drill tracked under [v2.0](#v20--enterprise-automation-beyond-v10); runbook is [`docs/cluster-recovery.md` §2](./cluster-recovery.md#2-restore-step-by-step). |
+
+**Ownership.** `argocd` is owned by the infra repo (this repo consumes ArgoCD as a pre-installed cluster prerequisite). `external-secrets` stays disabled until the Vault return in v2.0 ([ADR-017](./adrs/017-vault-paused-sops-default.md)).
 
 **Namespace ownership is a boundary, not a gap.** This repository deploys workloads into exactly eleven namespaces and renders a gated `CiliumNetworkPolicy` for each. It deploys nothing at runtime into `argocd` — the ArgoCD `Application` objects under `gitops/` are consumed by the pre-installed cluster prerequisite, and the only other thing this repo places there is the `ts-operator`-owned `argocd` Ingress, which lives in `namespace: tailscale` and selects *toward* `argocd`, not inside it. `external-secrets` is the upstream chart `charts.external-secrets.io` and is **disabled** (`eso.enabled: false`). Neither has a first-party chart here, so there is no template to add; their policy belongs to the provisioning layer and to the upstream chart respectively. Full reasoning in [Policy coverage](#policy-coverage-adr-014). This is a disclosure for the release notes, not a deliverable of this release.
 
@@ -87,7 +89,7 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 - [x] Longhorn — distributed block storage
 - [x] External RustFS — S3-compatible object storage
 - [x] Loki → RustFS integration for centralized logging (SingleBinary + gateway, bucket `loki`)
-- [x] Velero — **automated backup** (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 02:00, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`) — deployed and running. Vault is excluded by policy; its hourly protection is the Longhorn `vault-hourly-snapshot` RecurringJob, not a Velero schedule. **Restore is not verified**: no drill has been run. See [What blocks v1.0.0](#what-blocks-v100).
+- [x] Velero — **automated backup** (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 02:00, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`) — deployed and running. Vault is excluded by policy; its hourly protection is the Longhorn `vault-hourly-snapshot` RecurringJob, not a Velero schedule. **Manual restore executed** (immich pilot, Oct 2026) and working after the runbook fixes; the formal drill with RTO/RPO evidence is deferred to v2.0. See [What blocks v1.0.0](#what-blocks-v100).
 
 ### Phase 4 — Hardening & Developer Experience (in progress, v1.0)
 
@@ -118,6 +120,13 @@ Items planned after v1.0.0. Expected to be additive; no CNI or storage re-archit
 Vault is **paused, not deleted** ([ADR-017](./adrs/017-vault-paused-sops-default.md)). `platform/vault/` is frozen in `main` and both ArgoCD Applications are gated off (`vault.enabled: false`, `eso.enabled: false` in `gitops/values.yaml` and `gitops/values-dev.yaml`). SOPS + age is the default secrets path until velocity allows a return.
 
 Vault is not a v1.0.0 deliverable. It returns when dynamic secrets, auto-rotation, or audit become requirements — then it is a flag flip plus a restore from the frozen archive (`unseal.json` + last `raft-*.snap` + `vault-tls` export), with the ESO stores re-enabled per ADR-002. Vault server replica count is currently **1** (ADR-019), so a return restores a single-replica server, not a 3-node Raft quorum.
+
+### Formal restore drill (deferred from v1.0)
+
+The manual restore path already works (immich pilot, Oct 2026 — see [`docs/cluster-recovery.md` §6](./cluster-recovery.md#6-lessons-learned-immich-pilot-oct-2026)). What remains is the formal proof, deferred because the cluster holds sensitive data:
+
+- [ ] Restore into a clean cluster with captured RTO/RPO evidence
+- [ ] Update [`docs/cluster-recovery.md` §2](./cluster-recovery.md#2-restore-step-by-step) with what the drill actually showed
 
 ### Decoupling & vendor-agnostic ingress (Gateway API BYOD)
 
@@ -218,13 +227,14 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 
 **Still pending for v1.0 — the complete list:**
 
-This is the same set as [What blocks v1.0.0](#what-blocks-v100), repeated here for checklist readers. It is deliberately short and deliberately non-empty.
+This mirrors [What blocks v1.0.0](#what-blocks-v100).
 
-- [ ] **Velero restore drill (RTO/RPO validation).** Backup is running; restore has never been executed. This item moved here from v2.0 — it was claimed for v1 while being planned for v2. Evidence per [`docs/restore-verification.md`](./restore-verification.md).
+- [x] **Velero restore (manual path).** Backup is running; a manual restore was executed (immich pilot, Oct 2026) and works after the runbook fixes. The formal drill with RTO/RPO evidence moved to v2.0 — a clean-cluster drill is deferred because the cluster holds sensitive data.
 
-Nothing on this list is a claim of work done. The one item is open.
+Nothing else is open for v1.0.
 
 **Planned for v2.0:**
+- [ ] Formal Velero restore drill (RTO/RPO validation) — deferred from v1.0; clean-cluster restore with captured evidence + runbook update
 - [ ] Vault return — re-enable Vault/ESO under ADR-017 (flag flip + restore from the frozen archive)
 - [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 10→2 devices — 9 per-app `Ingress`es merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)
 - [ ] Compliance & policy (PSA restricted rollout, NetworkPolicy hardening, threat-model doc, Kyverno, CIS Benchmark, RBAC audit, compliance dashboard)
@@ -241,6 +251,5 @@ Nothing on this list is a claim of work done. The one item is open.
 - [Getting Started](./getting-started.md)
 - [Customization Guide](./customization-guide.md)
 - [Secrets Structure](./secrets-structure.md)
-- [Restore verification](./restore-verification.md)
 - [Cluster recovery](./cluster-recovery.md)
 - [Architecture Decision Records](./adrs/)

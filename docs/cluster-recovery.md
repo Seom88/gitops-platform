@@ -242,7 +242,7 @@ kubectl -n monitoring get cluster grafana-database    # healthy, 2 instances
 kubectl -n argocd get applications                    # Synced / Healthy
 ```
 
-Then the real data — **[Restore verification](./restore-verification.md)**: historic metrics + one Immich photo older than the disaster.
+Then the real data — historic metrics + one Immich photo older than the disaster. (Formal RTO/RPO evidence is deferred to v2.0 — see [roadmap](./roadmap.md#v20--enterprise-automation-beyond-v10).)
 
 ## 3. If something fails
 
@@ -283,7 +283,7 @@ See [ADR-009](adrs/009-vault-dr-and-velero-backup.md).
 ## 5. References
 
 - Restore: [Velero disaster-recovery docs](https://velero.io/docs/main/disaster-case) and [Red Hat — OADP + OpenShift GitOps DR](https://www.redhat.com/en/blog/oadp-openshift-gitops-an-approach-to-implementing-application-disaster-recovery)
-- Proving it worked: [Restore verification](./restore-verification.md)
+- Proving it worked: §7 validation above; formal drill evidence is tracked in [roadmap v2.0](./roadmap.md#v20--enterprise-automation-beyond-v10)
 - Postgres: [CNPG 1.29 — Recovery](https://cloudnative-pg.io/docs/1.29/recovery), [Barman Cloud Plugin](https://cloudnative-pg.io/plugin-barman-cloud/docs/concepts/)
 - Chart and values: `platform/velero/Chart.yaml`, `platform/velero/values.yaml`
 - S3: [RustFS IAM](./rustfs-iam.md)
