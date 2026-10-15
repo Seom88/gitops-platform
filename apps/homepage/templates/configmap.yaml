@@ -72,6 +72,7 @@ data:
     - Infrastructure:
         - AlmaLinux:
             icon: si-almalinux
+            href: https://aleph.lonk-mirfak.ts.net/
             description: Bare-metal node aleph, AlmaLinux 10.
         - TrueNAS:
             icon: truenas-scale
