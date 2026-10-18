@@ -70,7 +70,7 @@ nextcloud:
   # Digest-pinned. The chart builds the ref as registry/repository:tag with no
   # digest field, so the digest travels inside tag; inline map keeps
   # `just validate-images` happy (no split repository:/tag: lines).
-  image: { registry: docker.io, repository: library/nextcloud, tag: 35.0.1-apache@sha256:8f2f0e93aca5e9457019933936dea1f313052e72c696b4aecb31580a208b859f }
+  image: { registry: docker.io, repository: library/nextcloud, tag: 35.0.2-apache@sha256:a588aa5353703b44106a6129adaaf7bf22521b7a4754f9f529b3228d6aa390c5 }
 
   # Wave 2: this Deployment reads the CNPG-generated `nextcloud-database-app`
   # Secret (Cluster at wave 1). Without the delay, ArgoCD applies the Deployment
