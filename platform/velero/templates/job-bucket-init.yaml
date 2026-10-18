@@ -75,7 +75,7 @@ spec:
       volumes:
         - name: cloud-credentials
           secret:
-            secretName: cloud-credentials
+            secretName: cloud-credentials # pragma: allowlist secret
             optional: true
             items:
               - key: cloud

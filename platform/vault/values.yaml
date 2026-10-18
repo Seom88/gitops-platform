@@ -137,7 +137,7 @@ vault:
     volumes:
     - name: vault-tls
       secret:
-        secretName: vault-tls
+        secretName: vault-tls # pragma: allowlist secret
 
     volumeMounts:
     - name: vault-tls

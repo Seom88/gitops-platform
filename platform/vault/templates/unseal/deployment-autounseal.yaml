@@ -125,6 +125,6 @@ spec:
         # the Vault server's certificate over HTTPS.
         - name: vault-tls
           secret:
-            secretName: vault-tls
+            secretName: vault-tls # pragma: allowlist secret
         - name: tmp
           emptyDir: {}

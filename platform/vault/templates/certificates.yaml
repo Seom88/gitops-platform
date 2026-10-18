@@ -14,7 +14,7 @@ metadata:
   name: vault-tls
   namespace: vault
 spec:
-  secretName: vault-tls
+  secretName: vault-tls # pragma: allowlist secret
   duration: 87600h # 10 years
   issuerRef:
     name: vault-selfsigned-ca
