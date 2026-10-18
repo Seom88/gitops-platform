@@ -17,16 +17,16 @@
     },
     {
       "customType": "regex",
-      "description": "Split repo:/tag: pairs (only pair in repo: Tailscale DNSConfig). Inline image: lines belong to Manager 1 — this manager intentionally has no inline matcher so a dep can never be extracted twice. Patterns must stay RE2-compatible: no lookahead, no backreferences (Renovate uses RE2).",
-      "managerFilePatterns": ["/^platform\\/velero\\/values\\.yaml$/", "/^platform\\/velero\\/templates\\/.*\\.yaml$/", "/^platform\\/ts-operator\\/templates\\/.*\\.yaml$/"],
-      "matchStrings": ["repo:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?"],
+      "description": "CNPG Cluster imageName (Postgres images). Digest supported natively by the CRD, so the global docker pinDigests rule applies.",
+      "managerFilePatterns": ["/^platform\\/.*\\/values.*\\.yaml$/", "/^apps\\/.*\\/values.*\\.yaml$/"],
+      "matchStrings": ["imageName:\\s*['\"]?(?<depName>[^:'\"\\s]+):(?<currentValue>[^@'\"\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?['\"]?"],
       "datasourceTemplate": "docker"
     },
     {
       "customType": "regex",
-      "description": "Nextcloud inline image map (registry/repository/tag with digest) in apps/nextcloud values — map on one line so validate-images stays green; digest rides inside tag because the chart has no image.digest field",
-      "managerFilePatterns": ["/^apps\\/nextcloud\\/values.*\\.yaml$/"],
-      "matchStrings": ["repository:\\s*['\\\"]?(?<depName>[^'\\\"\\s]+)['\\\"]?,\\s*tag:\\s*['\\\"]?(?<currentValue>[^@'\\\"\\s]+)@sha256:(?<currentDigest>[a-f0-9]+)"],
+      "description": "Split repo:/tag: pairs — currently no pairs exist in the repo (the Tailscale DNSConfig CronJob was replaced by the static coredns-custom ConfigMap). Retained solely for parity with discover-images.sh source-grep pair detection, so the two mechanisms can never drift. Inline image: lines belong to Manager 1 — this manager intentionally has no inline matcher so a dep can never be extracted twice. Inline maps (`image: { repository: ..., tag: ... }` in nextcloud/immich values) are owned by Renovate's built-in helm-values manager — adding a regex manager for them double-extracts the same dep and breaks branch creation (seen as 'Error updating branch: update failure' on the library/nextcloud digest branch). Patterns must stay RE2-compatible: no lookahead, no backreferences (Renovate uses RE2).",
+      "managerFilePatterns": ["/^platform\\/velero\\/values\\.yaml$/", "/^platform\\/velero\\/templates\\/.*\\.yaml$/", "/^platform\\/ts-operator\\/templates\\/.*\\.yaml$/"],
+      "matchStrings": ["repo:\\s*['\"]?(?<depName>[^\\s'\";]+)['\"]?\\s*\\n\\s*tag:\\s*['\"]?(?<currentValue>[^'\"\\s]+)['\"]?"],
       "datasourceTemplate": "docker"
     },
     {
@@ -54,22 +54,27 @@
       "automerge": false
     },
     {
+      "description": "Postgres images restart the DB pods on every tag/digest bump — never automerge (human review required, majors never automerge anyway)",
+      "matchPackageNames": ["ghcr.io/cloudnative-pg/postgresql"],
+      "automerge": false
+    },
+    {
       "description": "Never use a release less than 1 day old - global setting already enforces this, except pinDigest",
       "matchDatasources": ["docker"],
       "minimumReleaseAge": "1 day"
     },
     {
-      "description": "Pin digests for all Docker images so tag bumps always refresh digests together",
+      "description": "Digest and pinDigest updates retarget refs that already aged under the tag update (docker hub often 403s paginated /tags, leaving no releaseTimestamp); without this, minimumReleaseAgeBehaviour=timestamp-required holds them forever and the same-update branch re-emits as an error (update library/nextcloud docker digest)",
+      "matchUpdateTypes": ["digest", "pinDigest"],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "Pin digests for all Docker images so tag bumps always refresh digests together (CNPG CRD and the bjw-s inline map both accept in-tag imagery digests)",
       "matchDatasources": ["docker"],
       "pinDigests": true
     },
     {
-      "description": "Images without digest support (CRD or chart without digest field) - tags only, digest tracked in comment where applicable",
-      "matchPackageNames": ["ghcr.io/immich-app/immich-server", "ghcr.io/immich-app/immich-machine-learning"],
-      "pinDigests": false
-    },
-    {
-      "description": "Images/charts without digest support - tags only (helmv3 OCI group)",
+      "description": "Images/charts without digest support - tags only (helmv3 OCI group, charts cannot pin digests)",
       "matchManagers": ["helmv3"],
       "matchPackagePatterns": ["immich"],
       "pinDigests": false

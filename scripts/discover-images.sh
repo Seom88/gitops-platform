@@ -35,7 +35,7 @@ for dir in platform/*/ apps/*/; do
     echo "⚠️  discover-images: could not render $dir — skipping (chart needs cluster values)"
     continue
   fi
-  printf '%s\n' "$rendered" | awk '/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
+  printf '%s\n' "$rendered" | awk '/^[[:space:]]*(-[[:space:]]+)?image(Name)?:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*(-[[:space:]]+)?image(Name)?:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
 done
 
 python3 - "$imglist" "$out_dir" << 'PY'
@@ -47,7 +47,11 @@ with open(rendered_path) as fh:
         line = line.strip()
         if line:
             rendered.add(line)
-inline_re = re.compile(r'^\s*(?:-\s+)?image:\s*["\']?([^"\'\s{}]+:[^"\'\s{}]+(?:@sha256:[a-fA-F0-9]+)?)["\']?\s*(?:#.*)?$')
+inline_re = re.compile(r'^\s*(?:-\s+)?image(Name)?:\s*["\']?([^"\'\s{}]+:[^"\'\s{}]+(?:@sha256:[a-fA-F0-9]+)?)["\']?\s*(?:#.*)?$')
+# Inline map form (Renovate Managers 3/6 parity): one-line
+# `image: { repository: X, tag: T [@sha256:...] }` — nextcloud
+# (digest rides inside tag) and immich (digest-free until pinned).
+map_re = re.compile(r'^\s*image(Name)?:\s*\{[^{}]*?["\']?repository["\']?:\s*["\']?([^"\'\s,]+)["\']?,\s*["\']?tag["\']?:\s*["\']?([^"\'\s,]+(?:@sha256:[a-fA-F0-9]+)?)["\']?')
 repo_re = re.compile(r'^\s*repo:\s*["\']?([^"\'\s{};]+)["\']?\s*(?:#.*)?$')
 tag_re = re.compile(r'^\s*tag:\s*["\']?([^"\'\s{};]+)["\']?\s*(?:#.*)?$')
 source = set()
@@ -69,7 +73,10 @@ for root in ("platform", "apps"):
                     continue
                 m = inline_re.match(line)
                 if m:
-                    source.add(m.group(1))
+                    source.add(m.group(2))
+                mm = map_re.match(line)
+                if mm:
+                    source.add(f"{mm.group(2)}:{mm.group(3)}")
             # Split repo:/tag: pairs (e.g. Tailscale DNSConfig
             # nameserver image) joined back into repo:tag refs.
             for i, line in enumerate(lines):
