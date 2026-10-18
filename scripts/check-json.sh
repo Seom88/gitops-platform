@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 
 echo "==> JSON sanity (python3 -m json.tool)"
 errors=0
-for f in $(find . -type f -name "*.json" -not -path "*/charts/*" -not -path "*/.git/*" -not -path "*/node_modules/*"); do
+while IFS= read -r -d '' f; do
   echo "  checking $f..."
   if ! python3 -m json.tool "$f" > /dev/null; then
     if [ -n "${GITHUB_ACTIONS:-}" ]; then
@@ -18,7 +18,7 @@ for f in $(find . -type f -name "*.json" -not -path "*/charts/*" -not -path "*/.
   else
     echo "  OK  $f"
   fi
-done
+done < <(find . -type f -name "*.json" -not -path "*/charts/*" -not -path "*/.git/*" -not -path "*/node_modules/*" -print0)
 if [ ! -f renovate.json ]; then
   echo "⚠️  renovate.json not found"
 fi

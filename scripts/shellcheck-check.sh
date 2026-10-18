@@ -23,8 +23,9 @@ if ! command -v shellcheck >/dev/null 2>&1; then
 fi
 
 shellcheck --version
+# -x: follow sourced files (source= directives resolve relative to repo root)
 for s in "${scripts[@]}"; do
   echo "==> shellcheck $s"
-  shellcheck "$s"
+  shellcheck -x "$s"
 done
 echo "✅ validate-scripts: OK"

@@ -4,7 +4,7 @@
 # Shared by CI (ci.yaml validate job) and local `just validate-platform`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# shellcheck source=helm-repos.sh
+# shellcheck source=./scripts/helm-repos.sh
 source "$(dirname "$0")/helm-repos.sh"
 
 if [ "$#" -eq 0 ]; then

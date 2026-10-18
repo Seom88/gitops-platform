@@ -7,7 +7,7 @@
 # and the local trivy scan (scripts/scan-images.sh).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# shellcheck source=helm-repos.sh
+# shellcheck source=./scripts/helm-repos.sh
 source "$(dirname "$0")/helm-repos.sh"
 
 if [ "$#" -ne 1 ]; then
