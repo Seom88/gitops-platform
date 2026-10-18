@@ -86,7 +86,7 @@ secrets-check:
     fi
 
 # Load .env → k8s Secrets (idempotent, re-runnable)
-#   tailscale/operator-oauth  {client_id, client_secret}  <- K8S_TS_OAUTH_*
+#   tailscale/operator-oauth  via scripts/tailscale-secret.sh (shared with CI deploy.yaml)
 # velero/cloud-credentials  {cloud: "[default]\\naws_access_key_id=..."} <- AWS_* (SOPS owns dedicated keys; this is fallback only)
 secrets-apply:
     #!/usr/bin/env bash
@@ -104,23 +104,7 @@ secrets-apply:
     echo "==> secrets-apply (.env → k8s)"
 
     # ── Tailscale ──────────────────────────────────
-    TS_ID="${K8S_TS_OAUTH_CLIENT_ID:-}"
-    TS_SECRET="${K8S_TS_OAUTH_SECRET:-}"
-    if [ -z "$TS_ID" ] || [ -z "$TS_SECRET" ] || [ "$TS_ID" = "..." ] || [ "$TS_SECRET" = "..." ]; then
-      echo "  ⏭️  Tailscale: no valid credentials (K8S_TS_OAUTH_CLIENT_ID / K8S_TS_OAUTH_SECRET) — skipping"
-      echo "     Tip: fill in .env and retry, or export the vars in the shell"
-    else
-      echo "  🔐 Tailscale: creating/updating Secret tailscale/operator-oauth..."
-      kubectl get namespace tailscale >/dev/null 2>&1 || kubectl create namespace tailscale >/dev/null 2>&1
-      kubectl create secret generic operator-oauth \
-        --namespace tailscale \
-        --from-literal=client_id="$TS_ID" \
-        --from-literal=client_secret="$TS_SECRET" \
-        --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-      echo "  ✅ Tailscale: Secret tailscale/operator-oauth ready"
-      kubectl rollout restart deployment/tailscale-operator -n tailscale >/dev/null 2>&1 || \
-        kubectl rollout restart deployment/operator -n tailscale >/dev/null 2>&1 || true
-    fi
+    ./scripts/tailscale-secret.sh
 
     # ── Velero (RustFS S3) ─────────────────────────
     # SOPS owns the dedicated keys (init-sops.sh runs after init-gitops.sh on a
@@ -272,239 +256,33 @@ validate:
 
 # Validate GitOps App-of-Apps chart (lint + render prod/dev)
 validate-gitops:
-    #!/usr/bin/env bash
-    set -e
-    echo "==> helm dependency build (gitops)"
-    helm dependency build gitops 2>&1 || echo "no dependencies for gitops chart"
-    echo "==> helm lint (prod)"
-    helm lint gitops -f gitops/values.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid
-    echo "==> helm lint (dev)"
-    helm lint gitops -f gitops/values-dev.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid
-    echo "==> helm template (prod) — empty check"
-    helm template gitops gitops -f gitops/values.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-prod.yaml
-    test -s /tmp/gitops-prod.yaml || (echo "❌ helm template rendered empty (prod)" && exit 1)
-    echo "   prod render: $(wc -l < /tmp/gitops-prod.yaml) lines, $(grep -c '^---' /tmp/gitops-prod.yaml || true) documents"
-    echo "==> helm template (dev) — empty check"
-    helm template gitops gitops -f gitops/values-dev.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-dev.yaml
-    test -s /tmp/gitops-dev.yaml || (echo "❌ helm template rendered empty (dev)" && exit 1)
-    echo "   dev render: $(wc -l < /tmp/gitops-dev.yaml) lines"
-    echo "✅ validate-gitops: OK"
+    ./scripts/lint-gitops.sh
 
-# Lint all platform charts (vault, monitoring, ts-operator, longhorn)
+# Lint all platform + shared library charts (vault, monitoring, ts-operator, longhorn)
 validate-platform:
-    #!/usr/bin/env bash
-    set -e
-    # Ensure Helm repos exist for dependency resolution (idempotent)
-    helm repo add longhorn https://charts.longhorn.io >/dev/null 2>&1 || true
-    helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
-    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
-    helm repo add tailscale https://pkgs.tailscale.com/helmcharts >/dev/null 2>&1 || true
-    helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
-    helm repo update >/dev/null 2>&1 || true
-    failed=0
-    for dir in platform/*/ charts/*/; do
-      if [ -f "${dir}Chart.yaml" ]; then
-        echo "==> helm dependency build $dir"
-        # Use update to handle out-of-sync Chart.lock (e.g. vault)
-        helm dependency update "$dir" 2>&1 || helm dependency build "$dir" 2>&1 || echo "   no deps / already built for $dir"
-        echo "==> helm lint $dir"
-        # Velero and ts-operator require s3.tailnetFqdn (CI-supplied) — lint with a test value.
-        extra=""
-        if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/ts-operator/" ]; then
-          extra="--set s3.tailnetFqdn=s3-validate.invalid"
-        fi
-        if ! helm lint $extra "$dir"; then
-          echo "❌ helm lint failed for $dir"
-          failed=1
-        fi
-      fi
-    done
-    test "$failed" = "0" || exit 1
-    echo "✅ validate-platform: OK"
+    ./scripts/lint-charts.sh platform/*/ charts/*/
 
-# ShellCheck bootstrap scripts (soft-fail if not installed)
+# ShellCheck bootstrap + scripts/ (soft-fail if not installed)
 validate-scripts:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v shellcheck >/dev/null 2>&1; then
-      echo "⚠️  shellcheck not found — skipping (install with: sudo apt install shellcheck / brew install shellcheck)"
-      echo "   CI will still run shellcheck; local check is non-blocking"
-      exit 0
-    fi
-    echo "==> shellcheck bootstrap/init-gitops.sh"
-    shellcheck bootstrap/init-gitops.sh
-    echo "==> shellcheck platform/vault/scripts/bootstrap-vault.sh"
-    shellcheck platform/vault/scripts/bootstrap-vault.sh
-    echo "✅ validate-scripts: OK"
+    ./scripts/shellcheck-check.sh
 
 # Enforce inline image convention (no split repository:/tag: in values) — mirrors CI validate job
 validate-images:
-    #!/usr/bin/env bash
-    set -e
-    matches="$(grep -rn --include='values*.yaml' -E '^[[:space:]]*repository[[:space:]]*:' platform/ apps/ gitops/ || true)"
-    if [ -n "$matches" ]; then
-      echo "❌ split-style image blocks found in values files (use inline 'image: <repo>:<tag>' instead):" >&2
-      printf '%s\n' "$matches" >&2
-      exit 1
-    fi
-    echo "✅ Inline image convention: OK (no 'repository:' keys in values*.yaml)"
+    ./scripts/check-inline-images.sh
 
-# YAML syntax sanity (PyYAML) — skip Helm templates
+# YAML syntax sanity (PyYAML) + yamllint — skip Helm templates
 validate-yaml:
-    #!/usr/bin/env bash
-    set -e
-    echo "==> YAML sanity (python yaml)"
-    python3 - << 'PY'
-    import glob, sys
-    try:
-        import yaml
-    except ImportError:
-        print("PyYAML not available — skipping")
-        sys.exit(0)
-    errors = 0
-    for f in glob.glob("**/*.yaml", recursive=True) + glob.glob("**/*.yml", recursive=True):
-        # skip Helm templates and vendored charts
-        if "/templates/" in f or "/charts/" in f or f.startswith("platform/longhorn/charts/"):
-            continue
-        with open(f) as fh:
-            content = fh.read()
-        # skip files with Go templating
-        if chr(123)*2 in content or chr(123)+"%" in content:
-            continue
-        try:
-            list(yaml.safe_load_all(content))
-        except Exception as e:
-            print(f"❌ YAML parse error in {f}: {e}")
-            errors += 1
-    if errors:
-        sys.exit(1)
-    print("   YAML sanity: OK")
-    PY
-    # resolve yamllint (brew/pip binary or python module)
-    YAMLLINT=""
-    if command -v yamllint >/dev/null 2>&1; then YAMLLINT="yamllint"; elif python3 -m yamllint --help >/dev/null 2>&1; then YAMLLINT="python3 -m yamllint"; fi
-    if [ -n "$YAMLLINT" ]; then
-      echo "==> yamllint gitops/ platform/ bootstrap/ (.yamllint.yaml)"
-      $YAMLLINT -c .yamllint.yaml gitops/ platform/ bootstrap/ 2>&1 || echo "⚠️ yamllint reported issues (non-blocking)"
-    else
-      echo "   yamllint not installed — skipping (pip install yamllint / brew install yamllint)"
-    fi
-    echo "✅ validate-yaml: OK"
+    ./scripts/check-yaml.sh
 
 # JSON syntax sanity (python -m json.tool)
 validate-json:
-    #!/usr/bin/env bash
-    set -e
-    echo "==> JSON sanity (python3 -m json.tool)"
-    errors=0
-    for f in $(find . -type f -name "*.json" -not -path "*/charts/*" -not -path "*/.git/*" -not -path "*/node_modules/*"); do
-      echo "  checking $f..."
-      if ! python3 -m json.tool "$f" > /dev/null; then
-        echo "❌ JSON parse error in $f"
-        errors=$((errors+1))
-      else
-        echo "  OK  $f"
-      fi
-    done
-    if [ ! -f renovate.json ]; then
-      echo "⚠️  renovate.json not found"
-    fi
-    if [ "$errors" != "0" ]; then
-      echo "❌ $errors JSON file(s) failed validation"
-      exit 1
-    fi
-    echo "✅ validate-json: OK"
+    ./scripts/check-json.sh
 
 # ── Security (local — mirrors CI security.yaml; heavy, NOT in validate chain) ─
 
-# Trivy image scan (HIGH,CRITICAL) — images discovered dynamically from charts (no hardcoded list); soft-fail if trivy not installed; network pulls, keep out of `validate`
+# Trivy image scan (HIGH,CRITICAL) — local mirror of the CI trivy-images gate (pinned images block); soft-fail if trivy not installed; network pulls, keep out of `validate`
 scan:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v trivy >/dev/null 2>&1; then
-      echo "⚠️  trivy not found — skipping (install with: https://aquasecurity.github.io/trivy/latest/getting-started/installation/)"
-      echo "   CI still runs trivy in security.yaml; local check is non-blocking"
-      exit 0
-    fi
-    if ! command -v jq >/dev/null 2>&1; then
-      echo "⚠️  jq not found — summary needs it (showing full tables instead)"
-      JQ=0
-    else
-      JQ=1
-    fi
-    # ── Discover images dynamically: render every chart, collect unique image: refs ──
-    # Same repo/dependency prep as validate-platform (idempotent adds); a chart
-    # that needs cluster values and fails to render locally is skipped with a
-    # warning instead of breaking the scan.
-    helm repo add longhorn https://charts.longhorn.io >/dev/null 2>&1 || true
-    helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
-    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
-    helm repo add tailscale https://pkgs.tailscale.com/helmcharts >/dev/null 2>&1 || true
-    helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
-    helm repo add aquasecurity https://aquasecurity.github.io/helm-charts >/dev/null 2>&1 || true
-    helm repo update >/dev/null 2>&1 || true
-    imglist="$(mktemp)"
-    for dir in platform/*/ apps/*/; do
-      if [ ! -f "${dir}Chart.yaml" ]; then continue; fi
-      name="$(basename "$dir")"
-      helm dependency update "$dir" >/dev/null 2>&1 || helm dependency build "$dir" >/dev/null 2>&1 || true
-      # Velero and ts-operator require s3.tailnetFqdn (CI-supplied) — render with a test value.
-      extra=""
-      if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/ts-operator/" ]; then
-        extra="--set s3.tailnetFqdn=s3-validate.invalid"
-      fi
-      # shellcheck disable=SC2086
-      if ! rendered="$(helm template "$name" "$dir" $extra 2>/dev/null)"; then
-        echo "  ⚠️  scan: could not render $dir locally — skipping (chart needs cluster values)"
-        continue
-      fi
-      printf '%s\n' "$rendered" | awk '/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
-    done
-    images="$(sort -u "$imglist" | grep -v '^$' || true)"
-    rm -f "$imglist"
-    if [ -z "$images" ]; then
-      echo "❌ scan: no images discovered — refusing to pass vacuously" >&2
-      exit 1
-    fi
-    echo "==> scan: discovered $(printf '%s\n' "$images" | wc -l | xargs) image(s) from charts (no hardcoded list)"
-    failed=0
-    advisory=0
-    printf '%-42s %8s %8s %8s\n' IMAGE CRITICAL HIGH TOTAL
-    while IFS= read -r image; do
-      out="$(mktemp)"
-      # --exit-code 1: findings must flip the summary (trivy defaults to 0).
-      # --ignore-unfixed + --scanners vuln: cut unactionable noise.
-      if trivy image --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln --exit-code 1 --format json --output "$out" --quiet "$image" >/dev/null 2>&1; then
-        crit=0; high=0
-      else
-        # Same two-tier gate as CI Security: digest-pinned first-party images
-        # block; upstream subchart images are advisory (fixed upstream only).
-          case "$image" in
-            ghcr.io/gethomepage/homepage*|bitnami/kubectl*|nginx:*|docker.io/library/nginx:*|docker.io/library/nextcloud:*|velero/velero-plugin-for-aws*|amazon/aws-cli:*)
-            failed=1 ;;
-          *)
-            advisory=1 ;;
-        esac
-        if [ "$JQ" = "1" ]; then
-          crit=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$out")
-          high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "$out")
-        else
-          crit="?"; high="?"
-        fi
-      fi
-      if [ "$JQ" = "1" ]; then total=$((crit + high)); else total="?"; fi
-      printf '%-42s %8s %8s %8s\n' "$image" "$crit" "$high" "$total"
-      rm -f "$out"
-    done <<< "$images"
-    if [ "$advisory" != "0" ]; then
-      echo "⚠️  scan: upstream (advisory) findings above — fixed only by upstream releases; tracked via CI SARIF + Trivy Operator"
-    fi
-    if [ "$failed" != "0" ]; then
-      echo "❌ scan: pinned-image HIGH/CRITICAL findings above fail the gate (mirrors CI Security fail-closed; conscious accepts go in .trivyignore with justification)"
-      exit 1
-    else
-      echo "✅ scan: OK (pinned images clean)"
-    fi
+    ./scripts/scan-images.sh
 
 # Trivy config/misconfig scan (HIGH,CRITICAL, advisory opt-in) — mirrors CI trivy-config; soft-skips without trivy; never in `validate`
 scan-config:

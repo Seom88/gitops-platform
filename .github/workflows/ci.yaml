@@ -6,6 +6,9 @@
 # Feature-branch pushes skip Trivy; PRs targeting main/dev still scan.
 # No workflow-level concurrency so security scans are never
 # cancelled — cancellation lives on the validate job only.
+# Shared shell logic is centralized in scripts/ — this workflow and the
+# justfile are both thin callers of the same scripts (workflows are the
+# source of truth; justfile is a local mirror).
 name: CI
 
 on:
@@ -52,174 +55,31 @@ jobs:
         with:
           version: ${{ env.HELM_VERSION }}
 
-      - name: Helm dependency build (gitops)
-        run: helm dependency build gitops 2>&1 || echo "no dependencies to build for gitops chart"
+      - name: Lint & render gitops chart (prod/dev)
+        run: ./scripts/lint-gitops.sh
 
-      - name: Helm dependency build (platform charts)
-        run: |
-          helm repo add longhorn https://charts.longhorn.io >/dev/null 2>&1 || true
-          helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
-          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
-          helm repo add tailscale https://pkgs.tailscale.com/helmcharts >/dev/null 2>&1 || true
-          helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
-          helm repo update >/dev/null 2>&1 || true
-          for dir in platform/*/; do
-            if [ -f "${dir}Chart.yaml" ]; then
-              echo "::group::helm dependency build $dir"
-              helm dependency update "$dir" 2>&1 || helm dependency build "$dir" 2>&1 || echo "no deps / already built for $dir"
-              echo "::endgroup::"
-            fi
-          done
+      - name: Lint platform + shared library charts
+        run: ./scripts/lint-charts.sh platform/*/ charts/*/
 
-      - name: Lint gitops chart (prod values)
-        run: helm lint gitops -f gitops/values.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid
-
-      - name: Lint gitops chart (dev values)
-        run: helm lint gitops -f gitops/values-dev.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid
-
-      - name: Render gitops chart (prod) — empty check
-        run: |
-          echo "Rendering gitops with prod values..."
-          helm template gitops gitops -f gitops/values.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-prod.yaml
-          if [ ! -s /tmp/gitops-prod.yaml ]; then
-            echo "::error::helm template rendered empty output for prod values"
-            exit 1
-          fi
-          echo "Prod render: $(wc -l < /tmp/gitops-prod.yaml) lines, $(grep -c '^---' /tmp/gitops-prod.yaml || true) documents"
-          cat /tmp/gitops-prod.yaml | head -n 80
-
-      - name: Render gitops chart (dev) — empty check
-        run: |
-          echo "Rendering gitops with dev values..."
-          helm template gitops gitops -f gitops/values-dev.yaml --set sharedS3.tailnetFqdn=s3-validate.invalid > /tmp/gitops-dev.yaml
-          if [ ! -s /tmp/gitops-dev.yaml ]; then
-            echo "::error::helm template rendered empty output for dev values"
-            exit 1
-          fi
-          echo "Dev render: $(wc -l < /tmp/gitops-dev.yaml) lines"
-
-      - name: Lint platform charts
-        run: |
-          set -e
-          failed=0
-          for dir in platform/*/; do
-            if [ -f "${dir}Chart.yaml" ]; then
-              echo "::group::helm lint $dir"
-              # Velero and ts-operator require s3.tailnetFqdn (CI-supplied) — lint with a test value.
-              extra=()
-              if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/ts-operator/" ]; then
-                extra=(--set s3.tailnetFqdn=s3-validate.invalid)
-              fi
-              if ! helm lint "$dir" "${extra[@]}"; then
-                echo "::error::helm lint failed for $dir"
-                failed=1
-              fi
-              echo "::endgroup::"
-            fi
-          done
-          exit $failed
-
-      - name: Lint shared library charts
-        run: |
-          set -e
-          failed=0
-          for dir in charts/*/; do
-            if [ -f "${dir}Chart.yaml" ]; then
-              echo "::group::helm lint $dir"
-              if ! helm lint "$dir"; then
-                echo "::error::helm lint failed for $dir"
-                failed=1
-              fi
-              echo "::endgroup::"
-            fi
-          done
-          exit $failed
-
-      - name: ShellCheck bootstrap scripts
+      - name: ShellCheck scripts
+        env:
+          SCRIPTS_STRICT: "1"
         run: |
           if ! command -v shellcheck >/dev/null 2>&1; then
             echo "Installing shellcheck..."
             sudo apt-get update -qq
             sudo apt-get install -y -qq shellcheck
           fi
-          shellcheck --version
-          echo "Linting bootstrap/init-gitops.sh ..."
-          shellcheck bootstrap/init-gitops.sh
-          echo "Linting platform/vault/scripts/bootstrap-vault.sh ..."
-          shellcheck platform/vault/scripts/bootstrap-vault.sh
+          ./scripts/shellcheck-check.sh
 
-      - name: YAML sanity (python yaml)
-        run: |
-          python3 - << 'PY'
-          import glob, sys
-          try:
-              import yaml
-          except ImportError:
-              print("PyYAML not available, skipping")
-              sys.exit(0)
-          errors = 0
-          for f in glob.glob("**/*.yaml", recursive=True) + glob.glob("**/*.yml", recursive=True):
-              # skip Helm templates and vendored charts
-              if "/templates/" in f or "/charts/" in f or f.startswith("platform/longhorn/charts/"):
-                  continue
-              with open(f) as fh:
-                  content = fh.read()
-              if "{{" in content or "{%" in content:
-                  continue
-              try:
-                  list(yaml.safe_load_all(content))
-              except Exception as e:
-                  print(f"::error file={f}::YAML parse error: {e}")
-                  errors += 1
-          if errors:
-              sys.exit(1)
-          print("YAML sanity: OK")
-          PY
+      - name: YAML sanity + yamllint (yamllint is non-blocking inside the script)
+        run: ./scripts/check-yaml.sh
 
       - name: Inline image convention (no split repository/tag in values)
-        run: |
-          # Convention: first-party values files must use single-line inline
-          # `image: <repo>:<tag>[@<digest>]` so Renovate Manager 1 owns every
-          # image line. Split blocks (`repository:` + `tag:` keys) are invisible
-          # to Manager 1 and silently skip Renovate updates — fail on them.
-          # Scope is values*.yaml only: Chart.yaml `repository:` (chart
-          # dependencies) and vendored charts are intentionally out of scope.
-          matches="$(grep -rn --include='values*.yaml' -E '^[[:space:]]*repository[[:space:]]*:' platform/ apps/ gitops/ || true)"
-          if [ -n "$matches" ]; then
-            echo "::error::split-style image blocks found in values files (use inline 'image: <repo>:<tag>' instead):"
-            printf '%s\n' "$matches"
-            exit 1
-          fi
-          echo "Inline image convention: OK (no 'repository:' keys in values*.yaml)"
+        run: ./scripts/check-inline-images.sh
 
       - name: JSON sanity (python -m json.tool)
-        run: |
-          echo "==> JSON sanity (python3 -m json.tool)"
-          errors=0
-          for f in $(find . -type f -name "*.json" -not -path "*/charts/*" -not -path "*/.git/*" -not -path "*/node_modules/*"); do
-            echo "  checking $f..."
-            if ! python3 -m json.tool "$f" > /dev/null; then
-              echo "::error file=$f::JSON parse error"
-              errors=$((errors+1))
-            else
-              echo "  OK  $f"
-            fi
-          done
-          if [ ! -f renovate.json ]; then
-            echo "::warning::renovate.json not found"
-          fi
-          if [ "$errors" != "0" ]; then
-            echo "::error::$errors JSON file(s) failed validation"
-            exit 1
-          fi
-          echo "JSON sanity: OK"
-
-      - name: yamllint (bonus, Helm-aware via .yamllint.yaml)
-        continue-on-error: true
-        run: |
-          pip install --quiet yamllint 2>/dev/null || true
-          yamllint -c .yamllint.yaml gitops/ platform/ bootstrap/ 2>&1 || echo "::warning::yamllint reported issues (non-blocking)"
-          echo "yamllint with .yamllint.yaml: done (templates ignored, helm lint owns them)"
+        run: ./scripts/check-json.sh
 
   # Dynamic image discovery: render every chart (platform/* + apps/*) and
   # collect unique `image:` refs, supplemented by a repo-wide source grep
@@ -250,98 +110,9 @@ jobs:
       - name: Discover runtime images from charts
         id: collect
         run: |
-          helm repo add longhorn https://charts.longhorn.io >/dev/null 2>&1 || true
-          helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
-          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
-          helm repo add tailscale https://pkgs.tailscale.com/helmcharts >/dev/null 2>&1 || true
-          helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
-          helm repo add aquasecurity https://aquasecurity.github.io/helm-charts >/dev/null 2>&1 || true
-          helm repo update >/dev/null 2>&1 || true
-          imglist="$(mktemp)"
-          for dir in platform/*/ apps/*/; do
-            if [ ! -f "${dir}Chart.yaml" ]; then continue; fi
-            name="$(basename "$dir")"
-            helm dependency update "$dir" >/dev/null 2>&1 || helm dependency build "$dir" >/dev/null 2>&1 || true
-            # Velero and ts-operator require s3.tailnetFqdn (CI-supplied) — render with a test value.
-            extra=""
-            if [ "$dir" = "platform/velero/" ] || [ "$dir" = "platform/ts-operator/" ]; then
-              extra="--set s3.tailnetFqdn=s3-validate.invalid"
-            fi
-            # shellcheck disable=SC2086
-            if ! rendered="$(helm template "$name" "$dir" $extra 2>/dev/null)"; then
-              echo "::warning::could not render $dir — skipping"
-              continue
-            fi
-            printf '%s\n' "$rendered" | awk '/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]/ && !/\{\{/ {sub(/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]+/, ""); gsub(/^"|"$|^[ \t]+|[ \t]+$/, ""); if ($0 != "") print}' >> "$imglist" || true
-          done
-          images_json=""
-          pinned_json=""
-          python3 - "$imglist" << 'PY'
-          import json, os, re, sys
-          rendered_path = sys.argv[1]
-          rendered = set()
-          with open(rendered_path) as fh:
-              for line in fh:
-                  line = line.strip()
-                  if line:
-                      rendered.add(line)
-          inline_re = re.compile(r'^\s*(?:-\s+)?image:\s*["\']?([^"\'\s{}]+:[^"\'\s{}]+(?:@sha256:[a-fA-F0-9]+)?)["\']?\s*(?:#.*)?$')
-          repo_re = re.compile(r'^\s*repo:\s*["\']?([^"\'\s{};]+)["\']?\s*(?:#.*)?$')
-          tag_re = re.compile(r'^\s*tag:\s*["\']?([^"\'\s{};]+)["\']?\s*(?:#.*)?$')
-          source = set()
-          for root in ("platform", "apps"):
-              for dirpath, dirnames, filenames in os.walk(root):
-                  # Vendored upstream charts are scanned via their rendered
-                  # output, not their raw values (their image knobs differ).
-                  dirnames[:] = [d for d in dirnames if d != "charts"]
-                  for fn in filenames:
-                      if not (fn.endswith(".yaml") or fn.endswith(".yml")):
-                          continue
-                      if ".enc." in fn:
-                          continue
-                      p = os.path.join(dirpath, fn)
-                      with open(p, errors="replace") as fh:
-                          lines = fh.read().splitlines()
-                      for line in lines:
-                          if "{{" in line or "{%" in line:
-                              continue
-                          m = inline_re.match(line)
-                          if m:
-                              source.add(m.group(1))
-                      # Split repo:/tag: pairs (e.g. Tailscale DNSConfig
-                      # nameserver image) joined back into repo:tag refs.
-                      for i, line in enumerate(lines):
-                          if "{{" in line or "{%" in line:
-                              continue
-                          m = repo_re.match(line)
-                          if m:
-                              for nxt in lines[i + 1:i + 4]:
-                                  t = tag_re.match(nxt)
-                                  if t:
-                                      source.add(f"{m.group(1)}:{t.group(1)}")
-                                      break
-          images = sorted(rendered | source)
-          # Fail-closed blocking set: digest-pinned images authored in this
-          # repo (the source-grep set above), never a hardcoded family list,
-          # so Renovate bumps keep flowing into the blocking gate and a
-          # renamed/new family can never silently fall through to
-          # advisory-only. Rendered-only upstream images (e.g. digest pins
-          # authored by upstream charts) are scanned but stay advisory —
-          # their CVEs can only be fixed by upstream releases.
-          pinned = sorted(i for i in source if "@sha256:" in i)
-          if not images:
-              print("::error::no images discovered from charts or source grep")
-              sys.exit(1)
-          if not pinned:
-              print("::error::no digest-pinned images derived — blocking gate would be empty, failing closed")
-              sys.exit(1)
-          print(f"Discovered: {json.dumps(images)}")
-          print(f"Pinned (fail-closed): {json.dumps(pinned)}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"images={json.dumps(images)}\n")
-              out.write(f"pinned={json.dumps(pinned)}\n")
-          PY
-          rm -f "$imglist"
+          ./scripts/discover-images.sh /tmp/discover-images
+          echo "images=$(jq -c . /tmp/discover-images/images.json)" >> "$GITHUB_OUTPUT"
+          echo "pinned=$(jq -c . /tmp/discover-images/pinned.json)" >> "$GITHUB_OUTPUT"
 
   trivy-images:
     needs: [discover]
