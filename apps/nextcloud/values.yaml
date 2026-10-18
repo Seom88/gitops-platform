@@ -159,13 +159,12 @@ nextcloud:
           cpu: 200m
           memory: 256Mi
 
-  # Data (/var/www/html incl. data/). longhorn-encrypted like immich-library:
-  # these are personal files. 8Gi to start; Longhorn expands volumes online.
+  # Data (/var/www/html incl. data/). longhorn-encrypted
   persistence:
     enabled: true
     storageClass: longhorn-encrypted
     accessMode: ReadWriteOnce
-    size: 8Gi
+    size: 25Gi
 
   # Pod port stays 80; the tailscale proxy connects to the Service on 8080
   # (policies use post-DNAT pod ports — same pattern as immich 2283).
