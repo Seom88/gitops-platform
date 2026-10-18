@@ -8,5 +8,5 @@ maintainers:
     url: https://github.com/Seom88
 dependencies:
   - name: nextcloud
-    version: 9.4.0
+    version: 9.4.1
     repository: https://nextcloud.github.io/helm/
