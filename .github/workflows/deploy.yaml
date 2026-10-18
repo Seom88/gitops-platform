@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HELM_VERSION: v4.3.0
+  HELM_VERSION: v4.3.1
   # S3_ENDPOINT serves SOPS age-key fetch only (init-sops.sh: s3://secrets-homelab).
   # Velero endpoint is a git literal (gitops/values.yaml sharedS3.tailnetFqdn).
   # S3_ENDPOINT must be the full URL (https://<fqdn>) of the RustFS host.
