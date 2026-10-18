@@ -121,18 +121,19 @@ kubectl -n <ns> patch pvc <name> -p '{"spec":{"volumeName":""}}'
 
 ### Step 5 — Databases (Barman, not Velero)
 
-A live Postgres FsBackup is crash-consistent: not valid recovery. Both clusters go via PITR:
+A live Postgres FsBackup is crash-consistent: not valid recovery. All CNPG clusters go via PITR:
 
 | Cluster (namespace) | ObjectStore | Destination |
 |---|---|---|
 | `immich-database` (`immich`) | `immich-backup-store` | `s3://cnpg-db-backups/immich/` |
 | `grafana-database` (`monitoring`) | `grafana-backup-store` | `s3://cnpg-db-backups/grafana/` |
+| `nextcloud-database` (`nextcloud`) | `nextcloud-backup-store` | `s3://cnpg-db-backups/nextcloud/` |
 
 Restored or fresh DB volumes are empty by design — Barman fills them, not Velero. But the restore replants the database *objects* (PVCs and pods ride along in `includedResources`; only the data is skipped), and those shells block recovery: the CNPG operator reconciles a franken-state of initdb Cluster + empty replanted PVCs + stale same-named pods, and bootstrap never gets a clean shot. Clean slate first, recovery second. Git manifests only carry `bootstrap.initdb` — no `recovery:` stanza — so recovery is applied by hand with the app frozen. Unfreezing afterwards is safe: `bootstrap`/`recovery` only run on empty PGDATA, Git reconciles without touching data.
 
 Prerequisites: secret `cnpg-backup-s3-credentials` in the namespace (comes from SOPS, applied in step 0; `daily-full` does not back up Secrets). For PITR, `targetTime` with explicit timezone inside the 30d retention (`kubectl -n immich get backup` to see what exists; on a fresh cluster an empty list is normal, not loss).
 
-Manifest (immich; grafana: namespace `monitoring`, cluster `grafana-database`, store `grafana-backup-store`, `serverName: grafana-database`, database/owner `grafana`, no `postgresql:` block):
+Manifest (immich; grafana: namespace `monitoring`, cluster `grafana-database`, store `grafana-backup-store`, `serverName: grafana-database`, database/owner `grafana`, no `postgresql:` block; nextcloud: namespace `nextcloud`, cluster `nextcloud-database`, store `nextcloud-backup-store`, `serverName: nextcloud-database`, database/owner `nextcloud`, `postgresql:` block verbatim from Git if present):
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -210,10 +211,11 @@ In order: databases must be primary before their apps. The window froze syncs wi
 # 1. Manual syncs only — automatic ones stay blocked:
 argocd proj windows enable-manual-sync default <window-id>
 
-# 2. Gate — both primary or stop here:
+# 2. Gate — every CNPG cluster primary or stop here:
 kubectl -n immich get cluster immich-database -o jsonpath='{.status.phase}{"\n"}'
 kubectl -n monitoring get cluster grafana-database -o jsonpath='{.status.phase}{"\n"}'
-# Cluster in healthy state × 2.
+kubectl -n nextcloud get cluster nextcloud-database -o jsonpath='{.status.phase}{"\n"}'
+# Cluster in healthy state × 3.
 
 # 4. Everything else at once. Deleting the window resumes automatic
 #    syncs; Git returns the recovery Clusters to their manifest
@@ -239,6 +241,7 @@ velero restore describe dr-<timestamp> --details | grep -E 'Phase|Items restored
 velero restore logs dr-<timestamp> | grep 'level=error'
 kubectl -n immich get cluster immich-database         # healthy, 2 instances
 kubectl -n monitoring get cluster grafana-database    # healthy, 2 instances
+kubectl -n nextcloud get cluster nextcloud-database   # healthy, 2 instances
 kubectl -n argocd get applications                    # Synced / Healthy
 ```
 
@@ -263,7 +266,7 @@ Then the real data — historic metrics + one Immich photo older than the disast
 | Recovery stuck `Setting up primary` + `Expected empty archive` | Manifest kept `plugins:` — remove and re-apply (step 5) |
 | WAL replay fails on `vchord` | Missing verbatim `spec.postgresql` from Git (step 5) |
 | PITR never arrives | `targetTime` outside the 30d window or missing timezone (step 5) |
-| Apps CrashLoop after unfreeze, DBs healthy | Both DBs must be primary before their apps (step 6.3) |
+| Apps CrashLoop after unfreeze, DBs healthy | Every CNPG cluster must be primary before its app (step 6.2) |
 | `NoSuchBucket` or Velero unreachable | RustFS down — [RustFS IAM](./rustfs-iam.md). If the bucket is gone: `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1` |
 | `BSL not Ready` | Check `s3Url`/`s3ForcePathStyle`, Secret `cloud-credentials` (`bootstrap/init-sops.sh`), and tailnet DNS: `coredns-custom` exists in `kube-system`, tailscaled runs with `--accept-dns` on the node, `nslookup rustfs.lonk-mirfak.ts.net` succeeds from a pod |
 | Velero OOMKilled | `512Mi` limit; `deployNodeAgent: true` mandatory with `defaultVolumesToFsBackup: true` |

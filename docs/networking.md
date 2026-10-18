@@ -1,6 +1,6 @@
 # Networking — Cilium eBPF, Gateway API & Policies
 
-> **Single source of truth for Cilium networking.** Cilium 1.20.1 (eBPF, strict kubeProxyReplacement) + Gateway API 1.2.3 + Hubble; 9 charts with gated `CiliumNetworkPolicy` (ADR-014). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` is retained for non-Cilium fallback (Flannel) but not enforced.
+> **Single source of truth for Cilium networking.** Cilium 1.20.1 (eBPF, strict kubeProxyReplacement) + Gateway API 1.2.3 + Hubble; 10 charts render gated `CiliumNetworkPolicy` (ADR-014) — see [Policy coverage](./roadmap.md#policy-coverage-adr-014). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` is retained for non-Cilium fallback (Flannel) but not enforced.
 
 ## Quick path
 
@@ -20,7 +20,7 @@
 | Cilium CNI | `1.20.1` | Cluster prerequisite — installed before this repo syncs |
 | Gateway API CRDs | `1.2.3` | Cluster prerequisite — installed before Cilium |
 | Hubble relay | `4244` (gRPC) / `4245` (UI/health) | Cilium + per-chart Tailscale Ingress |
-| Policy API | `cilium.io/v2` (`CiliumNetworkPolicy`) | `platform/*/templates/cilium-networkpolicies.yaml` (9 charts) |
+| Policy API | `cilium.io/v2` (`CiliumNetworkPolicy`) | `platform/*/templates/cilium-networkpolicies.yaml` + `apps/*/templates/` (10 charts) |
 
 ## Cluster prerequisites
 
@@ -74,7 +74,7 @@ When `false`, the `CiliumNetworkPolicy` resources are not rendered; legacy `netw
 ## Tailscale integration
 
 - **Control plane / DERP / STUN:** Tailscale clients and `tailscale-operator` need egress to DERP and STUN. Policies allow UDP `1-65535` + TCP `80/443` for Tailscale control plane where required; MagicDNS (`*.ts.net`) is covered by the `allow-dns` FQDN rule (not a broad egress hole).
-- **Per-app Tailscale ingress:** each chart renders its own `Ingress` via `tailscaleIngress` values (`ingressClassName: tailscale`), each creating its own MagicDNS device (`argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` hostnames in dev). Orphan apps (`argocd`, `hubble-ui`) ship from `platform/ts-operator/templates/infra/`. Every app is served at `/` root — no subpath routing — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress`.
+- **Per-app Tailscale ingress:** each chart renders its own `Ingress` via `tailscaleIngress` values (`ingressClassName: tailscale`), each creating its own MagicDNS device (`argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `immich`, `nextcloud`, `collabora` on `*.lonk-mirfak.ts.net`; `-dev` hostnames in dev; `vault` exists in the chart but ships no device while the Vault Application is gated off, ADR-017). Orphan apps (`argocd`, `hubble-ui`) ship from `platform/ts-operator/templates/infra/`. Every app is served at `/` root — no subpath routing — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress`.
 
 ## Hubble
 
@@ -110,7 +110,7 @@ Cross-namespace to storage is still deny-by-default; only intra-namespace is ope
 ## Verification
 
 ```bash
-# Policies present (9 charts × 3)
+# Policies present (10 charts × 3)
 kubectl get ciliumnetworkpolicies -A
 kubectl get ciliumnetworkpolicies -n vault -o yaml | grep -E "endpointSelector|toFQDNs|toEntities"
 
@@ -126,7 +126,7 @@ helm template vault platform/vault --set ciliumNetworkPolicy.enabled=true | grep
 helm template vault platform/vault --set ciliumNetworkPolicy.enabled=false | grep -c "CiliumNetworkPolicy"  # → 0
 
 # Tailscale per-app Ingresses
-kubectl -n tailscale get ingress -o wide  # argocd, grafana, prometheus, longhorn, homepage, hubble, vault
+kubectl -n tailscale get ingress -o wide  # argocd, grafana, prometheus, longhorn, homepage, hubble, immich, nextcloud, collabora
 curl -k https://grafana.lonk-mirfak.ts.net/login  # 200 via tailnet
 ```
 

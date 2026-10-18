@@ -58,7 +58,7 @@ Vault is the industry standard for secrets management. Implementing it from scra
 ### What's Implemented
 
 **Tailscale Operator** for mesh VPN ingress — one Ingress + device per app:
-- One MagicDNS device/hostname per app (`argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev), each served at `/` root — no subpath routing — see [ADR-018](./adrs/018-per-app-tailscale-ingress.md)
+- One MagicDNS device/hostname per app (`argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `immich`, `nextcloud`, `collabora` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev; `vault` ships no device while gated off, ADR-017), each served at `/` root — no subpath routing — see [ADR-018](./adrs/018-per-app-tailscale-ingress.md)
 - No public port exposure — ingress only via Tailscale mesh
 - Per-user access control — OAuth scopes integrated with Tailscale
 - Subnet routing — cluster pods accessible directly from Tailscale network
@@ -91,9 +91,9 @@ open https://prometheus.lonk-mirfak.ts.net/
 
 ### Key Files
 
-- Operator deployment: [`platform/ts-operator/Chart.yaml`](../platform/ts-operator/Chart.yaml) (wave `-1`)
+- Operator deployment: [`platform/ts-operator/Chart.yaml`](../platform/ts-operator/Chart.yaml) (wave `-2`)
 - Per-app Ingresses: each chart renders its own `tailscale-ingress.yaml` (one Ingress + device per app)
-  - `homepage`, `monitoring` (`grafana` + `prometheus`), `longhorn`, `vault` — hostnames via `tailscaleIngress` values (`-dev` in dev)
+  - `homepage`, `monitoring` (`grafana` + `prometheus`), `longhorn`, `immich`, `nextcloud` (+ `collabora` from the bundled CODE subchart) — hostnames via `tailscaleIngress` values (`-dev` in dev)
   - Orphans (`argocd`, `hubble`) ship from [`platform/ts-operator/templates/infra/`](../platform/ts-operator/templates/infra/)
 - Proxy→backend Cilium egress lives in `ts-operator` as `ts-operator-proxy-egress` (managed-proxy selector); no `ts-ingress` chart remains
 - ADRs: [ADR-001: Tailscale Ingress Placement](./adrs/001-tailscale-ingress-placement.md), [ADR-018: Per-App Tailscale Ingresses](./adrs/018-per-app-tailscale-ingress.md) (supersedes ADR-012), [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md)
@@ -106,7 +106,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 
 **Cilium CNI (`v1.20.1`) + Gateway API `v1.2.3` with Identity-Aware NetworkPolicies**:
 - **eBPF Kube-Proxy Replacement (strict)** — Service routing and load-balancing in kernel space without iptables; `socketLB: hostNamespaceOnly`, `cgroup.hostRoot: /sys/fs/cgroup`.
-- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across 8 charts (`vault`, `longhorn-system`, `monitoring`, `tailscale`, `tailscale-operator`, `velero`, `cert-manager`, `external-secrets`); gated by `ciliumNetworkPolicy.enabled=true`.
+- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across the 10 charts that render policies (`vault`, `velero`, `longhorn`, `monitoring`, `trivy-operator`, `ts-operator`, `valkey`, `homepage`, `immich`, `nextcloud` — see the [policy coverage table](./roadmap.md#policy-coverage-adr-014)); gated by `ciliumNetworkPolicy.enabled=true`.
 - **L7 DNS Visibility & Scoping** — Egress DNS restricted to `kube-system/k8s-app=kube-dns` on UDP/TCP 53 with Cilium L7 DNS rules (`toFQDNs.matchPattern: "*"` + `rules.dns`), blocking DNS-based exfiltration while allowing MagicDNS (`*.ts.net`).
 - **Zero-Trust Default Posture** — `endpointSelector: {}` default-deny per namespace; explicit allows for intra-namespace, kube-apiserver (443/6443), and Hubble relay (4244/4245).
 - **Observability Integration** — Hubble relay whitelisted (`ports 4244/4245`) for real-time flow tracing (`hubble observe`).
@@ -125,7 +125,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 ### Key Files
 
 - Fallback (non-Cilium clusters): `platform/*/templates/networkpolicy.yaml` (`networking.k8s.io/v1`) — retained for non-Cilium clusters, not enforced when Cilium is active
-- Cilium (enforced): `platform/*/templates/cilium-networkpolicies.yaml` (8 charts, gated by `ciliumNetworkPolicy.enabled=true`) + `platform/*/values.yaml` (`ciliumNetworkPolicy.enabled: true` default)
+- Cilium (enforced): `platform/*/templates/cilium-networkpolicies.yaml` + `apps/*/templates/` (10 charts, gated by `ciliumNetworkPolicy.enabled=true`) + `*/values.yaml` (`ciliumNetworkPolicy.enabled: true` default)
 - ADRs: [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md) · [Networking guide](./networking.md)
 
 ---
@@ -160,9 +160,12 @@ GitOps ensures:
 ### App Dependency Graph
 
 ```
+Wave -2 (Healthy required):
+  └── ts-operator          ← Must be healthy; gates every later wave; owns orphan argocd/hubble Ingresses
+
 Wave -1 (Healthy required):
-  ├── ts-operator    ← Must be healthy; gates 0..5; owns orphan argocd/hubble Ingresses
   ├── cert-manager   ← Must be ready
+  ├── cloudnative-pg ← PostgreSQL operator before any app Cluster
   └── longhorn       ← Must be healthy + CSI-gated
 
 Wave 0 (Healthy required):
@@ -180,14 +183,11 @@ Wave 3 (Sync-only):
   ├── trivy-operator ← In-cluster scan every 6h (CRDs + Prometheus metrics); complements CI-time Trivy
   └── homepage       ← User app (dashboard); `myDomain` suffix for links only
 
-Wave 4 (Healthy required):
-  └── cloudnative-pg ← PostgreSQL operator for apps
-
 Wave 5 (Sync-only):
   └── immich         ← User app on CloudNativePG (library 30Gi×2, DB 3Gi×2) + shared valkey
 
 Wave 6 (Sync-only):
-  └── nextcloud      ← User app on CloudNativePG (data 8Gi longhorn-encrypted, DB 3Gi×2) + shared valkey (redis db 1); own Ingress nextcloud.lonk-mirfak.ts.net
+  └── nextcloud      ← User app on CloudNativePG (data 50Gi longhorn-encrypted, DB 3Gi×2) + shared valkey (redis db 1); ingresses nextcloud.lonk-mirfak.ts.net + collabora.lonk-mirfak.ts.net (CODE editor, dedicated hostname per ADR-023)
 
 No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress (ADR-018 + consolidation amendment).
 ```
@@ -196,9 +196,9 @@ No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress
 
 - Root app: [`gitops/templates/root-prod-app.yaml`](../gitops/templates/root-prod-app.yaml)
 - Platform apps: [`gitops/templates/platform/`](../gitops/templates/platform/)
-  - `-1-ts-operator.yaml`, `-1-cert-manager.yaml`, `-1-longhorn.yaml`
+  - `-2-ts-operator.yaml`, `-1-cert-manager.yaml`, `-1-cloudnative-pg.yaml`, `-1-longhorn.yaml`
   - `00-external-secrets.yaml`, `00-velero.yaml`
-  - `01-vault.yaml`, `02-valkey.yaml`, `03-monitoring.yaml`, `03-trivy-operator.yaml`, `04-cloudnative-pg.yaml`
+  - `01-vault.yaml`, `02-valkey.yaml`, `03-monitoring.yaml`, `03-trivy-operator.yaml`
 - User apps: [`gitops/templates/apps/`](../gitops/templates/apps/) — `03-homepage.yaml`, `05-immich.yaml`, `06-nextcloud.yaml`
 - Helm chart: [`gitops/Chart.yaml`](../gitops/Chart.yaml)
 - Configuration: [`gitops/values.yaml`](../gitops/values.yaml) (prod) and [`gitops/values-dev.yaml`](../gitops/values-dev.yaml) (dev)
@@ -216,7 +216,7 @@ No `ts-ingress` chart — deleted; each chart owns its per-app Tailscale Ingress
 - **Loki** — Log aggregation (logs as a dimension, not indexed text) — SingleBinary with S3 (external RustFS) backend and gateway (`monitoring-loki-gateway`)
 - **Grafana Alloy** — Stateless DaemonSet log collector (`discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`). No PVC (WAL disabled, ephemeral `/tmp/alloy`), RBAC auto-created by the alloy chart, **replaces Promtail (deprecated)**
 - **Integration** — Vault metrics, ArgoCD health, Longhorn status; Loki datasource in Grafana with `X-Scope-OrgID` header
-- **Secure Ingress** — All dashboards behind Tailscale zero-trust (single-host gateway)
+- **Secure Ingress** — All dashboards behind Tailscale zero-trust (per-app Ingress devices, ADR-018)
 
 ### Why This Matters
 
@@ -300,14 +300,14 @@ podSpec:
 
 **Why it matters:**
 - Log aggregation backend (Loki stores logs in S3)
-- Backup destination (Velero, future feature)
+- Backup destination (Velero, `daily-full` running to `velero-homelab` — restore drill deferred to v2.0)
 - Application object storage (photos, documents, etc.)
 - S3 API compatibility — works with any S3 client library
 
 **How it works:**
 1. **Deployment** — Runs on a VM outside the cluster (managed externally)
 2. **S3 API** — Exposes S3-compatible endpoint at `rustfs.lonk-mirfak.ts.net`
-3. **Credentials** — Vault stores S3 access keys, External Secrets syncs to K8s
+3. **Credentials** — SOPS + age in git (Velero, CNPG, Loki S3 credentials; ADR-017 — Vault is paused)
 4. **Applications** — Use standard S3 client (boto3, AWS SDK) with cluster endpoint
 
 ### Integration: Loki + RustFS
@@ -342,8 +342,8 @@ loki:
 
 1. **Validates prerequisites** — Cluster running, ArgoCD installed, kubeconfig accessible
 2. **Deploys root App-of-Apps** — Single `kubectl apply` of the root ArgoCD application
-3. **Configures Vault** — Initializes Vault, generates unseal keys, sets up auth methods
-4. **Waits for readiness** — Checks that cert-manager and external-secrets are healthy before proceeding
+3. **Applies encrypted secrets** — SOPS + age via `bootstrap/init-sops.sh` (ADR-017: Vault is paused, not deleted; the Vault init/auth path runs only when re-enabled)
+4. **Waits for readiness** — Wave gates: cert-manager/Longhorn/velero healthy before the next wave (`sync-only` leaves need only `Synced`)
 5. **Status report** — Shows which apps are deploying and health status
 
 **Idempotency:**
@@ -388,8 +388,10 @@ loki:
 ### Environment Strategy
 
 **Two environments, one codebase:**
-- **Production** (`values.yaml`) — 3-node Vault, 3-replica Longhorn, monitoring
-- **Development** (`values-dev.yaml`) — Single-node Vault (acceptable for dev), local-path storage option
+- **Production** (`values.yaml`) — server-level weights per ADR-019 (1 node); monitoring, Longhorn, storage
+- **Development** (`values-dev.yaml`) — lighter footprint, local-path storage option
+
+Note: Vault is paused in both environments (`vault.enabled: false`, ADR-017).
 
 ### How It Works
 
@@ -401,13 +403,13 @@ loki:
 ### Example: Vault Replicas
 
 ```yaml
-# values.yaml (prod)
+# values.yaml (prod; Vault is gated off — ADR-017 — so this applies on re-enable)
 vault:
-  replicas: 3
+  enabled: false
 
 # values-dev.yaml (dev override)
 vault:
-  replicas: 1
+  enabled: false
 ```
 
 ### Key Concept
@@ -445,16 +447,16 @@ just fmt
 
 ### GitHub Actions
 
-- **Trigger** — On every push to `main` or `dev`
-- **Matrix** — Runs against prod and dev values simultaneously
-- **Approval gate** — Manual approval required before deploy to prod
+- **Trigger** — On every push to `main` or `dev` (1 CI run + 1 Deploy run)
+- **Unified CI** — `ci.yaml` runs validate + security jobs (Trivy images + misconfig, SARIF) against prod and dev values
+- **Deploy** — Auto-deploy on `CI` success to main; manual `workflow_dispatch` with env selection; no approval gate
 - **Rollback** — Revert commit to rollback
 
 ### Key Files
 
 - Workflows: [`.github/workflows/`](../.github/workflows/)
-  - Validate: `validate.yml`
-  - Deploy: `deploy.yml`
+  - Validate + security: `ci.yaml`
+  - Deploy: `deploy.yaml`
 - Local mirror: [`justfile`](../justfile) — `just validate` command
 - Documentation: [`docs/ci-cd.md`](../docs/ci-cd.md)
 

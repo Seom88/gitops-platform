@@ -47,7 +47,7 @@ The secret is **not** stored in Vault (`secret/tailscale/auth` is no longer used
 
 **Operator consumption:**
 
-`platform/ts-operator` (`1.102.3`, wave `-1` `healthy`) references it via:
+`platform/ts-operator` (`1.102.3`, wave `-2` `healthy`) references it via:
 
 ```yaml
 tailscale-operator:
@@ -63,7 +63,7 @@ The `tailscale-operator` `Deployment` reads `client_id`/`client_secret` from tha
 
 **Why not Vault/ESO:**
 
-`ClusterSecretStore vault-tailscale`, `Job vault-config-tailscale` (`ChangeMeSecret` placeholder), and `ExternalSecret operator-oauth-key` were deleted in ADR-010. The source of truth moved to GitHub Secrets (and local env) to remove Vault UI clickops, to let wave `-1` operator gate waves `0..4` without Vault being in the critical path, and to make `git revert` the rollback.
+`ClusterSecretStore vault-tailscale`, `Job vault-config-tailscale` (`ChangeMeSecret` placeholder), and `ExternalSecret operator-oauth-key` were deleted in ADR-010. The source of truth moved to GitHub Secrets (and local env) to remove Vault UI clickops, to let wave `-2` operator gate every later wave without Vault being in the critical path, and to make `git revert` the rollback.
 
 Verification after bootstrap/sync:
 
@@ -71,7 +71,7 @@ Verification after bootstrap/sync:
 kubectl -n tailscale get secret operator-oauth -o jsonpath='{.data.client_id}' | base64 -d; echo
 kubectl -n tailscale get secret operator-oauth -o jsonpath='{.data.client_secret}' | base64 -d | wc -c
 kubectl -n tailscale get pods -l app.kubernetes.io/name=tailscale-operator
-argocd app get ts-operator  # should be Healthy/Synced at wave -1
+argocd app get ts-operator  # should be Healthy/Synced at wave -2
 ```
 
 ## Other Secrets

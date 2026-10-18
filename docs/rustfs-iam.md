@@ -82,8 +82,8 @@ lists buckets, it goes straight to its own:
 One bucket + one key for all CNPG databases (homelab decision 2026-09-28:
 replaces per-DB SeaweedFS IAM users). Each Cluster keeps its own
 `ObjectStore` pointing at a per-DB prefix (`s3://cnpg-db-backups/immich/`,
-`s3://cnpg-db-backups/grafana/`), so WAL + base backups never collide while
-rotation stays a single key.
+`s3://cnpg-db-backups/grafana/`, `s3://cnpg-db-backups/nextcloud/`), so WAL +
+base backups never collide while rotation stays a single key.
 
 `s3:CreateBucket` is intentionally omitted: the bucket is created once manually
 in console (no bucket-init Job per user decision 2026-09-28).

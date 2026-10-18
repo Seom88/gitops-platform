@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide provides the steps to initialize the Homelab GitOps environment, including the setup of HashiCorp Vault for secret management. **ArgoCD is NOT installed here** — it is a cluster prerequisite. **Longhorn** is deployed by this repo itself as a wave -1 platform app with a CSI readiness gate, so no storage needs to be pre-installed.
+This guide provides the steps to initialize the Homelab GitOps environment, including the setup of encrypted secrets (SOPS + age — [ADR-017](adrs/017-vault-paused-sops-default.md)). **ArgoCD is NOT installed here** — it is a cluster prerequisite. **Longhorn** is deployed by this repo itself as a wave -1 platform app with a CSI readiness gate, so no storage needs to be pre-installed.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ This guide provides the steps to initialize the Homelab GitOps environment, incl
 
 ## 1. Bootstrap the Environment
 
-Run the initialization script to configure the foundation of your GitOps flow. The script deploys the root **App-of-Apps** (cert-manager, External Secrets Operator and the platform apps sync via ArgoCD) and configures **Vault**. You can choose between `prod` (default) and `dev` environments using the `just` recipes:
+Run the initialization script to configure the foundation of your GitOps flow. The script deploys the root **App-of-Apps** (cert-manager, External Secrets Operator and the platform apps sync via ArgoCD) and applies the SOPS-encrypted secrets ([SOPS + age](sops.md) is the default secrets path — [ADR-017](adrs/017-vault-paused-sops-default.md); Vault is paused, not deleted). You can choose between `prod` (default) and `dev` environments using the `just` recipes:
 
 ```bash
 # For production (default)
@@ -29,16 +29,21 @@ just init-dev
 > The cluster must have **ArgoCD** installed **before** running the bootstrap. Longhorn is deployed by this repo as a wave -1 App-of-Apps app with a CSI readiness gate — the bootstrap script does not install ArgoCD or any storage component.
 
 > [!NOTE]
-> **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/apps/` ordered by `argocd.argoproj.io/sync-wave`: `00` cert-manager/external-secrets/longhorn (wave 0) → `01` vault (wave 1) → `03` monitoring (wave 3, `sync-only`) → `04` tailscale (wave 4, `sync-only`, always last). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua, ADR-006), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` and `tailscale` are `sync-only` leaves, Tailscale still exposes other apps even if monitoring is degraded.
+> **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/` ordered by `argocd.argoproj.io/sync-wave`: wave `-2` ts-operator → wave `-1` cert-manager/cloudnative-pg/longhorn → wave `0` external-secrets/velero → wave `1` vault (gated off by default, ADR-017) → wave `2` valkey → wave `3` monitoring/trivy-operator/homepage (`sync-only`) → wave `5` immich → wave `6` nextcloud (user apps, `sync-only`). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua, ADR-006), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` and `tailscale` are `sync-only` leaves, Tailscale still exposes other apps even if monitoring is degraded.
 
-## 2. Configure Vault
+## 2. Secrets (SOPS default, Vault paused)
 
-The bootstrap script automatically initializes Vault and configures the necessary secrets engines.
+New secrets ship encrypted in git via **SOPS + age** — see the [Getting started with SOPS flow](sops.md): `bootstrap/init-sops.sh` + `just secrets-apply`. Nothing else is required for the default path.
 
-### Access Vault UI
+> [!TIP]
+> To organize secret structure (for example if you plan to re-enable the Vault path later), follow the [Secret Structure guide](secrets-structure.md).
 
-1. **Get the root token**:
-   The script prints the root token at the end, but you can always retrieve it with a `just` recipe:
+<details>
+<summary>Re-enabling Vault (optional — ADR-017)</summary>
+
+Vault is paused, not deleted: `<chart>/sops/` values and the ArgoCD Applications are gated on `vault.enabled` (`false` in `gitops/values.yaml`). If you flip it back on:
+
+1. **Get the root token**: the script prints it, or:
    ```bash
    just vault-token
    ```
@@ -50,12 +55,11 @@ The bootstrap script automatically initializes Vault and configures the necessar
    ```
 3. **Login**: Go to [https://localhost:8200](https://localhost:8200) and use the token from step 1.
 
-> [!TIP]
-> Once inside, follow the [Secret Structure guide](secrets-structure.md) to organize your secrets correctly. The automation already sets up the `secret/` KV engine.
+</details>
 
 ## 3. Access ArgoCD
 
-ArgoCD manages all the services in your cluster. Once Vault is configured, the Tailscale operator will automatically expose your services if configured.
+ArgoCD manages all the services in your cluster; the Tailscale operator automatically exposes them per app (each chart owns its own Ingress).
 
 ### Local Access (Verification)
 
@@ -85,9 +89,9 @@ If you have the Tailscale operator configured, your services will be reachable t
   open https://grafana.lonk-mirfak.ts.net/
   open https://argocd.lonk-mirfak.ts.net/
   open https://longhorn.lonk-mirfak.ts.net/
-  open https://vault.lonk-mirfak.ts.net/
+  open https://nextcloud.lonk-mirfak.ts.net/
   ```
-   Per-app hostnames are used (`argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev). There is no shared gateway device.
+  Per-app hostnames are used (`argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `immich`, `nextcloud`, `collabora` on `*.lonk-mirfak.ts.net`; `-dev` suffix in dev). There is no shared gateway device. A `vault` device appears only if you re-enable Vault (ADR-017).
 
 ## Pre-commit (fast local checks)
 

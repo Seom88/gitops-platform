@@ -1,6 +1,6 @@
 # Roadmap
 
-**Status:** v1.0.0 **scope complete, not tagged** — manual Velero restore works; formal restore drill deferred to v2.0 · Cilium 1.20.1 (ADR-014) · Last updated: 15 Oct 2026
+**Status:** v1.0.0 **scope complete, not tagged** — manual Velero restore works; formal restore drill deferred to v2.0 · Cilium 1.20.1 (ADR-014) · Last updated: 18 Oct 2026
 
 This document tracks what is currently deployed in the cluster, what is required to complete the **v1.0.0** release, and what is planned for **v2.0**. The cluster uses Cilium 1.20.1 + Gateway API 1.2.3 + CiliumNetworkPolicy (ADR-014); subsequent releases are expected to be additive. The [README](../README.md) contains a short summary and links here.
 
@@ -80,7 +80,7 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 ### Phase 2 — Automation & Observability ✅ Complete
 
 - [x] Monitoring stack deployed (Prometheus + Grafana + Loki + Alloy — Alloy `chart 1.12.1` DaemonSet via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to Loki gateway; stateless, RBAC auto-created; replaces Promtail — deprecated)
-- [x] Dashboards reachable via Tailscale ingress (Grafana at `/grafana`, Prometheus at `/prometheus`; Loki datasource with `X-Scope-OrgID: fake`, Explore + LogQL)
+- [x] Dashboards reachable via Tailscale ingress (one device per app, each served at `/` root — ADR-018; Grafana at `https://grafana.lonk-mirfak.ts.net/`, Prometheus at `https://prometheus.lonk-mirfak.ts.net/`; Loki datasource with `X-Scope-OrgID: fake`, Explore + LogQL)
 - [x] CI pipeline — `ci.yaml` (validate job: lint, render, image-convention, secret scan, ShellCheck, sanity checks + security jobs: Trivy images + misconfig, SARIF, weekly cron) + `deploy.yaml` (auto on CI success + guided manual deploy)
 - [x] Renovate — weekly updates with mandatory manual review for critical components (Vault, Longhorn, cert-manager) and grouped automerge for the rest
 
@@ -138,7 +138,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 |---|---|---|---|
 | `k8s-nameserver` | Former `DNSConfig` device for MagicDNS `ts.net` → CoreDNS sibling `ts.net:53` (removed with `platform/coredns-patch`, ADR-011 historical) | ❌ removed | — |
 | `rustfs-egress` | `ExternalName` `rustfs.lonk-mirfak.ts.net` for Velero/S3 via Tailscale | ✅ present | ✅ stays (future optional: consolidate via `TCPRoute`; out of scope for v2) |
-| per-app Ingresses | One `Ingress` + device per app, owned by each chart via `tailscaleIngress` values (`argocd`/`grafana`/`prometheus`/`longhorn`/`homepage`/`nextcloud`/`hubble`/`vault`, each at `/` root; orphans in `ts-operator/templates/infra/`, ADR-018) | ✅ present (8 devices) | 🔀 consolidated — merged into `gateway-envoy` |
+| per-app Ingresses | One `Ingress` + device per app, owned by each chart via `tailscaleIngress` values (`argocd`/`grafana`/`prometheus`/`longhorn`/`homepage`/`hubble`/`immich`/`nextcloud`/`collabora`, each at `/` root; orphans in `ts-operator/templates/infra/`, ADR-018; `vault` ships no device while gated off — ADR-017) | ✅ present (9 devices) | 🔀 consolidated — merged into `gateway-envoy` |
 | `gateway-envoy` | Envoy Gateway `LoadBalancer` with `loadBalancerClass: tailscale` (BYOD) | — | ✅ **single device** serving all 9 app hostnames |
 
 > Operator itself is control-plane only and not counted. `k8s-nameserver`/`DNSConfig` removed with `coredns-patch`; `rustfs-egress` is unchanged in v2.
@@ -146,7 +146,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 **BYOD architecture (brief):**
 
 - Envoy Gateway chart provides `GatewayClass: tailscale` and a `LoadBalancer` (`loadBalancerClass: tailscale`) — single Tailscale device `gateway-envoy` replaces the nine per-app L7 devices above. See [Tailscale BYOD Gateway API](https://tailscale.com/docs/solutions/kubernetes-operator-byod-gateway-api).
-- One `Gateway` with multiple `listeners` / `hostnames` (one per app: `argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `nextcloud`, `hubble`, `vault` on `*.lonk-mirfak.ts.net`), each terminating its own TLS cert. One `HTTPRoute` per service (replaces the per-app `Ingress`es).
+- One `Gateway` with multiple `listeners` / `hostnames` (one per app: `argocd`, `grafana`, `prometheus`, `longhorn`, `homepage`, `hubble`, `immich`, `nextcloud`, `collabora` on `*.lonk-mirfak.ts.net`; `vault` joins when it returns), each terminating its own TLS cert. One `HTTPRoute` per service (replaces the per-app `Ingress`es).
 - The NGINX gateway is already gone (ADR-018 removed `Deployment`/`Service`/`ConfigMap` + `sub_filter`/`rewrite` hacks); v2 only swaps the L7 frontend from per-app `Ingress`es to `HTTPRoute`s on `gateway-envoy`. Vault stays a standard hostname-routed route throughout.
 - Substrate ready: Cilium Gateway API CRDs `v1.2.3` are already installed in the cluster (ADR-014); no CNI/storage change needed.
 
@@ -161,7 +161,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 **Checklist — v2:**
 
 - [ ] Install Envoy Gateway chart (Gateway API provider) and define `GatewayClass: tailscale`
-- [ ] Define single `Gateway: gateway-envoy` (`LoadBalancer`, `loadBalancerClass: tailscale`) with per-app TLS listeners/hostnames and per-service `HTTPRoute`s (argocd, grafana, prometheus, longhorn, homepage, nextcloud, hubble, vault)
+- [ ] Define single `Gateway: gateway-envoy` (`LoadBalancer`, `loadBalancerClass: tailscale`) with per-app TLS listeners/hostnames and per-service `HTTPRoute`s (argocd, grafana, prometheus, longhorn, homepage, hubble, immich, nextcloud, collabora)
 - [x] Remove L7 gateway hacks — done early via ADR-018 (NGINX `Deployment`/`Service`/`ConfigMap` deleted; per-app `Ingress`es at `/` root, no `sub_filter`/`rewrite`)
 - [ ] Update docs/runbooks (URLs, `helm template` verification, `kubectl get gateway/httproute` checks, rollback to per-app `Ingress`es)
 
