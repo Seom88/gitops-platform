@@ -1,9 +1,12 @@
 # CI — merged Validate + Security into a single workflow (single Deploy trigger).
 # validate runs lint/template checks on push/PR/dispatch only and is skipped
 # on schedule (weekly cron exists for CVEs; lint on cron is waste).
-# discover + trivy-images + trivy-config run only on main/dev (plus the
-# weekly CVE cron on the default branch and manual dispatches).
-# Feature-branch pushes skip Trivy; PRs targeting main/dev still scan.
+# discover + trivy-images + trivy-config run ONLY on main/dev refs — this
+# covers pushes to main/dev, the weekly CVE cron (runs on the default branch)
+# and manual dispatches on those branches. All PRs — including Renovate bump
+# PRs — skip Trivy: matrix images × PRs is too much compute for pre-merge,
+# and the runtime Trivy Operator plus the main/dev scans catch regressions.
+# Feature-branch pushes skip Trivy.
 # No workflow-level concurrency so security scans are never
 # cancelled — cancellation lives on the validate job only.
 # Shared shell logic is centralized in scripts/ — this workflow and the
@@ -88,7 +91,7 @@ jobs:
   # output). The union is scanned, so Renovate bumps are covered without
   # anyone maintaining a hardcoded list. trivy-images consumes the JSON.
   discover:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_name == 'main' || github.ref_name == 'dev' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -116,7 +119,7 @@ jobs:
 
   trivy-images:
     needs: [discover]
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_name == 'main' || github.ref_name == 'dev' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -180,7 +183,7 @@ jobs:
           category: trivy-${{ steps.name.outputs.safe }}
 
   trivy-config:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_name == 'main' || github.ref_name == 'dev' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
