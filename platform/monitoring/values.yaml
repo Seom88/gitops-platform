@@ -141,9 +141,9 @@ kube-prometheus-stack:
     annotations:
       argocd.argoproj.io/sync-wave: "2"
     admin:
-      existingSecret: "grafana-admin-credentials" # pragma: allowlist secret
+      existingSecret: "grafana-admin-credentials"  # pragma: allowlist secret
       userKey: admin-user
-      passwordKey: admin-password # pragma: allowlist secret
+      passwordKey: admin-password  # pragma: allowlist secret
 
     # Per-app Ingress root — each app on its own device at / (no subpath)
     grafana.ini:
@@ -183,7 +183,7 @@ kube-prometheus-stack:
     envValueFrom:
       GF_DATABASE_PASSWORD:
         secretKeyRef:
-          name: grafana-database-app # pragma: allowlist secret
+          name: grafana-database-app  # pragma: allowlist secret
           key: password
 
     # Add Loki as a data source
@@ -526,7 +526,7 @@ backup:
   region: us-east-1
   bucket: cnpg-db-backups
   prefix: grafana
-  secretName: cnpg-backup-s3-credentials # pragma: allowlist secret
+  secretName: cnpg-backup-s3-credentials  # pragma: allowlist secret
   # Tailnet IP of the RustFS host (S3 API :443). FQDN-independent egress
   # fallback (Cilium toCIDR, velero pattern): Cilium only learns FQDN->IP
   # by observing DNS, so without toCIDR the SYN fails if resolution does not

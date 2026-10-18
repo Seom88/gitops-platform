@@ -139,7 +139,7 @@ velero:
   # (chicken-egg: Velero cannot use ESO/Vault because Vault itself is backed up).
   # Format expected by the chart: key `cloud` = "[default]\naws_access_key_id=...\naws_secret_access_key=...\n"
   credentials:
-    existingSecret: cloud-credentials # pragma: allowlist secret
+    existingSecret: cloud-credentials  # pragma: allowlist secret
     useSecret: true
 
   # SnapshotsEnabled — enables VolumeSnapshot handling (kept true for future CSI).
