@@ -164,7 +164,7 @@ nextcloud:
     enabled: true
     storageClass: longhorn-encrypted
     accessMode: ReadWriteOnce
-    size: 25Gi
+    size: 50Gi
 
   # Pod port stays 80; the tailscale proxy connects to the Service on 8080
   # (policies use post-DNAT pod ports — same pattern as immich 2283).
