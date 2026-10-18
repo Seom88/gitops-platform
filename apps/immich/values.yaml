@@ -167,7 +167,7 @@ immich:
         #         topologyKey: kubernetes.io/hostname
         containers:
           main:
-            image: { repository: ghcr.io/immich-app/immich-server, tag: v3.3.1, pullPolicy: IfNotPresent }
+            image: { repository: ghcr.io/immich-app/immich-server, tag: v3.3.3, pullPolicy: IfNotPresent }
             env:
               REDIS_HOSTNAME: valkey.valkey.svc.cluster.local
               DB_HOSTNAME:
@@ -183,7 +183,7 @@ immich:
       main:
         containers:
           main:
-            image: { repository: ghcr.io/immich-app/immich-machine-learning, tag: v3.3.1, pullPolicy: IfNotPresent }
+            image: { repository: ghcr.io/immich-app/immich-machine-learning, tag: v3.3.3, pullPolicy: IfNotPresent }
             env:
               REDIS_HOSTNAME: valkey.valkey.svc.cluster.local
     # ML stays on CPU on purpose: OpenVINO on this Gen9.5 UHD 630 measured
