@@ -127,6 +127,7 @@ Details: [`docs/roadmap.md`](./docs/roadmap.md)
 - [SOPS + age](./docs/sops.md) — default secrets workflow
 - [Cluster Recovery](./docs/cluster-recovery.md) — backup & restore runbook
 - [Customization](./docs/customization-guide.md) — fork and adapt
+- [Devcontainer](./docs/devcontainer.md) — isolated AI agent environment
 - [ADRs](./docs/adrs/) — why each key decision was made
 
 ## Work with me
