@@ -17,7 +17,7 @@
     },
     {
       "customType": "regex",
-      "description": "CNPG Cluster imageName (Postgres images). Digest supported natively by the CRD, so the global docker pinDigests rule applies.",
+      "description": "CNPG Cluster imageName (Postgres images). Digest changes on already-pinned strings replace in place; pinDigest is intentionally off for this manager (see the helm-values-only pinDigests packageRule) because CNPG pins an immutable CRD variable.",
       "managerFilePatterns": ["/^platform\\/.*\\/values.*\\.yaml$/", "/^apps\\/.*\\/values.*\\.yaml$/"],
       "matchStrings": ["imageName:\\s*['\"]?(?<depName>[^:'\"\\s]+):(?<currentValue>[^@'\"\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?['\"]?"],
       "datasourceTemplate": "docker"
@@ -69,8 +69,9 @@
       "minimumReleaseAge": null
     },
     {
-      "description": "Pin digests for all Docker images so tag bumps always refresh digests together (CNPG CRD and the bjw-s inline map both accept in-tag imagery digests)",
+      "description": "Pin digests only on helm-values surfaces (inline image maps accept in-tag digests and its native autoReplaceStringTemplate appends @sha256:). Custom regex managers cannot: their deps go through the generic doAutoReplace which never appends a missing digest (currentDigest absent => no substitution), so confirmIfDepUpdated always fails ('Digest is not updated') and the whole pin branch errors as update failure.",
       "matchDatasources": ["docker"],
+      "matchManagers": ["helm-values"],
       "pinDigests": true
     },
     {
