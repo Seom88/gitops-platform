@@ -1,0 +1,74 @@
+# ClusterRole granting read-only cluster visibility to the devcontainer AI
+# agents (ServiceAccount `dev-agents`, bound by
+# clusterrolebinding-dev-agents.yaml).
+#
+# DELIBERATE EXCLUSIONS (secret hygiene):
+#   - Secrets and ConfigMaps are NOT granted. Agents must not read Secrets
+#     (sops contents, OAuth credentials, vault unseal keys are stored as
+#     Secrets in this cluster). ConfigMaps are excluded by the same default
+#     decision; they can be added back later with one line if ever needed.
+#   - No exec/attach/portforward subresources — read-only means just that.
+#   - No write verbs: only get/list/watch are granted, on explicitly listed
+#     resources. Rules are written out in full (no aggregation) so the
+#     effective permissions stay deterministic and auditable.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-agents-read
+rules:
+  # Core API group — all read-only (exclusions above apply)
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - pods/status
+      - namespaces
+      - nodes
+      - events
+      - persistentvolumes
+      - persistentvolumeclaims
+      - services
+      - endpoints
+    verbs: ["get", "list", "watch"]
+  # Application workloads
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - statefulsets
+      - replicasets
+    verbs: ["get", "list", "watch"]
+  # Jobs and scheduled workloads
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  # Ingress and cluster network policy (observe-only)
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch"]
+  # Horizontal pod autoscaling state
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+  # Storage classes
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+    verbs: ["get", "list", "watch"]
+  # GitOps applications (agents work on a GitOps repo — seeing Applications
+  # and their sync state helps a lot)
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - applications
+      - appprojects
+    verbs: ["get", "list", "watch"]
+  # Cilium network policies
+  - apiGroups: ["cilium.io"]
+    resources:
+      - ciliumnetworkpolicies
+    verbs: ["get", "list", "watch"]

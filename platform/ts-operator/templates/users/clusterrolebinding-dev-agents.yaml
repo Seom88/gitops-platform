@@ -1,0 +1,16 @@
+# ClusterRoleBinding for the devcontainer AI agents: binds ServiceAccount
+# `dev-agents` (in the `tailscale` namespace the chart deploys into) to the
+# read-only ClusterRole `dev-agents-read`. Nothing broader is ever bound
+# here — see clusterrole-dev-agents.yaml for the deliberate exclusions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-agents-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-agents-read
+subjects:
+  - kind: ServiceAccount
+    name: dev-agents
+    namespace: tailscale
