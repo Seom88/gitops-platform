@@ -190,7 +190,24 @@ velero:
   schedules:
     daily-full:
       disabled: false
-      schedule: "0 2 * * *"
+      # Solar-aligned (ADR-025): the node runs off a 200W panel + 768Wh
+      # battery that ends the day at ~85%. The old 02:00 slot was evaluated in
+      # the Velero server pod's timezone (container default UTC) = 21:00
+      # America/Bogota, the START of the household's heavy evening usage and
+      # the longest battery-reserve stretch: the backup burst drained reserve
+      # exactly when the panel contributes nothing. 18:00 in the server pod's
+      # timezone (UTC) = 13:00 America/Bogota, the centre of the fixed-panel
+      # output peak, BEFORE the 15:30 shadow cutoff.
+      # Cron-TZ pitfall (whoever touches this next): the vendored
+      # velero Schedule CRD (12.2.1) does NOT declare spec.timeZone — a
+      # structural schema, so unknown fields are pruned — and the subchart
+      # template renders no timeZone either, so the ONLY lever is the cron
+      # expression interpreted in the velero server pod's local timezone.
+      # VERIFY before moving this number: `kubectl -n velero exec deploy/velero \
+      # -- date +%Z` — if the pod is UTC, UTC+5h = Bogotá local (e.g. 18:00
+      # UTC → 13:00 COT); if the pod ever gains TZ=America/Bogota, use 13:00
+      # here directly.
+      schedule: "0 18 * * *"
       useOwnerReferencesInBackup: false
       annotations:
         argocd.argoproj.io/compare-options: IgnoreExtraneous
