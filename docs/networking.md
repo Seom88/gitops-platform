@@ -1,6 +1,6 @@
 # Networking — Cilium eBPF, Gateway API & Policies
 
-> **Single source of truth for Cilium networking.** Cilium 1.20.1 (eBPF, strict kubeProxyReplacement) + Gateway API 1.2.3 + Hubble; 10 charts render gated `CiliumNetworkPolicy` (ADR-014) — see [Policy coverage](./roadmap.md#policy-coverage-adr-014). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` is retained for non-Cilium fallback (Flannel) but not enforced.
+> **Single source of truth for Cilium networking.** Cilium 1.20.1 (eBPF, strict kubeProxyReplacement) + Gateway API 1.2.3 + Hubble; 11 charts render gated `CiliumNetworkPolicy` (ADR-014) — see [Policy coverage](./roadmap.md#policy-coverage-adr-014). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` is retained for non-Cilium fallback (Flannel) but not enforced.
 
 ## Quick path
 

@@ -67,7 +67,7 @@ Hardware/environment work is recorded here so it is not lost, but implemented in
 
 ## Verification
 
-- `helm template kepler platform/kepler -n kepler` renders exactly: Namespace(implicit via Argo), ServiceAccount, ConfigMap, ClusterRole, ClusterRoleBinding, Service, DaemonSet, ServiceMonitor (`release: monitoring`, 30s).
+- `helm template kepler platform/kepler -n kepler` renders exactly: Namespace(implicit via Argo), ServiceAccount, ConfigMap, ClusterRole, ClusterRoleBinding, Service, DaemonSet, ServiceMonitor (`release: monitoring`, 30s), and the three `CiliumNetworkPolicy` objects (DNS; kube-apiserver 443/6443 + kubelet 10250 egress; monitoring scrape + host probes on 28282). The policy flows are pinned by `./scripts/check-kepler-policy.sh` (CI + `just validate-kepler`), because the apiserver egress is load-bearing: Kepler discovers the kubelet endpoint from the Node object at startup and exits(1) otherwise.
 - `helm template velero platform/velero --set s3.tailnetFqdn=<fqdn> -n velero` renders the Schedule with `schedule: "0 18 * * *"`.
 - After ArgoCD sync: `kubectl -n kepler get ds kepler` ready; `curl svc/kepler:28282/metrics | grep kepler_node_cpu_watts` from in-cluster; a Grafana panel on `kepler_node_*` watts series.
 - Reset TZ check: `kubectl -n velero exec deploy/velero -- date +%Z` → expect `UTC`; if not, re-derive the Bogotá hour in the schedule comment.

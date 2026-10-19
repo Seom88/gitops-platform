@@ -3,10 +3,17 @@
 # every other namespace this repo deploys into (ADR-014 covers "every namespace
 # with a workload").
 #
-# Kepler (kubelet podInformer mode) keeps egress to the minimum: DNS + the
-# local kubelet endpoint for pod attribution. No S3, no external FQDNs — the
-# metrics path is ingress-only from Prometheus (monitoring), which mirrors the
-# monitoring umbrella's `toEntities: cluster` scrape allowlist.
+# Kepler (kubelet podInformer mode) keeps egress to the minimum: DNS, the
+# kube-apiserver, and the local kubelet endpoint for pod attribution. No S3,
+# no external FQDNs — the metrics path is ingress-only from Prometheus
+# (monitoring), which mirrors the monitoring umbrella's `toEntities: cluster`
+# scrape allowlist.
+#
+# The apiserver rule is load-bearing even in kubelet mode: Kepler GETs the
+# Node object at startup to discover the kubelet InternalIP/port before
+# polling https://<node>:10250/pods. Dropping it is fatal, not degraded —
+# `cmd/kepler/main.go` calls os.Exit(1) when a service fails to init, so the
+# DaemonSet CrashLoops and there is no energy telemetry at all.
 #
 # 1) DNS egress — kube-dns via Cilium DNS-aware rules.
 ---
@@ -34,8 +41,10 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# 2) Egress — kubelet /pods (podInformer mode kubelet): node-local, so both
-# the own host entity and remote-node are allowed. kubelet is HTTPS 10250.
+# 2) Egress — kube-apiserver (Node object lookup at startup: the kubelet
+# InternalIP/port are auto-discovered from it) and kubelet /pods (podInformer
+# mode kubelet): node-local, so both the own host entity and remote-node are
+# allowed. kubelet is HTTPS 10250.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -47,6 +56,14 @@ spec:
   endpointSelector: {}
   egress:
     - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toEntities:
         - host
         - remote-node
       toPorts:
@@ -54,7 +71,9 @@ spec:
             - port: "10250"
               protocol: TCP
 ---
-# 3) Ingress — Prometheus (monitoring) scrapes the metrics port only.
+# 3) Ingress — Prometheus (monitoring) scrapes the metrics port, plus the host
+# entity for kubelet liveness/readiness/startup probes (ADR-014 requires probe
+# traffic explicit; Cilium's allow-localhost=auto makes it implicit today).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -69,6 +88,13 @@ spec:
         - matchLabels:
             # Prometheus runs in the monitoring namespace (kube-prometheus-stack).
             k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "28282"
+              protocol: TCP
+    - fromEntities:
+        - host
+        - remote-node
       toPorts:
         - ports:
             - port: "28282"

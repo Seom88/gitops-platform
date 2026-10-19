@@ -243,15 +243,16 @@ status:
 
 # ── Validate (local — mirrors CI validate job) ──────
 
-# Run all local validations (gitops + platform + scripts + images + yaml + json)
+# Run all local validations (gitops + platform + scripts + images + yaml + json + kepler-policy)
 validate:
-    @echo "==> validate: running all checks (gitops + platform + scripts + images + yaml + json)"
+    @echo "==> validate: running all checks (gitops + platform + scripts + images + yaml + json + kepler-policy)"
     @just validate-gitops
     @just validate-platform
     @just validate-scripts
     @just validate-images
     @just validate-yaml
     @just validate-json
+    @just validate-kepler
     @echo "✅ validate: all checks passed"
 
 # Validate GitOps App-of-Apps chart (lint + render prod/dev)
@@ -277,6 +278,10 @@ validate-yaml:
 # JSON syntax sanity (python -m json.tool)
 validate-json:
     ./scripts/check-json.sh
+
+# Kepler Cilium policy completeness (apiserver egress, kubelet, probe + scrape ports) — mirrors CI validate job
+validate-kepler:
+    ./scripts/check-kepler-policy.sh
 
 # ── Security (local — mirrors CI security.yaml; heavy, NOT in validate chain) ─
 
