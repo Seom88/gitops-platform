@@ -4,7 +4,7 @@ developmentApp:
 # dev overrides — hostnames for the orphan-app Ingresses in templates/infra/
 tailscale-operator:
   operatorConfig:
-    hostname: "tailscale-operator-dev"
+    hostname: "beth-dev"
     defaultTags:
       - "tag:k8s-operator"
   proxyConfig:

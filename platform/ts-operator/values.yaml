@@ -5,7 +5,8 @@ ciliumNetworkPolicy:
   enabled: true
 
 # tailscale-operator subchart values — wave -1 healthy gate
-# Secret tailscale/operator-oauth is created externally via CI (deploy.yaml) and bootstrap/init-gitops.sh
+# Secret tailscale/operator-oauth is created externally via `just secrets-apply`
+# and bootstrap/init-gitops.sh (no CI involvement — GitOps pull-only cluster)
 #   keys: client_id + client_secret (matches spec oauthSecretName: operator-oauth, secretKeyRef)
 # The chart mounts the pre-created Secret `operator-oauth` by default when oauth.clientId/clientSecret are unset.
 tailscale-operator:
@@ -14,7 +15,11 @@ tailscale-operator:
     clientId: ""
     clientSecret: ""
   operatorConfig:
-    hostname: "tailscale-operator"
+    # Device/MagicDNS name of the operator (also the API server proxy URL for
+    # `tailscale configure kubeconfig` — auth mode impersonates the caller's
+    # Tailscale identity; RBAC via templates/users/clusterrolebinding-tailnet-admins.yaml).
+    # Naming scheme: googology — nodes = aleph-* (cardinals), this gate = beth (ℶ).
+    hostname: "beth"
     defaultTags:
       - "tag:k8s-operator"
     resources:
