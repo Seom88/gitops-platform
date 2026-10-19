@@ -87,6 +87,7 @@ spec:
     # Uses toEntities cluster to avoid enumerating every namespace/selector — Hubble will show flows per-identity
     # Cilium metrics (9962 agent, 9963 operator, 9964 envoy, 9965 hubble, 9966 relay)
     # Immich server metrics (8081 metrics-api, 8082 metrics-ms)
+    # Kepler energy metrics (28282 — ADR-025)
     - toEntities:
         - cluster
       toPorts:
@@ -114,6 +115,8 @@ spec:
             - port: "9327"
               protocol: TCP
             - port: "8085"
+              protocol: TCP
+            - port: "28282"
               protocol: TCP
             - port: "9962"
               protocol: TCP

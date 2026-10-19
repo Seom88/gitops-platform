@@ -1,0 +1,76 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for the kepler namespace — same default-deny pattern as
+# every other namespace this repo deploys into (ADR-014 covers "every namespace
+# with a workload").
+#
+# Kepler (kubelet podInformer mode) keeps egress to the minimum: DNS + the
+# local kubelet endpoint for pod attribution. No S3, no external FQDNs — the
+# metrics path is ingress-only from Prometheus (monitoring), which mirrors the
+# monitoring umbrella's `toEntities: cluster` scrape allowlist.
+#
+# 1) DNS egress — kube-dns via Cilium DNS-aware rules.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kepler-allow-dns
+  namespace: kepler
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Egress — kubelet /pods (podInformer mode kubelet): node-local, so both
+# the own host entity and remote-node are allowed. kubelet is HTTPS 10250.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kepler-allow-egress
+  namespace: kepler
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "10250"
+              protocol: TCP
+---
+# 3) Ingress — Prometheus (monitoring) scrapes the metrics port only.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kepler-allow-ingress
+  namespace: kepler
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            # Prometheus runs in the monitoring namespace (kube-prometheus-stack).
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "28282"
+              protocol: TCP
+{{- end }}
