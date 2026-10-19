@@ -114,3 +114,30 @@ The k3s allocation is tracked as ~24 GB; the node's own `MemTotal` reports ~31 G
 - **The "reduce resource consumption" motivation is retired.** The single node is what the hardware is, not an optimization. Any future sizing decision is evidence-driven — CPU throttling, OOMKills, scheduling pressure — never thrift. See the ADR-015 deprecation, same day.
 - **Node-level redundancy is unchanged and remains the accepted cost.** The node is not resource-constrained, but a node failure is still total downtime, and a second physical disk is still the only redundancy upgrade available inside this box (main ADR, *Future: Second Disk for Longhorn*).
 - **Nothing else changes.** Vault standalone at 1 replica, Longhorn at 1 replica, Loki gateway at 1 replica, PDBs for voluntary disruptions, and off-cluster backups all stand exactly as decided. This amendment changed no values.
+
+---
+
+## Amendment 2026-10-18: Factual Corrections to the Live Topology
+
+**Status:** Accepted · **Date:** 2026-10-18 · **Deciders:** Seom88 · **Amends:** topology records only · **Related:** [ADR-025](025-solar-energy-aware-operations.md)
+
+The 2026-10-10 amendment above was written without the operator's full context, and two of its topology rows do not describe this environment as it actually runs. This correction fixes the record; no decision in the main ADR changes.
+
+### Corrections
+
+| Amendment 2026-10-10 stated | Reality |
+|---|---|
+| "Second AlmaLinux companion host (2 GB) serves the RustFS S3 endpoint" | **No companion host exists.** There is exactly one physical machine. |
+| "TrueNAS (companion host, 6 GB)" — a separate host, not observable from the cluster | **TrueNAS runs as a guest VM on `aleph` itself**, granted 6 GiB RAM and 6 vCPUs, and serves the RustFS S3 endpoint over the tailnet |
+| "The ~24 GB figure is a VM-sizing artifact" | The ~24 GB k3s allocation is explained by the **TrueNAS VM reservation** (~6 GiB + hypervisor overhead on the 32 GiB host) — there was no artifact, the two numbers are consistent with one host |
+| (not stated) | TrueNAS holds **two 2.5" HDDs** (physical), plus the node's internal NVMe |
+
+### Corrected topology
+
+| Host | Role |
+|---|---|
+| `aleph` — ThinkCentre M920q, AlmaLinux 10.2, i7-8700T (6C/12T, 35W TDP), 32 GiB RAM, Intel UHD 630 iGPU | The single physical machine: k3s control-plane/etcd/worker for every workload in this repo, **and the hypervisor host of the TrueNAS VM** (RustFS S3 endpoint; Velero BSL and Longhorn backup target) |
+
+### Why this matters beyond the record
+
+This correction was triggered by the solar-energy programme ([ADR-025](025-solar-energy-aware-operations.md)): the cluster is powered by a 200W panel + 768Wh battery and must fit a daily energy budget, so host topology, virtualisation overhead, and disk types are no longer trivia — they are the inputs to every future sizing and power decision. [ADR-019](019-single-node-bare-metal-migration.md)'s "evidence-driven, never thrift" clause now has the measurement layer it always demanded (Kepler, wave 3).

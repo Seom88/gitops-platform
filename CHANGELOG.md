@@ -24,6 +24,7 @@ This project has never been released. There is no version tag and no published b
 - **Longhorn** — distributed block storage (plus local-path for dev environments)
 - **RustFS (external)** — S3-compatible object storage (LAN/Tailscale), all in one external endpoint; Loki backed by RustFS S3
 - **Monitoring stack** — kube-prometheus-stack (Prometheus + Grafana), Loki, and Alloy as a stateless `DaemonSet` log collector
+- **Kepler energy exporter** — `platform/kepler` (wave 3, `sync-only`, vendored `0.12.0` from the quay.io OCI repository): per-node/per-pod watts via RAPL with pod attribution, scraped by kube-prometheus-stack (30s, `release: monitoring` label) and Cilium-locked to DNS + kubelet egress. First instrument for the solar-energy programme (200W panel / 768Wh battery / ~8-10W average deficit). Measurement-only — host-level power work lives in the provisioning repo. See [ADR-025](./docs/adrs/025-solar-energy-aware-operations.md).
 - **cert-manager** — automated TLS certificates
 - **Tailscale operator** — secure `.tailnet` ingress for platform services, no public ports
 - **Justfile** — task automation: `init-prod`/`init-dev`, port-forwards, status, checks, helm helpers
@@ -51,7 +52,7 @@ This project has never been released. There is no version tag and no published b
 
 **Storage and applications**
 
-- **Velero** — automated backup (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 02:00, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`). Vault is excluded by policy — Raft restores from Velero corrupt the cluster. **Backup is running; restore is not verified** — no drill has been run. See [What blocks v1.0.0](./docs/roadmap.md#what-blocks-v100).
+- **Velero** — automated backup (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` moved from `02:00` (≈21:00 COT, night reserve) to the solar peak `18:00` server-pod UTC = 13:00 America/Bogota — panel output covers the burst, 30d TTL, all namespaces, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`). Vault is excluded by policy — Raft restores from Velero corrupt the cluster. **Backup is running; restore is not verified** — no drill has been run. See [What blocks v1.0.0](./docs/roadmap.md#what-blocks-v100) · [ADR-025](./docs/adrs/025-solar-energy-aware-operations.md).
 - **Shared Valkey cache service** — `platform/valkey` (wave 2, `wave-policy: healthy`, namespace `valkey`, PVC 1Gi `longhorn-encrypted`) consumed by immich (redis db 0) and nextcloud (redis db 1); no `requirepass`, isolation via per-namespace Cilium policy generated from a `consumers` list. immich now points at `valkey.valkey.svc.cluster.local` on server + machine-learning, and its bundled `immich-valkey` subchart resources are disabled and pruned. See [ADR-021](./docs/adrs/021-shared-valkey-cache-service.md).
 - **Barman** — Postgres WAL archiving + PITR for stateful app databases.
 - **Homepage** — digest-pinned dashboard (wave 3), tailnet suffix centralized via `myDomain` for dashboard links only.
