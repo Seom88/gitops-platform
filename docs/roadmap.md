@@ -18,7 +18,7 @@ Nothing. The v1 scope is deployed and the manual restore path works.
 
 **Ownership.** `argocd` is owned by the infra repo (this repo consumes ArgoCD as a pre-installed cluster prerequisite). `external-secrets` stays disabled until the Vault return in v2.0 ([ADR-017](./adrs/017-vault-paused-sops-default.md)).
 
-**Namespace ownership is a boundary, not a gap.** This repository deploys workloads into exactly eleven namespaces and renders a gated `CiliumNetworkPolicy` for each. It deploys nothing at runtime into `argocd` — the ArgoCD `Application` objects under `gitops/` are consumed by the pre-installed cluster prerequisite, and the only other thing this repo places there is the `ts-operator`-owned `argocd` Ingress, which lives in `namespace: tailscale` and selects *toward* `argocd`, not inside it. `external-secrets` is the upstream chart `charts.external-secrets.io` and is **disabled** (`eso.enabled: false`). Neither has a first-party chart here, so there is no template to add; their policy belongs to the provisioning layer and to the upstream chart respectively. Full reasoning in [Policy coverage](#policy-coverage-adr-014). This is a disclosure for the release notes, not a deliverable of this release.
+**Namespace ownership is a boundary, not a gap.** This repository deploys workloads into exactly twelve namespaces and renders a gated `CiliumNetworkPolicy` for each. It deploys nothing at runtime into `argocd` — the ArgoCD `Application` objects under `gitops/` are consumed by the pre-installed cluster prerequisite, and the only other thing this repo places there is the `ts-operator`-owned `argocd` Ingress, which lives in `namespace: tailscale` and selects *toward* `argocd`, not inside it. `external-secrets` is the upstream chart `charts.external-secrets.io` and is **disabled** (`eso.enabled: false`). Neither has a first-party chart here, so there is no template to add; their policy belongs to the provisioning layer and to the upstream chart respectively. Full reasoning in [Policy coverage](#policy-coverage-adr-014). This is a disclosure for the release notes, not a deliverable of this release.
 
 Nothing else gates v1.0.0. The **substrate** (Talos today; single-node bare-metal cutover planned per [ADR-019](./adrs/019-single-node-bare-metal-migration.md)) is an operational concern of the maintainer's, **not** a v1 gate — it is tracked in [`odd/tasks/ci-kubeconfig-k3s.md`](../odd/tasks/ci-kubeconfig-k3s.md) and outside this release's scope.
 
@@ -30,8 +30,8 @@ Stated precisely, because the previous "10 charts — Complete" claim was wrong 
 
 | | Count | Detail |
 |---|---|---|
-| First-party charts in this repo | 11 | `gitops` + 10 under `platform/` and `apps/` |
-| …that render `cilium-networkpolicies.yaml` | **10** | `platform/{vault,velero,longhorn,monitoring,trivy-operator,ts-operator,valkey}`, `apps/{homepage,immich,nextcloud}` |
+| First-party charts in this repo | 12 | `gitops` + 11 under `platform/` and `apps/` |
+| …that render `cilium-networkpolicies.yaml` | **11** | `platform/{vault,velero,longhorn,monitoring,trivy-operator,ts-operator,valkey,kepler}`, `apps/{homepage,immich,nextcloud}` |
 | …that do not | **1** | `gitops` (the App-of-Apps chart) — see note below |
 
 The `argocd` and `external-secrets` workloads are **not first-party charts in this repo**; there is no `platform/argocd/` or `platform/external-secrets/` directory to add a template to. They are:

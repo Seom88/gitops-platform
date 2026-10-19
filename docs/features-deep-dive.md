@@ -106,7 +106,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 
 **Cilium CNI (`v1.20.1`) + Gateway API `v1.2.3` with Identity-Aware NetworkPolicies**:
 - **eBPF Kube-Proxy Replacement (strict)** — Service routing and load-balancing in kernel space without iptables; `socketLB: hostNamespaceOnly`, `cgroup.hostRoot: /sys/fs/cgroup`.
-- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across the 10 charts that render policies (`vault`, `velero`, `longhorn`, `monitoring`, `trivy-operator`, `ts-operator`, `valkey`, `homepage`, `immich`, `nextcloud` — see the [policy coverage table](./roadmap.md#policy-coverage-adr-014)); gated by `ciliumNetworkPolicy.enabled=true`.
+- **Identity-Based Segmentation** — Fine-grained `CiliumNetworkPolicy` (`cilium.io/v2`) across the 11 charts that render policies (`vault`, `velero`, `longhorn`, `monitoring`, `trivy-operator`, `ts-operator`, `valkey`, `kepler`, `homepage`, `immich`, `nextcloud` — see the [policy coverage table](./roadmap.md#policy-coverage-adr-014)); gated by `ciliumNetworkPolicy.enabled=true`.
 - **L7 DNS Visibility & Scoping** — Egress DNS restricted to `kube-system/k8s-app=kube-dns` on UDP/TCP 53 with Cilium L7 DNS rules (`toFQDNs.matchPattern: "*"` + `rules.dns`), blocking DNS-based exfiltration while allowing MagicDNS (`*.ts.net`).
 - **Zero-Trust Default Posture** — `endpointSelector: {}` default-deny per namespace; explicit allows for intra-namespace, kube-apiserver (443/6443), and Hubble relay (4244/4245).
 - **Observability Integration** — Hubble relay whitelisted (`ports 4244/4245`) for real-time flow tracing (`hubble observe`).

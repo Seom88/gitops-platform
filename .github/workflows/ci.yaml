@@ -81,6 +81,9 @@ jobs:
       - name: Inline image convention (no split repository/tag in values)
         run: ./scripts/check-inline-images.sh
 
+      - name: Kepler Cilium policy completeness (ADR-014)
+        run: ./scripts/check-kepler-policy.sh
+
       - name: JSON sanity (python -m json.tool)
         run: ./scripts/check-json.sh
 

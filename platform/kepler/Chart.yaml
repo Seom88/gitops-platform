@@ -1,0 +1,19 @@
+apiVersion: v2
+name: kepler
+description: "Per-node/per-pod energy (watts) exporter — RAPL CPU/DRAM power attribution into Prometheus. Solar-energy observability (ADR-025)."
+type: application
+version: 1.0.0
+appVersion: "0.12.0"
+home: https://github.com/sustainable-computing-io/kepler
+icon: https://raw.githubusercontent.com/sustainable-computing-io/kepler/main/kepler-docs/static/images/kepler-logo.svg
+sources:
+  - https://github.com/sustainable-computing-io/kepler
+  - https://github.com/sustainable-computing-io/kepler-helm-chart
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88
+
+dependencies:
+  - name: kepler
+    version: 0.12.0
+    repository: oci://quay.io/sustainable_computing_io/charts

@@ -60,8 +60,8 @@ Full breakdown: [`docs/skills-demonstrated.md`](./docs/skills-demonstrated.md) �
 | Storage | Longhorn v1.6+, RustFS S3 external (`loki`, `velero-homelab` buckets) | Deployed |
 | Data | CloudNativePG, Valkey shared cache | Deployed |
 | Apps | Homepage, Immich, Nextcloud | Deployed |
-| Observability | Prometheus + Grafana + Loki + Alloy DaemonSet, Trivy Operator | Deployed |
-| Backups | Velero 1.18.2 — daily schedules, manual restore verified | Backup OK · formal drill → v2.0 |
+| Observability | Prometheus + Grafana + Loki + Alloy DaemonSet, Trivy Operator, Kepler energy exporter (RAPL watts, ADR-025) | Deployed |
+| Backups | Velero 1.18.2 — daily full (solar-window aligned, 18:00 UTC = 13:00 COT, ADR-025), manual restore verified | Backup OK · formal drill → v2.0 |
 
 ## Run it
 
@@ -95,9 +95,10 @@ gitops-platform/
 ├── bootstrap/       # init-gitops.sh — idempotent GitOps bootstrap
 ├── gitops/          # Root App-of-Apps chart (values.yaml + values-dev.yaml)
 ├── platform/        # First-party charts: vault, monitoring, ts-operator,
-│                    #   longhorn, velero, valkey, trivy-operator, s3-bucket-lib
+│                    #   longhorn, velero, valkey, trivy-operator, kepler,
+│                    #   s3-bucket-lib
 ├── apps/            # homepage, immich, nextcloud
-├── docs/            # guides + adrs/ (24 decisions and counting)
+├── docs/            # guides + adrs/ (25 decisions and counting)
 ├── .github/workflows/ # ci.yaml (lint+scan) — CI never touches the cluster; deploys are ArgoCD pull
 ├── justfile         # init-prod/dev, secrets-apply, validate, scan, status
 ├── renovate.json    # weekly dependency updates

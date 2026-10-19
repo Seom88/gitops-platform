@@ -1,0 +1,63 @@
+# Kepler wrapper — subchart overrides only.
+#
+# Purpose: per-node and per-pod watts from RAPL (CPU cores + DRAM + iGPU+uncore),
+# exported as Prometheus metrics for the solar-energy programme (ADR-025).
+#
+# SCOPE (ADR-025): this is measurement-only. RAPL does NOT cover physical
+# disks, fans, PSU conversion loss, or anything outside the node (inverter,
+# network gear) — those need host/infra-side measurements. Kepler is the
+# in-cluster evidence layer required by ADR-019's "sizing is evidence-driven"
+# clause; it does not enforce or schedule anything.
+
+# Wrapper-level (not affected by subchart nesting): CiliumNetworkPolicies for
+# the kepler namespace, mirroring the monitoring umbrella's pattern. Grafana
+# dashboards can scrape metrics only via the Prometheus endpoints.
+ciliumNetworkPolicy:
+  enabled: true
+
+# All overrides below nest under `kepler` — the vendored subchart dependency
+# (wrapper-level keys only map to subcharts when they match the dependency's
+# `name`, not their own chart-named keys).
+kepler:
+  # Deployed by ArgoCD into namespace `kepler`
+  # (gitops/templates/platform/03-kepler.yaml with CreateNamespace=true), so
+  # the upstream namespace template must not double-create it.
+  namespace:
+    create: false
+    name: kepler
+
+  config:
+    log:
+      # Upstream default is debug — far too chatty for a 24/7 node that must
+      # spend its watt budget on workload, not logging.
+      level: info
+    kube:
+      # Enable pod/namespace attribution so Grafana can rank consumers.
+      # nodeName is derived automatically from spec.nodeName (daemonset env).
+      enabled: true
+      podInformer:
+        mode: kubelet
+        # Poll less often than the 15s default: a single-node cluster has one
+        # target and the informer only feeds static attribution metadata.
+        pollInterval: 30s
+
+  serviceMonitor:
+    enabled: true
+    # RAPL energy counters are cumulative; 30s is plenty for daily-whole-graphs
+    # and cuts scrape-induced power computations vs the 5s chart default.
+    interval: 30s
+    # kube-prometheus-stack only discovers ServiceMonitors carrying the
+    # Prometheus Helm release label (same convention as velero's monitor).
+    labels:
+      release: monitoring
+
+  daemonset:
+    # Kepler itself must be a negligible consumer: it exists to measure, and
+    # its own footprint must stay bounded on a solar-budget node.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
