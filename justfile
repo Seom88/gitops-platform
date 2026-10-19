@@ -86,7 +86,7 @@ secrets-check:
     fi
 
 # Load .env → k8s Secrets (idempotent, re-runnable)
-#   tailscale/operator-oauth  via scripts/tailscale-secret.sh (shared with CI deploy.yaml)
+#   tailscale/operator-oauth  via scripts/tailscale-secret.sh (local path — CI holds no cluster credentials)
 # velero/cloud-credentials  {cloud: "[default]\\naws_access_key_id=..."} <- AWS_* (SOPS owns dedicated keys; this is fallback only)
 secrets-apply:
     #!/usr/bin/env bash

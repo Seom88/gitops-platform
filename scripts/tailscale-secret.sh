@@ -3,8 +3,10 @@
 # picks up rotation. Idempotent; skips with a warning when credentials are
 # missing or still placeholders.
 # Inputs via env: K8S_TS_OAUTH_CLIENT_ID / K8S_TS_OAUTH_SECRET
-# Shared by CI (deploy.yaml "Ensure Tailscale Operator Secret") and
-# local `just secrets-apply`. Requires kubectl pointed at the target cluster
+# Used by local `just secrets-apply` (the only entry point — CI holds no
+# cluster credentials). Mirrors bootstrap/init-gitops.sh
+# ensureTailscaleCredentials().
+# Requires kubectl pointed at the target cluster
 # (KUBECONFIG or in-cluster context).
 set -euo pipefail
 

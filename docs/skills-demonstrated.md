@@ -132,9 +132,9 @@ You understand how stateful workloads actually work in Kubernetes. CSI, snapshot
 - Local mirrors of CI logic
 
 **Evidence:**
-- **GitHub Actions** — Unified `ci.yaml` (validate + security jobs: helm lint/template, image-convention, detect-secrets, ShellCheck, Trivy images + misconfig with SARIF) and `deploy.yaml` (auto-deploy on `CI` success, manual `workflow_dispatch` with env selection). See [`.github/workflows/`](../.github/workflows/)
+- **GitHub Actions** — Unified `ci.yaml` (validate + security jobs: helm lint/template, image-convention, detect-secrets, ShellCheck, Trivy images + misconfig with SARIF). CI never touches the cluster — deploys are GitOps pull via ArgoCD. See [`.github/workflows/`](../.github/workflows/)
 - **CI Workflow** — Single `CI` run per push/PR. See [`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml) and [`docs/ci-cd.md`](./ci-cd.md)
-- **Deploy Workflow** — Auto-deploy on CI success (main) + guided manual dispatch; no approval gate. See [`.github/workflows/deploy.yaml`](../.github/workflows/deploy.yaml)
+- **GitOps pull deploys** — ArgoCD root app self-manages (automated + prune + selfHeal); break-glass bootstrap/secrets via `just init-prod` / `just secrets-apply`. See [`docs/ci-cd.md`](./ci-cd.md)
 - **Renovate Configuration** — Weekly dependency updates with manual review for critical components. See [`renovate.json`](../renovate.json)
 - **Local Validation** — `just validate` / `just validate-images` / `just scan-config` mirror CI checks offline. See [`justfile`](../justfile)
 - **Dry-Run** — `--validate` flag on bootstrap script for preview. See [`bootstrap/init-gitops.sh`](../bootstrap/init-gitops.sh)

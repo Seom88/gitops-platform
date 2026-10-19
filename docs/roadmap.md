@@ -45,14 +45,14 @@ Both are currently disabled by default (`vault.enabled: false`, `eso.enabled: fa
 
 ## Where the project stands today
 
-The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, SOPS + age as the default secrets path (Vault paused, not deleted — ADR-017), Tailscale per-app ingress (one device per app), and distributed storage via Longhorn + external RustFS S3. On top of that there's a CI layer that validates every push (`ci.yaml`: lint + Trivy in one run), and a controlled workflow for deploys (`deploy.yaml`).
+The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, SOPS + age as the default secrets path (Vault paused, not deleted — ADR-017), Tailscale per-app ingress (one device per app), and distributed storage via Longhorn + external RustFS S3. On top of that there's a CI layer that validates every push (`ci.yaml`: lint + Trivy in one run) — and nothing it touches deploys: the deploy is pure ArgoCD pull (the former `deploy.yaml` was removed, see [CI/CD](./ci-cd.md)).
 
 **Topology.** The cluster was reduced from 3 workers to 1 node ([ADR-019](./adrs/019-single-node-bare-metal-migration.md)). This repo therefore delivers **pod-level** HA — PDBs, multi-replica stateless workloads, Longhorn snapshots, and off-cluster S3 backups — but **not node-level HA**. Node failure is total downtime: there is no pod redistribution and no Raft quorum. Multi-node HA is a property of the cluster, not of this repository. The migration target is single-node bare metal; the substrate choice is a maintainer concern and is not a v1.0.0 gate.
 
 **What's already running in CI/CD**, verified directly against `.github/workflows/`:
 - `ci.yaml` validate job: Helm dependency builds, `helm lint` and `helm template` (both prod and dev values), inline-image convention (`validate-images`), secret scan (`detect-secrets` baseline-gated), ShellCheck on the bootstrap scripts, YAML/JSON sanity checks, and `yamllint` as a non-blocking extra check.
 - `ci.yaml` security jobs: Trivy image scans over the dynamically discovered chart images (matrix from rendered manifests) + repo misconfig scan (`scan-config`), SARIF upload to code scanning, weekly cron — fail-closed for digest-pinned first-party images (upstream subchart images advisory).
-- `deploy.yaml`: auto-deploy on `CI` success (main) plus manual `workflow_dispatch` with environment selection (prod/dev), a Tailscale connection step, kubeconfig restore from Environment Secret `KUBECONFIG_DATA`, and a `force_reapply` flag for safe retries.
+- `ci.yaml`: validation + Trivy security on every push, PR and weekly cron — no cluster, no credentials.
 - Pre-commit (local mirror of the fast gates): `detect-secrets`, `check-yaml`/`check-json`, `yamllint`, `shellcheck`; `just validate` + `just scan` as local mirrors. <!-- pragma: allowlist secret -->
 - `renovate.json`: weekly updates (Mondays before 5am), with differentiated rules — critical cluster components (Vault, Longhorn, cert-manager) require explicit manual review via labels, while non-critical charts and GitHub Actions are grouped and auto-merged; regex managers also cover hardcoded images and `HELM_VERSION`.
 
@@ -81,7 +81,7 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 
 - [x] Monitoring stack deployed (Prometheus + Grafana + Loki + Alloy — Alloy `chart 1.12.1` DaemonSet via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to Loki gateway; stateless, RBAC auto-created; replaces Promtail — deprecated)
 - [x] Dashboards reachable via Tailscale ingress (one device per app, each served at `/` root — ADR-018; Grafana at `https://grafana.lonk-mirfak.ts.net/`, Prometheus at `https://prometheus.lonk-mirfak.ts.net/`; Loki datasource with `X-Scope-OrgID: fake`, Explore + LogQL)
-- [x] CI pipeline — `ci.yaml` (validate job: lint, render, image-convention, secret scan, ShellCheck, sanity checks + security jobs: Trivy images + misconfig, SARIF, weekly cron) + `deploy.yaml` (auto on CI success + guided manual deploy)
+- [x] CI pipeline — `ci.yaml` (validate job: lint, render, image-convention, secret scan, ShellCheck, sanity checks + security jobs: Trivy images + misconfig, SARIF, weekly cron); deploys moved to pure ArgoCD pull — former `deploy.yaml` removed (see [CI/CD](./ci-cd.md))
 - [x] Renovate — weekly updates with mandatory manual review for critical components (Vault, Longhorn, cert-manager) and grouped automerge for the rest
 
 ### Phase 3 — Storage & Scale ✅ Complete

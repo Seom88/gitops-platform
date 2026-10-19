@@ -98,7 +98,7 @@ gitops-platform/
 │                    #   longhorn, velero, valkey, trivy-operator, s3-bucket-lib
 ├── apps/            # homepage, immich, nextcloud
 ├── docs/            # guides + adrs/ (24 decisions and counting)
-├── .github/workflows/ # ci.yaml (lint+scan) + deploy.yaml (gated deploy)
+├── .github/workflows/ # ci.yaml (lint+scan) — CI never touches the cluster; deploys are ArgoCD pull
 ├── justfile         # init-prod/dev, secrets-apply, validate, scan, status
 ├── renovate.json    # weekly dependency updates
 └── CHANGELOG.md     # release history

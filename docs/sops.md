@@ -9,7 +9,7 @@ See [ADR-017](adrs/017-vault-paused-sops-default.md) for why SOPS is the default
 2. ArgoCD does **not** decrypt SOPS. Encrypted secrets are applied out-of-band:
    `bootstrap/init-sops.sh` pulls the age key from RustFS (`s3://secrets-homelab/sops/keys.txt`),
    runs `sops decrypt | kubectl apply` for every `<chart>/sops/*.enc.yaml`, then shreds the key file.
-3. Entry points: `just secrets-apply` (local) and `.github/workflows/deploy.yaml` (CI, installs `sops v3.10.2` first).
+3. Entry points: `just secrets-apply` (local — the only one; CI holds no cluster credentials and applies nothing).
 
 > **Order: GitOps first, SOPS second.** `init-sops.sh` applies Secrets into
 > existing namespaces but never creates them — on a bare cluster run

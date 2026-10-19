@@ -14,7 +14,7 @@ Detailed technical explanations of the key features implemented in this project.
 - Encrypted-in-git secrets — only `data`/`stringData` encrypted, metadata stays readable
 - No Helm templating inside `.enc.yaml` (pure YAML) — conditionals live in wrapper templates
 - Age key restored from RustFS (`s3://secrets-homelab/sops/keys.txt`), shredded after apply
-- CI applies via `deploy.yaml` (installs `sops v3.10.2` first)
+- Applied locally via `just secrets-apply` — CI holds no cluster credentials
 
 **Vault 3-Node High-Availability Cluster** (paused — chart frozen in place):
 - HA quorum for fault tolerance — cluster survives 1 node failure
@@ -447,16 +447,16 @@ just fmt
 
 ### GitHub Actions
 
-- **Trigger** — On every push to `main` or `dev` (1 CI run + 1 Deploy run)
+- **Trigger** — On every push to `main` or `dev` (1 CI run; deploys are ArgoCD pull — no deploy workflow)
 - **Unified CI** — `ci.yaml` runs validate + security jobs (Trivy images + misconfig, SARIF) against prod and dev values
-- **Deploy** — Auto-deploy on `CI` success to main; manual `workflow_dispatch` with env selection; no approval gate
-- **Rollback** — Revert commit to rollback
+- **Deploy** — GitOps pull-only: ArgoCD self-manages the root app (automated + prune + selfHeal); break-glass bootstrap/secrets via `just init-prod` / `just secrets-apply`
+- **Rollback** — Revert commit to rollback (ArgoCD resumes the previous manifest set)
 
 ### Key Files
 
 - Workflows: [`.github/workflows/`](../.github/workflows/)
   - Validate + security: `ci.yaml`
-  - Deploy: `deploy.yaml`
+  - (No cluster-touching workflow — deploys are ArgoCD pull)
 - Local mirror: [`justfile`](../justfile) — `just validate` command
 - Documentation: [`docs/ci-cd.md`](../docs/ci-cd.md)
 

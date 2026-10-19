@@ -25,24 +25,12 @@ Before creating secrets, ensure the KV v2 secrets engine is enabled at path `sec
 
 **How it is created:**
 
-The secret is **not** stored in Vault (`secret/tailscale/auth` is no longer used — see [ADR-010](adrs/010-tailscale-oauth-ci-generated.md) superseding [ADR-004](adrs/004-tailscale-oauth-seed-strategy.md)). It is created idempotently as a plain Kubernetes `Secret` from CI/local env:
+The secret is **not** stored in Vault (`secret/tailscale/auth` is no longer used — see [ADR-010](adrs/010-tailscale-oauth-ci-generated.md) superseding [ADR-004](adrs/004-tailscale-oauth-seed-strategy.md)). It is created idempotently as a plain Kubernetes `Secret` from local env (`.env`) — CI holds no cluster credentials since `deploy.yaml` was removed (GitOps pull-only, see [CI/CD](./ci-cd.md)):
 
-- **CI:** `.github/workflows/deploy.yaml` (trigger `push: branches: [main]` — paths-ignore `docs/**`, `*.md` — plus `workflow_dispatch`, `concurrency: deploy-main`) runs after Tailscale connect + kubeconfig restore:
+- **Local (single path):** `scripts/tailscale-secret.sh` (called by `just secrets-apply`) and `bootstrap/init-gitops.sh:ensureTailscaleCredentials()` (called before `ensureVeleroCredentials()` and before `helm upgrade --install gitops`) do the same `kubectl create secret --dry-run=client | kubectl apply` idempotently. With `--check` it warns but does not mutate:
   ```bash
-  kubectl create namespace tailscale --dry-run=client -o yaml | kubectl apply -f -
-  kubectl create secret generic operator-oauth -n tailscale \
-    --from-literal=client_id="$TS_OAUTH_CLIENT_ID" \
-    --from-literal=client_secret="$TS_OAUTH_SECRET" \
-    --dry-run=client -o yaml | kubectl apply -f -
-  kubectl rollout restart deployment/tailscale-operator -n tailscale || \
-    kubectl rollout restart deployment/operator -n tailscale || true
-  ```
-  This serializes before `bootstrap/init-gitops.sh` and ensures rotation automatically restarts the operator.
-
-- **Local:** `bootstrap/init-gitops.sh:ensureTailscaleCredentials()` (called before `ensureVeleroCredentials()` and before `helm upgrade --install gitops`) does the same `kubectl create secret --dry-run=client | kubectl apply` idempotently. With `--check` it warns but does not mutate:
-  ```bash
-  TS_OAUTH_CLIENT_ID=... TS_OAUTH_SECRET=... ./bootstrap/init-gitops.sh prod
-  TS_OAUTH_CLIENT_ID=... TS_OAUTH_SECRET=... ./bootstrap/init-gitops.sh prod --check  # warn-only
+  K8S_TS_OAUTH_CLIENT_ID=... K8S_TS_OAUTH_SECRET=... ./bootstrap/init-gitops.sh prod
+  K8S_TS_OAUTH_CLIENT_ID=... K8S_TS_OAUTH_SECRET=... ./bootstrap/init-gitops.sh prod --check  # warn-only
   ```
 
 **Operator consumption:**
@@ -59,7 +47,7 @@ tailscale-operator:
       valueFrom: { secretKeyRef: { name: operator-oauth, key: client_secret } }
 ```
 
-The `tailscale-operator` `Deployment` reads `client_id`/`client_secret` from that `Secret` at start. Re-applying the Secret with a new `client_secret` requires `kubectl rollout restart deployment/tailscale-operator -n tailscale` (handled automatically by `deploy.yaml` and `init-gitops.sh`).
+The `tailscale-operator` `Deployment` reads `client_id`/`client_secret` from that `Secret` at start. Re-applying the Secret with a new `client_secret` requires `kubectl rollout restart deployment/tailscale-operator -n tailscale` (handled automatically by `scripts/tailscale-secret.sh` — `just secrets-apply` — and `init-gitops.sh`).
 
 **Why not Vault/ESO:**
 

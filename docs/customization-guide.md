@@ -25,7 +25,7 @@ To add a new ordered app, create a new `gitops/templates/platform/0N-name.yaml` 
 
 This homelab integrates with Tailscale for secure networking:
 
-1.  **Auth Credentials**: The `Secret tailscale/operator-oauth` (`client_id`/`client_secret`) is created externally by CI (`deploy.yaml`) and the bootstrap script — no Vault seeding, no SOPS (ADR-010 supersedes the old seed strategy). See the [Secrets Structure guide](secrets-structure.md) for the Tailscale credential layout. The bootstrap script does not prompt for them.
+1.  **Auth Credentials**: The `Secret tailscale/operator-oauth` (`client_id`/`client_secret`) is created externally via `just secrets-apply` and the bootstrap script — no Vault seeding, no SOPS, no CI (ADR-010 supersedes the old seed strategy; CI holds no cluster credentials). See the [Secrets Structure guide](secrets-structure.md) for the Tailscale credential layout. The bootstrap script does not prompt for them.
 2.  **Operator**: The Tailscale Operator is managed as a platform app in `platform/ts-operator/` (wave `-2`). Platform exposure is **one Ingress per app, owned by each chart** via `tailscaleIngress` values (each app its own MagicDNS device on `*.lonk-mirfak.ts.net`, served at `/` root) — see [ADR-018](adrs/018-per-app-tailscale-ingress.md). To expose a new UI, add a `tailscale-ingress.yaml` in the owning chart following the existing pattern (or `platform/ts-operator/templates/infra/` for control-plane apps). No distro-specific setup is required here — any cluster with ArgoCD works; Longhorn is deployed by this repo as a wave -1 app. Requires Cilium 1.20.1 (eBPF, kubeProxyReplacement strict). Policies are gated by `ciliumNetworkPolicy.enabled=true`; set to `false` for non-Cilium clusters where policies are not enforced.
 
 

@@ -6,127 +6,79 @@
 
 ## Workflows
 
-Both workflows (`ci.yaml`, `deploy.yaml`) live in `.github/workflows/` and are distro-agnostic — no Terraform, no cluster required for validation. `deploy.yaml` is the only workflow that touches the cluster (via Tailscale + kubeconfig from the `prod`/`dev` Environment Secret `KUBECONFIG_DATA`) and delegates all logic to `bootstrap/init-gitops.sh`.
+The only workflow is `ci.yaml` (`.github/workflows/`) and it is distro-agnostic — no Terraform, no cluster, no credentials, no Tailscale. **CI never touches the cluster.** All deploys happen through GitOps: commit to `main`, ArgoCD pulls, done (see the [deploy model](#deploy-model--argocd-pull-only) below).
 
-> ### Kubeconfig source — Environment Secret `KUBECONFIG_DATA`
+> ### Deploy model — GitOps pull-only
 >
-> `deploy.yaml` restores the kubeconfig from the Environment Secret `KUBECONFIG_DATA` (full `k3s.yaml` with `server: https://100.64.0.12:6443`). No Terraform, no S3 state read, no provisioning-repo checkout for kubeconfig.
+> The former `deploy.yaml` workflow (CI-connected deploys with a `KUBECONFIG_DATA` Environment secret) was **removed**. Reasons, verified against the repo:
 >
-> | Element | State |
+> - The root `gitops` Application is self-managing (`root-prod-app.yaml`: `syncPolicy.automated` with `prune` + `selfHeal`, `targetRevision: main`) — every commit to `main` syncs without a push step.
+> - The CI-side "gate on green CI" never actually gated ArgoCD: ArgoCD syncs `main` regardless of Actions state. It only sequenced CI's own mutations.
+> - The `helm upgrade --install gitops` in CI duplicated what ArgoCD's automated sync already does.
+> - Holding the full `k3s.yaml` (commit-level `cluster-admin` client cert) as a GitHub secret gave GitHub total cluster power for one workflow's benefit. Risk > value.
+>
+> What CI does **not** replace automatically:
+>
+> - **Secret seeding / rotation** (`just secrets-apply`): SOPS-encrypted secrets and the Tailscale operator OAuth secret are applied from local `.env`, not from GitHub secrets.
+> - **First-sync ordering**: a newly added app that needs a seeded secret may sync (and go Pending) before the secret exists — run `just secrets-apply` right after adding it.
+>
+> | Removed | State |
 > |---------|-------|
-> | `terraform init` / `terraform output -raw kubeconfig` | Removed — no state file, no `output` under the current provisioning model |
-> | S3 fallback `aws s3api get-object …/terraform.tfstate` | Removed — key path was tied to the Terraform layout |
-> | `hashicorp/setup-terraform@v4` | Removed — existed only to serve that one `output` call |
-> | Provisioning-repo checkout `path: infra` + `GH_PAT` | Removed — checked out only to read Terraform |
-> | `S3_BUCKET` (Terraform-state bucket) | Removed — `S3_ENDPOINT` remains, but only for the SOPS age-key fetch (`s3://secrets-homelab`) |
+> | `.github/workflows/deploy.yaml` (gate + deploy jobs) | Deleted — GitOps pull covers deploys |
+> | `KUBECONFIG_DATA` Environment secret | Delete it in GitHub (`Environments → prod/dev → secrets`) — admin cert should never live in a CI system |
+> | `TS_OAUTH_*` / `K8S_TS_OAUTH_*` / `AWS_*` repo secrets for deploys | No longer consumed by CI — local `.env` is the single credential source (operator OAuth is still consumed by `just secrets-apply`, Velero fallback by `init-gitops.sh`) |
+> | `concurrency: deploy-main` / gate logic | Removed with the workflow |
+> | `force_reapply` dispatch flag | Replaced by `just init-prod-force` |
 >
-> Two invariants survive unchanged: the fail-closed kubeconfig check and the `shred -u` of the credential on exit. Rotation runbook: Ansible re-publishes the fresh `k3s.yaml` on every cert/token rotation (`gh secret set KUBECONFIG_DATA --env prod < k3s.yaml`, repeat for `dev` if used for dispatch tests) — implementation tracked in [`odd/tasks/deploy-env-secret-kubeconfig.md`](../odd/tasks/deploy-env-secret-kubeconfig.md).
->
-> What does **not** change: `ci.yaml` needs no cluster and no credentials, and the Tailscale step already puts the runner on the tailnet, so a kubeconfig with a tailnet-reachable `server:` address works.
+> GitHub Actions credentials: **none**. The attack surface shrinks accordingly: a compromised Actions environment can no longer reach the API server.
 
 | Workflow | Trigger | Needs cluster | What it does |
 |----------|---------|---------------|--------------|
 | `ci.yaml` | `push` + `pull_request` + weekly cron (`0 4 * * 1`) + manual | No | Validate job (Helm lint/template, platform lint, shellcheck, YAML/JSON sanity) + security jobs (Trivy images + config, SARIF; fail-closed for pinned images) — one run, one gate signal |
-| `deploy.yaml` | `workflow_run` (CI on `main`) + `workflow_dispatch` (manual) | Yes | Gate on CI green → restore kubeconfig from Environment Secret `KUBECONFIG_DATA` → `bootstrap/init-gitops.sh` |
 
-### `deploy.yaml` — Deploy GitOps (gated auto + manual)
+## Deploy model — GitOps pull-only
 
-Triggers: `workflow_run` (auto on `CI` completion on `main`, gated by the `gate` job) + `workflow_dispatch` (manual from GitHub UI / `gh`). Concurrency `deploy-main` (`cancel-in-progress: false`), `environment: ${{ inputs.environment || 'prod' }}` (manual) — auto-deploy targets `prod`.
+`git push` is the only deploy act. No workflow installs, syncs, or touches the cluster.
 
-```yaml
-# .github/workflows/deploy.yaml — triggers
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: Target environment
-        type: choice
-        options: [prod, dev]
-        default: prod
-      force_reapply:
-        description: Force reapply even if App-of-Apps already exists
-        type: boolean
-        default: false
-
-permissions:
-  contents: read
-
-concurrency:
-  group: deploy-${{ github.ref_name }}
-  cancel-in-progress: false
-
-env:
-  HELM_VERSION: v4.3.0
-  S3_ENDPOINT: https://rustfs.lonk-mirfak.ts.net
 ```
-> `S3_ENDPOINT` exists for the SOPS age-key fetch (`s3://secrets-homelab/sops/keys.txt` via `bootstrap/init-sops.sh`). Kubeconfig no longer uses S3.
+commit → push main → CI validates (no cluster) → ArgoCD auto-sync (root gitops app,
+automated + prune + selfHeal, targetRevision main) → wave-ordered platform/app sync
+```
 
-| Job | Runs | What it does |
-|-----|------|--------------|
-| `gate` | auto (`workflow_run`) + manual | For `push` events: require the latest `CI` run on the head SHA to be `success` (via `gh api`, `actions: read`); skipped for cron events (never deploy on schedule) and manual dispatch (explicit operator action) |
-| `deploy` | manual (`workflow_dispatch`) + auto when `gate` passes | Restore kubeconfig from Environment Secret + Tailscale, run `bootstrap/init-gitops.sh` |
+### Cluster credentials for the operator (you)
 
-**Deploy job** (`runs-on: ubuntu-latest`, `timeout-minutes: 15`, `environment: ${{ inputs.environment || 'prod' }}`):
+Two kubeconfig options, both valid at any time:
 
-1. `checkout` secure repo — `actions/checkout@v7` with `persist-credentials: false`
-2. `setup-kubectl` — `azure/setup-kubectl@v5`
-3. `setup-helm` — `azure/setup-helm@v5` with `version: ${{ env.HELM_VERSION }}` (`v4.3.0`)
-4. `install jq / yq` — `jq --version` + `wget mikefarah/yq` if `yq` missing, `yq --version`
-5. `install sops` — `getsup/sops` release binary if missing (decrypts `*.enc.yaml` via `bootstrap/init-sops.sh`)
-6. `tailscale/github-action@v4` with `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` (`tags: tag:cicd`, `use-cache: 'true'`) — subnet-route reachability to the cluster (Tailscale mesh, no exposed ports).
-7. `restore kubeconfig from Environment Secret` (`KUBECONFIG_DATA`):
-   ```bash
-   set -euo pipefail
-   if [ -z "${KUBECONFIG_DATA:-}" ]; then
-     echo "::error::KUBECONFIG_DATA is empty — set Environment Secret prod KUBECONFIG_DATA"
-     exit 1
-   fi
-   umask 077
-   printf '%s' "$KUBECONFIG_DATA" > /tmp/kubeconfig.yaml
-   chmod 600 /tmp/kubeconfig.yaml
-   unset KUBECONFIG_DATA
-   echo "KUBECONFIG=/tmp/kubeconfig.yaml" >> "$GITHUB_ENV"
-   KUBECONFIG=/tmp/kubeconfig.yaml kubectl cluster-info --request-timeout=10s
-   KUBECONFIG=/tmp/kubeconfig.yaml kubectl get nodes --request-timeout=10s
-   ```
-   Fails fast if the secret is empty; never echoes the credential. The secret must contain a `k3s.yaml` whose `server:` is tailnet-reachable (`https://100.64.0.12:6443`).
-  8. `ensure Tailscale operator Secret` — `kubectl create secret generic operator-oauth -n tailscale` from `K8S_TS_OAUTH_*`, then rollout restart of the operator.
-  9. `bootstrap (delegates to init-gitops.sh — single source of truth)` (`KUBECONFIG=/tmp/kubeconfig.yaml`):
-   ```bash
-   ENV="${{ inputs.environment || 'prod' }}"
-   FORCE="--force" # only if inputs.force_reapply == true
-   chmod +x bootstrap/init-gitops.sh platform/vault/scripts/bootstrap-vault.sh
-   ./bootstrap/init-gitops.sh "$ENV" $FORCE
-   ```
-    `init-gitops.sh` is idempotent: `helm upgrade --install gitops`, Longhorn CSI gate (wave 0), `ensureVeleroCredentials()` (see [Velero](./cluster-recovery.md)), `bootstrap-vault.sh`, status verifier. See [Getting Started](./getting-started.md).
-   10. `restore SOPS age key + apply encrypted secrets` (`KUBECONFIG=/tmp/kubeconfig.yaml`, `SOPS_AGE_KEY_FILE=/tmp/age-keys.txt`):
-    ```bash
-    chmod +x bootstrap/init-sops.sh
-    ./bootstrap/init-sops.sh
-    ```
-    Runs **after** Bootstrap on purpose: `init-sops.sh` applies decrypted Secrets into namespaces that only exist once GitOps has synced — the reverse order fails on a bare cluster. SOPS overwrites the ephemeral fallback Secrets with the SOPS-owned keys.
-   11. `cleanup kubeconfig` (`if: always()`) — `shred -u /tmp/kubeconfig.yaml || rm -f /tmp/kubeconfig.yaml`
+| Option | How | Identity |
+|--------|-----|----------|
+| Direct node (existing) | Local `k3s.yaml` admin kubeconfig → `https://100.64.0.12:6443` | k3s admin client cert — full power |
+| Tailscale API server proxy | `tailscale configure kubeconfig beth` (operator MagicDNS name, auth mode — `apiServerProxyConfig.mode` already enabled) | The proxy impersonates **your Tailscale user**; no k8s credential is stored — RBAC applies via `platform/ts-operator/templates/users/clusterrolebinding-tailnet-admins.yaml` (group `tailnet-admins` → `cluster-admin`) |
 
-> `deploy.yaml` never runs `terraform apply` — cluster provisioning is owned elsewhere. This repo restores kubeconfig from the Environment Secret and delegates to `bootstrap/init-gitops.sh`, which in turn applies the ArgoCD App-of-Apps (`gitops/` chart, wave-ordered).
+Naming scheme (googology): nodes follow the aleph-cardinal series (`aleph-*`); the operator/API-gate device is **`beth` (prod)** / **`beth-dev` (dev)** — `platform/ts-operator/values.yaml:hostname`. Renaming changes the operator's MagicDNS name (the old device may linger in the Tailscale admin console — remove it there; ArgoCD/hubble Ingress MagicDNS names are unaffected).
 
-**Required GitHub secrets:**
+### Break-glass bootstrap & operations (local, admin kubeconfig)
 
-| Secret | Required | Value |
-|--------|----------|-------|
-| `KUBECONFIG_DATA` | yes (Environment `prod`, plus `dev` if used for dispatch tests) | Full `k3s.yaml` with `server: https://100.64.0.12:6443` — set via `Settings → Environments → prod → Add environment secret` or `gh secret set KUBECONFIG_DATA --env prod < k3s.yaml` |
-| `TS_OAUTH_CLIENT_ID` | yes | Tailscale OAuth client ID (`tag:cicd`, scopes `devices:core:write` + `auth_keys:write`) |
-| `TS_OAUTH_SECRET` | yes | Tailscale OAuth client secret |
-| `AWS_ACCESS_KEY_ID` | yes | RustFS S3 access key for SOPS age-key fetch (`s3://secrets-homelab`, path-style, `S3_ENDPOINT`) + Velero ephemeral fallback |
-| `AWS_SECRET_ACCESS_KEY` | yes | RustFS S3 secret key |
-| `PROXMOX_API_TOKEN` | no | Not used in this repo (cluster provisioning owns Proxmox); listed only if you share secrets across repositories |
+One-time bootstrap and any repair richer than Argo's self-heal need the admin kubeconfig — deliberately **never** a GitHub secret:
 
-To use from a fork, configure `tagOwners` / `acls` for `tag:cicd` in your Tailscale ACL and set `KUBECONFIG_DATA` in your own `prod` environment. The `S3_ENDPOINT` var points at RustFS (`https://rustfs.lonk-mirfak.ts.net`).
+1. `just secrets-apply` — SOPS + operator OAuth + Velero fallback from `.env` (single credential source, gitignored).
+2. Install ArgoCD itself (prerequisite — ArgoCD bootstrap owns it, not this repo's charts).
+3. `just init-prod` → `./bootstrap/init-gitops.sh prod` — ensures credentials, installs the App-of-Apps, wave-0 Longhorn CSI gate, status checks. Idempotent; rerun to verify status. For dev: `just init-dev` (`values-dev.yaml`, targetRevision `dev` branch).
+4. `bootstrap/init-sops.sh` runs inside `just secrets-apply`; on a bare cluster it seeds namespaces + decrypted secrets.
 
-> ⚠️ `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` remain because `bootstrap/init-sops.sh` fetches the SOPS age key from `s3://secrets-homelab` and `init-gitops.sh:ensureVeleroCredentials()` reuses them as ephemeral fallback. `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` are unaffected. `GH_PAT` is no longer needed (no `infra` checkout).
+For forks: nothing cluster-side to configure. The only GitHub-side assets remain the repo vars consumed by CI (none cluster-related) and — once Vault returns with the external-secrets recovery system — secret seeding moves in-cluster and the SOPS story ends (see ADR-017, Vault paused not deleted).
+
+### What replaced CI query actions
+
+| Former deploy.yaml behavior | Now |
+|-----------------------------|-----|
+| `force_reapply` manual dispatch | `just init-prod-force` |
+| CI status/diagnostics run | `just init-prod` (idempotent rerun) or `just status` |
+| Auto-apply on secret rotation | `just secrets-apply` (reapplies + rollout-restarts the operator — see `scripts/tailscale-secret.sh`) |
+| Tailnet connectivity from runners | Gone — runners never join the tailnet; `tag:cicd` releases can be reclaimed in the Tailscale admin console |
 
 ### `ci.yaml` — Validate + Security (fast feedback, no cluster)
 
-Triggers: `push` + `pull_request` (all branches) + weekly cron (`0 4 * * 1`, Mondays 04:00 UTC — images accumulate CVEs without repo changes) + `workflow_dispatch`. Concurrency per workflow ref (`cancel-in-progress: true`). No cluster, no creds. Formerly two workflows (`validate.yaml` + `security.yaml`); merged into one run so each push fires a single CI signal and the deploy gate reads one workflow.
+Triggers: `push` + `pull_request` (all branches) + weekly cron (`0 4 * * 1`, Mondays 04:00 UTC — images accumulate CVEs without repo changes) + `workflow_dispatch`. Concurrency per workflow ref (`cancel-in-progress: true`). No cluster, no creds. Formerly two workflows (`validate.yaml` + `security.yaml`); merged into one run so each push fires a single CI signal.
 
 ```yaml
 # .github/workflows/ci.yaml — triggers
@@ -170,7 +122,7 @@ Local equivalent: `just validate` (same checks, no creds). Sub-recipes: `just va
 
 ### Security jobs (in `ci.yaml` — Trivy scans, no cluster)
 
-Same triggers as above (including the weekly cron). Top-level `permissions: contents: read`. No cluster, no creds. The deploy gate requires the single CI run green on the head SHA — one lookup, no fan-in race where the first finisher fails the gate.
+Same triggers as above (including the weekly cron). Top-level `permissions: contents: read`. No cluster, no creds.
 
 | Job | What it does |
 |-----|--------------|
@@ -255,7 +207,7 @@ Regex managers cover hardcoded `image:` lines (`platform/*/templates`, `apps/*/t
 
 ## Velero bootstrap
 
-Velero lives outside Vault/ESO (chicken-egg: it backs up Vault). Credentials come primarily from SOPS (`platform/velero/sops/cloud-credentials.enc.yaml`, dedicated keys — see [Velero](./cluster-recovery.md) and [RustFS IAM](./rustfs-iam.md)), applied by `bootstrap/init-sops.sh`. `bootstrap/init-gitops.sh:ensureVeleroCredentials()` only creates an ephemeral `Secret velero/cloud-credentials` from `AWS_*` when the Secret is missing (reuses the S3 creds already injected by `deploy.yaml`). The chart consumes it via `credentials.existingSecret: cloud-credentials` and a `Job velero-bucket-init` creates the `velero-homelab` bucket idempotently: ArgoCD `Sync` hook at sync-wave `0` with `hook-weight: "-1"`, so it runs first *within* wave `0` (ahead of the chart's own resources, which have no hook-weight) and never blocks itself.
+Velero lives outside Vault/ESO (chicken-egg: it backs up Vault). Credentials come primarily from SOPS (`platform/velero/sops/cloud-credentials.enc.yaml`, dedicated keys — see [Velero](./cluster-recovery.md) and [RustFS IAM](./rustfs-iam.md)), applied by `bootstrap/init-sops.sh`. `bootstrap/init-gitops.sh:ensureVeleroCredentials()` only creates an ephemeral `Secret velero/cloud-credentials` from `AWS_*` when the Secret is missing (`.env` / shell env — the same S3 creds used for the SOPS age-key fetch). The chart consumes it via `credentials.existingSecret: cloud-credentials` and a `Job velero-bucket-init` creates the `velero-homelab` bucket idempotently: ArgoCD `Sync` hook at sync-wave `0` with `hook-weight: "-1"`, so it runs first *within* wave `0` (ahead of the chart's own resources, which have no hook-weight) and never blocks itself.
 
 Details, bucket creation, verification, and troubleshooting: **[Velero →](./cluster-recovery.md)**.
 
