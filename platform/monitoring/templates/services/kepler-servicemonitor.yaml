@@ -1,0 +1,46 @@
+{{- if not (eq (index .Values "kube-prometheus-stack" "enabled") false) }}
+# Kepler ServiceMonitor managed by monitoring chart (same pattern as
+# templates/services/velero-servicemonitor.yaml).
+# Decoupled from platform/kepler/values.yaml where the vendored subchart's
+# serviceMonitor.enabled is now false.
+# Replicates sustainable_computing_io/kepler 0.12.0 template exactly
+# (kepler/templates/servicemonitor.yaml):
+# - Service name/port: kepler (28282), port name http — matches /kepler svc
+# - Selector: app.kubernetes.io/name=kepler, app.kubernetes.io/instance=kepler
+# - Namespace: kepler (the vendored chart renders the SM there too)
+# - Interval 60s (RAPL energy counters are cumulative; 30s is plenty and the
+#   5s chart default induces power computations)
+# - scrapeTimeout 30s: the vendored template cannot set it (no knob), so the
+#   endpoint inherits Prometheus' global default of 10s. Kepler collection
+#   runs 8.6s (p50) to 10.0s (p95) on aleph, so ~31% of scrapes hit the
+#   10s ceiling exactly (operator docs: "If empty, Prometheus uses the
+#   global scrape timeout"; Prometheus docs: "default = 10s") and produce
+#   1-2 min gaps in dashboards. 30s stays below the 60s interval, the upper
+#   bound the operator rejects ("The value cannot be greater than the scrape
+#   interval").
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kepler
+  namespace: kepler
+  labels:
+    app.kubernetes.io/name: kepler
+    app.kubernetes.io/instance: kepler
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kepler-0.12.0
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - kepler
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kepler
+      app.kubernetes.io/instance: kepler
+  endpoints:
+    - port: http
+      interval: 60s
+      scrapeTimeout: 30s
+      path: /metrics
+{{- end }}

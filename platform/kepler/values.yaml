@@ -60,14 +60,14 @@ kepler:
         pollInterval: 30s
 
   serviceMonitor:
-    enabled: true
-    # RAPL energy counters are cumulative; 30s is plenty for daily-whole-graphs
-    # and cuts scrape-induced power computations vs the 5s chart default.
-    interval: 60s
-    # kube-prometheus-stack only discovers ServiceMonitors carrying the
-    # Prometheus Helm release label (same convention as velero's monitor).
-    labels:
-      release: monitoring
+    # Disabled in favor of the monitoring umbrella's own ServiceMonitor
+    # (templates/services/kepler-servicemonitor.yaml, same pattern as its
+    # velero one): the vendored template has no scrapeTimeout knob, forcing
+    # Prometheus' 10s global default against a collection that runs
+    # 8.6-10s on this node — ~31% of scrapes time out and leave dashboards
+    # with 1-2 min gaps. The umbrella monitor keeps the 60s interval and
+    # raises scrapeTimeout to 30s.
+    enabled: false
 
   daemonset:
     # Kepler itself must be a negligible consumer: it exists to measure, and
