@@ -71,14 +71,10 @@ kepler:
 
   daemonset:
     # Kepler itself must be a negligible consumer: it exists to measure, and
-    # its own footprint must stay bounded on a solar-budget node. The 250m
-    # limit starved metric collection into multi-second latency, so the limit
-    # is 500m (upstream chart example) while the 50m request keeps scheduling
-    # cost negligible.
+    # its own footprint must stay bounded on a solar-budget node.
+    # Limits intentionally unset while measuring the real cost of collection;
+    # the request keeps scheduling overhead negligible.
     resources:
       requests:
         cpu: 50m
         memory: 64Mi
-      limits:
-        cpu: 500m
-        memory: 256Mi
