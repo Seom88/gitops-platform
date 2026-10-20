@@ -72,9 +72,14 @@ kepler:
   daemonset:
     # Kepler itself must be a negligible consumer: it exists to measure, and
     # its own footprint must stay bounded on a solar-budget node.
-    # Limits intentionally unset while measuring the real cost of collection;
-    # the request keeps scheduling overhead negligible.
+    # Sizing measured via cadvisor over 3h without limits: CPU avg 0.18-0.32
+    # cores, 1m peak 0.51 cores; memory peak 133MiB (restart overlap), steady
+    # ~86MiB. Requests reflect steady demand; limits keep ~2x headroom so the
+    # collection bursts are not CFS-throttled while a runaway stays capped.
     resources:
       requests:
-        cpu: 50m
-        memory: 64Mi
+        cpu: 200m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 256Mi
