@@ -98,7 +98,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (zone) (kepler_node_cpu_watts{job=\"$job\", zone=~\"$zone\"})",
+          "expr": "sum by (zone) (max by (node_name, zone) (kepler_node_cpu_watts{job=\"$job\", zone=~\"$zone\"}))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -182,7 +182,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (zone) (kepler_node_cpu_active_watts{job=\"$job\", zone=~\"$zone\"})",
+          "expr": "sum by (zone) (max by (node_name, zone) (kepler_node_cpu_active_watts{job=\"$job\", zone=~\"$zone\"}))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -266,7 +266,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (zone) (kepler_node_cpu_idle_watts{job=\"$job\", zone=~\"$zone\"})",
+          "expr": "sum by (zone) (max by (node_name, zone) (kepler_node_cpu_idle_watts{job=\"$job\", zone=~\"$zone\"}))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -464,7 +464,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "group by (node_name,zone)(kepler_node_cpu_watts{job=\"$job\"})",
+          "expr": "max by (node_name,zone)(kepler_node_cpu_watts{job=\"$job\"})",
           "format": "table",
           "instant": false,
           "legendFormat": "__auto",
@@ -605,7 +605,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (zone) (kepler_node_cpu_watts{job=\"$job\", zone=~\"$zone\"})",
+          "expr": "sum by (zone) (max by (node_name, zone) (kepler_node_cpu_watts{job=\"$job\", zone=~\"$zone\"}))",
           "hide": false,
           "interval": "",
           "legendFormat": "Zone - {{zone}}",
@@ -697,7 +697,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "kepler_node_cpu_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"}",
+          "expr": "max by (node_name, zone) (kepler_node_cpu_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"})",
           "hide": false,
           "interval": "",
           "legendFormat": "{{zone}} - {{node_name}}",
@@ -789,7 +789,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "kepler_node_cpu_active_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"}",
+          "expr": "max by (node_name, zone) (kepler_node_cpu_active_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"})",
           "hide": false,
           "interval": "",
           "legendFormat": "{{zone}} - {{node_name}}",
@@ -881,7 +881,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "kepler_node_cpu_idle_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"}",
+          "expr": "max by (node_name, zone) (kepler_node_cpu_idle_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"})",
           "hide": false,
           "interval": "",
           "legendFormat": "{{zone}} - {{node_name}}",
@@ -961,7 +961,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10,sum by (pod_namespace,zone)(kepler_pod_cpu_watts{job=\"$job\", zone=~\"$zone\"}))",
+          "expr": "topk(10,sum by (pod_namespace,zone)(max by (pod_namespace, pod_name, zone) (kepler_pod_cpu_watts{job=\"$job\", zone=~\"$zone\"})))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1081,7 +1081,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (zone) (kepler_pod_cpu_watts{job=\"$job\", pod_namespace=~\"$namespace\", zone=~\"$zone\"})",
+          "expr": "sum by (zone) (max by (pod_namespace, pod_name, zone) (kepler_pod_cpu_watts{job=\"$job\", pod_namespace=~\"$namespace\", zone=~\"$zone\"}))",
           "hide": false,
           "interval": "",
           "legendFormat": "Zone - {{zone}}",
@@ -1173,7 +1173,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "kepler_pod_cpu_watts{job=\"$job\", pod_namespace=~\"$namespace\", pod_name=~\"$pod\", zone=~\"$zone\"}",
+          "expr": "max by (pod_namespace, pod_name, zone) (kepler_pod_cpu_watts{job=\"$job\", pod_namespace=~\"$namespace\", pod_name=~\"$pod\", zone=~\"$zone\"})",
           "hide": false,
           "interval": "",
           "legendFormat": "{{zone}} - {{pod_name}}",
