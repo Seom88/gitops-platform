@@ -31,6 +31,18 @@ kepler:
       # Upstream default is debug — far too chatty for a 24/7 node that must
       # spend its watt budget on workload, not logging.
       level: info
+    monitor:
+      # Power computation is CPU-bound and at the upstream 5s default it
+      # cannot keep up on this node: /metrics takes 10-45s and exceeds both
+      # Prometheus' 10s scrape timeout and the kubelet's readiness checks.
+      # Match the 30s ServiceMonitor interval instead.
+      interval: 30s
+    exporter:
+      prometheus:
+        # Default is all five levels (node,process,container,vm,pod). Process
+        # and VM scanning dominates the collection cost, and ADR-025 only
+        # needs node + pod watts (container kept for per-workload drill-down).
+        metricsLevel: [node, container, pod]
     kube:
       # Pod/namespace attribution so Grafana can rank consumers — but enabled
       # via the daemonset's --kube.enable / --kube.node-name=$(NODE_NAME) args,
@@ -59,11 +71,14 @@ kepler:
 
   daemonset:
     # Kepler itself must be a negligible consumer: it exists to measure, and
-    # its own footprint must stay bounded on a solar-budget node.
+    # its own footprint must stay bounded on a solar-budget node. The 250m
+    # limit starved metric collection into multi-second latency, so the limit
+    # is 500m (upstream chart example) while the 50m request keeps scheduling
+    # cost negligible.
     resources:
       requests:
         cpu: 50m
         memory: 64Mi
       limits:
-        cpu: 250m
+        cpu: 500m
         memory: 256Mi
