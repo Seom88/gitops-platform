@@ -1,0 +1,24 @@
+# Kepler power monitor Grafana dashboard (official, Apache-2.0)
+# Source: https://github.com/sustainable-computing-io/kepler-operator
+# (hack/dashboard/assets/kepler/dashboard.json, uid 381ef848...), stored
+# pristine. Uses the ${datasource} variable (type prometheus), which resolves
+# to this stack's datasource uid "prometheus" — no substitutions needed.
+# Picked up by the Grafana sidecar (label grafana_dashboard=1, searchNamespace
+# ALL) and placed in the "Kepler" folder via kube-prometheus-stack.grafana.
+# sidecar.dashboards.folderAnnotation.
+# Requires kepler_* series: ServiceMonitor from platform/kepler
+# (label release=monitoring) and the Cilium policy allowing monitoring ->
+# kepler:28282 ingress.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kepler-power-monitor-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Kepler"
+data:
+  kepler-power-monitor.json: |-
+{{ .Files.Get "dashboards/kepler-power-monitor.json" | nindent 4 }}
