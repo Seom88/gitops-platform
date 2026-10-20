@@ -98,14 +98,14 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (zone) (max by (node_name, zone) (kepler_node_cpu_watts{job=\"$job\", zone=~\"$zone\"}))",
+          "expr": "sum by (zone) (avg_over_time((max by (node_name, zone) (kepler_node_cpu_watts{job=\"$job\", zone=~\"$zone\"}))[$__range:1m]))",
           "format": "table",
           "instant": true,
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Current Power Consumption By Zone",
+      "title": "Average Power Consumption By Zone (selected range)",
       "transformations": [
         {
           "id": "organize",
@@ -182,14 +182,14 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (zone) (max by (node_name, zone) (kepler_node_cpu_active_watts{job=\"$job\", zone=~\"$zone\"}))",
+          "expr": "sum by (zone) (avg_over_time((max by (node_name, zone) (kepler_node_cpu_active_watts{job=\"$job\", zone=~\"$zone\"}))[$__range:1m]))",
           "format": "table",
           "instant": true,
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Current Active Power Consumption By Zone",
+      "title": "Average Active Power Consumption By Zone (selected range)",
       "transformations": [
         {
           "id": "organize",
@@ -266,14 +266,14 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (zone) (max by (node_name, zone) (kepler_node_cpu_idle_watts{job=\"$job\", zone=~\"$zone\"}))",
+          "expr": "sum by (zone) (avg_over_time((max by (node_name, zone) (kepler_node_cpu_idle_watts{job=\"$job\", zone=~\"$zone\"}))[$__range:1m]))",
           "format": "table",
           "instant": true,
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Current Idle Power Consumption By Zone",
+      "title": "Average Idle Power Consumption By Zone (selected range)",
       "transformations": [
         {
           "id": "organize",
