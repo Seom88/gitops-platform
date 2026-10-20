@@ -362,7 +362,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (instance, model_name)(kepler_node_cpu_info{job=\"$job\"})",
+          "expr": "count by (node_name, model_name)(kepler_node_cpu_info{job=\"$job\"})",
           "format": "table",
           "instant": true,
           "range": false,
@@ -382,7 +382,7 @@
             "indexByName": {},
             "renameByName": {
               "Value": "Cores",
-              "instance": "Node Name",
+              "node_name": "Node Name",
               "model_name": "Model Name"
             }
           }
@@ -697,10 +697,10 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "kepler_node_cpu_watts{job=\"$job\", instance=~\"$node\", zone=~\"$zone\"}",
+          "expr": "kepler_node_cpu_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"}",
           "hide": false,
           "interval": "",
-          "legendFormat": "{{zone}} - {{instance}}",
+          "legendFormat": "{{zone}} - {{node_name}}",
           "range": true,
           "refId": "A"
         }
@@ -789,10 +789,10 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "kepler_node_cpu_active_watts{job=\"$job\", instance=~\"$node\", zone=~\"$zone\"}",
+          "expr": "kepler_node_cpu_active_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"}",
           "hide": false,
           "interval": "",
-          "legendFormat": "{{zone}} - {{instance}}",
+          "legendFormat": "{{zone}} - {{node_name}}",
           "range": true,
           "refId": "A"
         }
@@ -881,10 +881,10 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "kepler_node_cpu_idle_watts{job=\"$job\", instance=~\"$node\", zone=~\"$zone\"}",
+          "expr": "kepler_node_cpu_idle_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"}",
           "hide": false,
           "interval": "",
-          "legendFormat": "{{zone}} - {{instance}}",
+          "legendFormat": "{{zone}} - {{node_name}}",
           "range": true,
           "refId": "A"
         }
@@ -1215,7 +1215,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(kepler_node_cpu_info{job=\"$job\"}, instance)",
+        "definition": "label_values(kepler_node_cpu_info{job=\"$job\"}, node_name)",
         "description": "Node to choose",
         "hide": 0,
         "includeAll": true,
@@ -1223,7 +1223,7 @@
         "multi": false,
         "name": "node",
         "options": [],
-        "query": "label_values(kepler_node_cpu_info{job=\"$job\"}, instance)",
+        "query": "label_values(kepler_node_cpu_info{job=\"$job\"}, node_name)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

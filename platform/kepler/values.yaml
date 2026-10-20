@@ -36,7 +36,7 @@ kepler:
       # cannot keep up on this node: /metrics takes 10-45s and exceeds both
       # Prometheus' 10s scrape timeout and the kubelet's readiness checks.
       # Match the 30s ServiceMonitor interval instead.
-      interval: 30s
+      interval: 60s
     exporter:
       prometheus:
         # Default is all five levels (node,process,container,vm,pod). Process
@@ -63,7 +63,7 @@ kepler:
     enabled: true
     # RAPL energy counters are cumulative; 30s is plenty for daily-whole-graphs
     # and cuts scrape-induced power computations vs the 5s chart default.
-    interval: 30s
+    interval: 60s
     # kube-prometheus-stack only discovers ServiceMonitors carrying the
     # Prometheus Helm release label (same convention as velero's monitor).
     labels:
@@ -80,6 +80,6 @@ kepler:
       requests:
         cpu: 200m
         memory: 128Mi
-      limits:
-        cpu: "1"
-        memory: 256Mi
+      # limits:
+      #   cpu: "1"
+      #   memory: 256Mi
