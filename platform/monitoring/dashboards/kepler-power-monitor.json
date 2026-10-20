@@ -1218,7 +1218,7 @@
         "definition": "label_values(kepler_node_cpu_info{job=\"$job\"}, instance)",
         "description": "Node to choose",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Node",
         "multi": false,
         "name": "node",
@@ -1231,7 +1231,12 @@
         "tagValuesQuery": "",
         "tagsQuery": "",
         "type": "query",
-        "useTags": false
+        "useTags": false,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
       },
       {
         "allValue": ".*",
@@ -1328,8 +1333,8 @@
         "allValue": ".*",
         "current": {
           "selected": true,
-          "text": "power-monitor",
-          "value": "power-monitor"
+          "text": "kepler",
+          "value": "kepler"
         },
         "datasource": {
           "type": "prometheus",
