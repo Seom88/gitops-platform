@@ -80,6 +80,6 @@ kepler:
       requests:
         cpu: 200m
         memory: 128Mi
-      # limits:
-      #   cpu: "1"
-      #   memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 256Mi
