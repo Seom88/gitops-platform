@@ -18,6 +18,13 @@
 #   1-2 min gaps in dashboards. 30s stays below the 60s interval, the upper
 #   bound the operator rejects ("The value cannot be greater than the scrape
 #   interval").
+# - metricRelabelings drop the target's own pod/namespace labels. Prometheus
+#   attaches them to EVERY series of this scrape, so without this every
+#   kepler_container_* series claims to belong to pod kepler-<hash> in
+#   namespace kepler. Kepler's real attribution lives elsewhere:
+#   pod_name/pod_namespace on kepler_pod_*, and pod_id/container_name on
+#   kepler_container_*. Dropping the false labels keeps `kubectl`-style
+#   grouping from silently returning the exporter itself.
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -43,4 +50,7 @@ spec:
       interval: 60s
       scrapeTimeout: 30s
       path: /metrics
+      metricRelabelings:
+        - action: labeldrop
+          regex: pod|namespace
 {{- end }}
