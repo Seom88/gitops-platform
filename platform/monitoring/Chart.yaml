@@ -17,10 +17,10 @@ dependencies:
     version: 7.3.0
     repository: https://grafana.github.io/helm-charts
   - name: kube-prometheus-stack
-    version: 92.10.1
+    version: 92.11.0
     repository: https://prometheus-community.github.io/helm-charts
   - name: alloy
-    version: 1.13.1
+    version: 1.14.0
     repository: https://grafana.github.io/helm-charts
   - name: s3-bucket-lib
     version: 0.1.0
