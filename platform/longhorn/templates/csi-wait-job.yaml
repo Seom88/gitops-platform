@@ -52,7 +52,7 @@ spec:
           # `kubectl jobs` group. Bitnami publishes only `latest` for kubectl
           # (holds kubectl 1.37.0, image build 2026-09-03) — digest is the pin.
           # Refresh: skopeo inspect docker://bitnami/kubectl:latest | jq -r .Digest
-          image: bitnami/kubectl:latest@sha256:599e67d36ff511e071ffe9a002347e58cf395e9fbd5f4992c233fd5e089e333e
+          image: bitnami/kubectl:latest@sha256:6d9e8ad566a6d2dcb4a7a6120d030bd65bddbcc952246f4b31022834d9be7e02
           command:
             - /bin/bash
             - -ec
