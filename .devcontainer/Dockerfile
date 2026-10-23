@@ -3,7 +3,7 @@
 # no tailscale client (S5, cluster access routes through the host's tailnet
 # NAT), and no human credentials baked into the image (S6/S7: the only
 # kubeconfig arrives as a bind-mounted read-only file at runtime).
-FROM docker.io/library/debian:bookworm-slim@sha256:a4672c0cb26fbdde88e38fa2dfb6c681942306680e41e4378b28770b6e79ee91
+FROM docker.io/library/debian:bookworm-slim@sha256:ec31d744f83f4a73447ba045aaab9409997efe5cc706eca4890c1be36cc1606a
 
 LABEL org.opencontainers.image.title="secured-gitops-tailscale-homelab devcontainer"
 LABEL org.opencontainers.image.description="Podman devcontainer with opencode + gentle-ai agents, kubectl pointed at the tailnet API server; no tailscale client, no host toolchain, no inherited credentials."
