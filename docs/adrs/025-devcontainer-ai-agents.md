@@ -24,7 +24,7 @@ AI coding agents (opencode + gentle-ai) work inside this repository, and agents 
 - **Secret masking:** the workspace bind masks `.env` and a repo-root `kubeconfig` with `/dev/null` binds — agents physically cannot read them even though they live in the mounted tree. SOPS age keys (`~/.config/sops/age/keys.txt`, `/tmp/age-keys.txt`) are never mounted.
 - **RBAC shape** (`platform/ts-operator/templates/users/`, plain YAML, applied by the ArgoCD ts-operator Application in both prod and dev): ServiceAccount `dev-agents` (namespace `tailscale`), ClusterRole `dev-agents-read` with explicit get/list/watch rules across core/apps/batch/networking.k8s.io/autoscaling/storage.k8s.io/argoproj.io/cilium.io — pods/log and nodes included — and a hard exclusion of Secrets, ConfigMaps (default decision), and all exec/attach/portforward/write verbs; ClusterRoleBinding `dev-agents-read`.
 - **Credential sourcing: ServiceAccount, not Tailscale group.** Group subjects only authorize traffic authenticated through the operator API-server proxy (`beth`); the devcontainer reaches `https://100.64.0.12:6443` directly through the host tailscale NAT with plain k8s credentials. Binding a Tailscale group would mean inheriting the human's identity — which is `cluster-admin` via `tailnet-admins` — recreating exactly the incident class this feature exists to prevent.
-- **Kubeconfig provisioning:** `scripts/dev-kubeconfig.sh` (host-side, manual) extracts server + CA data from the admin context, mints a bounded token (`kubectl create token dev-agents -n tailscale`, `DEVCONTAINER_TOKEN_DURATION`, default 24h), writes `~/.config/devcontainer/kubeconfig` (mode 600), never echoes the token, and refuses to write inside the repository.
+- **Kubeconfig provisioning:** `scripts/dev-kubeconfig.sh` (host-side, manual) extracts server + CA data from the admin context, mints a bounded token (`kubectl create token dev-agents -n tailscale`, `DEVCONTAINER_TOKEN_DURATION`, default 24h), writes `${localEnv:HOME}/.kube/devcontainer/kubeconfig` (mode 600), never echoes the token, and refuses to write inside the repository.
 
 ## Alternatives Considered
 
@@ -42,3 +42,10 @@ AI coding agents (opencode + gentle-ai) work inside this repository, and agents 
 - The SA token is the only credential inside the container and expires (24h default): rerun `scripts/dev-kubeconfig.sh` to refresh.
 - gentle-ai upgrades are manual (tarball pin, checksum-verified) until it ships to a registry.
 - The container still reaches the internet and the tailnet IP; network ACL refinement is a Tailscale-side concern, out of scope here.
+
+## Amendment 2026-10-25
+
+- The runtime image is now `mcr.microsoft.com/devcontainers/base:debian13`, pinned by digest, with the non-root user `vscode` (uid 1000, `updateRemoteUserUID: false`); the hand-rolled Debian slim image is retired.
+- The "Reuse the human kubeconfig" alternative stays rejected. The SA-only kubeconfig mount is restored after a regression, and the host `~/.kube/config` is never mounted.
+- helm, k9s, velero and kubectl are now shipped for operator workflows; the earlier "minimal image tooling" decision no longer holds.
+- The invariants are unchanged: SA-only kubeconfig, `/dev/null` masking of `.env` and the repo-root `kubeconfig`, no container-engine socket, and no Tailscale client in the container.

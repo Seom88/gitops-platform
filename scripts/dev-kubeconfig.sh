@@ -6,7 +6,7 @@
 # context (the k3s admin kubeconfig) to mint a bounded ServiceAccount token.
 #
 # What it produces (chmod 600, ALWAYS outside the repo tree):
-#   ${DEVCONTAINER_KUBECONFIG_DIR:-$HOME/.config/devcontainer}/kubeconfig
+#   ${DEVCONTAINER_KUBECONFIG_DIR:-$HOME/.kube/devcontainer}/kubeconfig
 # pointing the cluster API at a ServiceAccount `dev-agents` (read-only RBAC
 # via platform/ts-operator/templates/users/*-dev-agents.yaml; no Secrets
 # access) with a bounded token. This file is the ONLY credential the
@@ -76,7 +76,7 @@ if [ -z "$REPO_ROOT" ]; then
   echo "  ❌ Could not resolve the repository root — run this script from the repo checkout" >&2
   exit 1
 fi
-OUT_DIR="${DEVCONTAINER_KUBECONFIG_DIR:-$HOME/.config/devcontainer}"
+OUT_DIR="${DEVCONTAINER_KUBECONFIG_DIR:-$HOME/.kube/devcontainer}"
 OUT_PATH="$OUT_DIR/kubeconfig"
 RESOLVED_OUT="$(realpath -m "$OUT_PATH")"
 if [ "$RESOLVED_OUT" = "$REPO_ROOT" ] || { [ -n "$REPO_ROOT" ] && [[ "$RESOLVED_OUT" == "$REPO_ROOT/"* ]]; }; then

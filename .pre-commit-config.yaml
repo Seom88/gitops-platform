@@ -42,7 +42,18 @@ repos:
       - id: yamllint
         args: [-c, .yamllint.yaml]
         exclude: ^(platform/longhorn/charts/|(platform|apps|gitops)/.*/templates/|gitops/templates/)
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.11.0
+  # Mirrors CI `validate-scripts` (scripts/shellcheck-check.sh): run the native
+  # shellcheck binary instead of koalaman's docker_image hook, which hard-requires
+  # Docker — unavailable in this no-host-toolchain devcontainer. Soft-skips when
+  # shellcheck isn't installed locally; CI still runs it strictly.
+  - repo: local
     hooks:
       - id: shellcheck
+        name: 'shellcheck (system, soft-skip if absent)'
+        entry: >-
+          bash -c
+          'command -v shellcheck >/dev/null 2>&1 || { echo "⚠️  shellcheck not installed — skipping locally (install with: apt install shellcheck / brew install shellcheck); CI still runs it"; exit 0; };
+          for f in "$@"; do shellcheck --color=never -x "$f" || exit 1; done; echo "shellcheck: OK"' --
+        language: system
+        types: [shell]
+        pass_filenames: true

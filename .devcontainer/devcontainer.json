@@ -1,23 +1,47 @@
 {
-  "name": "homelab-devcontainer",
+  "name": "gitops-devcontainer",
+  "containerUser": "vscode",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": false,
   "build": {
     "dockerfile": "Dockerfile",
-    "context": ".."
+    "context": "."
   },
-  "containerUser": "agent",
-  "remoteUser": "agent",
-  "updateRemoteUserUID": false,
   "workspaceFolder": "/workspace",
   "workspaceMount": "type=bind,source=${localWorkspaceFolder},target=/workspace",
   "mounts": [
+    "source=${localEnv:HOME}/.ssh/id_ed25519,target=/home/vscode/.ssh/id_ed25519,type=bind,readonly=true",
+    "source=${localEnv:HOME}/.kube/devcontainer/kubeconfig,target=/home/vscode/.kube/config,type=bind,readonly=true",
+    "type=volume,source=gitops-ssh-known-hosts,target=/home/vscode/.ssh-known-hosts",
     "source=/dev/null,target=/workspace/.env,type=bind,readonly=true",
     "source=/dev/null,target=/workspace/kubeconfig,type=bind,readonly=true",
-    "source=${localEnv:HOME}/.config/devcontainer/kubeconfig,target=/home/agent/.kube/config,type=bind,readonly=true"
+    "type=volume,source=gitops-fish-history,target=/home/vscode/.local/share/fish",
+    "type=volume,source=gitops-pi,target=/home/vscode/.pi",
+    "type=volume,source=gitops-engram,target=/home/vscode/.engram",
+    "type=volume,source=gitops-codegraph,target=/home/vscode/.codegraph",
+    "type=volume,source=gitops-gentle-ai,target=/home/vscode/.gentle-ai",
+    "type=volume,source=gitops-opencode-data,target=/home/vscode/.local/share/opencode",
+    "type=volume,source=gitops-opencode-state,target=/home/vscode/.local/state/opencode",
+    "type=volume,source=gitops-opencode-cache,target=/home/vscode/.cache/opencode",
+    "type=volume,source=gitops-opencode-config,target=/home/vscode/.config/opencode"
   ],
-  "remoteEnv": {
-    "KUBECONFIG": "/home/agent/.kube/config",
-    "PNPM_HOME": "/home/agent/.local/share/pnpm",
-    "PATH": "/home/agent/.local/share/pnpm:${containerEnv:PATH}"
+  "containerEnv": {
+    "PROJECT_NAME": "gitops-platform",
+    "PI_CLIPBOARD_OSC52": "1",
+    "XDG_RUNTIME_DIR": "/run/user/1000",
+    "WAYLAND_DISPLAY": "wayland-0"
   },
-  "features": {}
+  "remoteEnv": {
+    "KUBECONFIG": "/home/vscode/.kube/config",
+    "PNPM_HOME": "/home/vscode/.local/share/pnpm",
+    "PATH": "/home/vscode/.local/bin:/home/vscode/.local/share/pnpm/bin:/home/vscode/.local/share/pnpm:${containerEnv:PATH}",
+    "OPENCODE_CONFIG": "/workspace/.devcontainer/local-config/opencode.lmstudio.json"
+  },
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway", 
+    "--env-file=${localWorkspaceFolder}/.env"
+  ],
+  "features": {},
+  "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
+  "postStartCommand": "bash .devcontainer/scripts/ssh-git-setup.sh && bash .devcontainer/scripts/clipboard-setup.sh"
 }

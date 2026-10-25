@@ -5,10 +5,82 @@
 # Auto-load .env if present — secrets for k8s (see .env.example)
 # .env is gitignored; every recipe inherits K8S_TS_OAUTH_* / AWS_*
 set dotenv-load
+set shell := ["bash", "-uc"]
 
 # ── Default ───────────────────────────────────
 _default:
     @just --list
+
+# ── Devcontainer ────────────────────────────────
+
+docker_path := env_var_or_default("DOCKER_PATH", "podman")
+workspace := justfile_directory()
+
+# Build the image without starting the container.
+dev-build:
+    devcontainer build --workspace-folder {{workspace}} --docker-path {{docker_path}}
+
+# Create/start the container (adds the Wayland socket only if it exists).
+dev-up:
+    {{workspace}}/.devcontainer/scripts/up.sh
+
+# Recreate the container after changing devcontainer.json or the Dockerfile.
+# Named volumes survive, so dependencies and OpenCode state are kept.
+dev-recreate:
+    {{workspace}}/.devcontainer/scripts/up.sh --remove-existing-container
+
+# Interactive shell as the container user (fish, the default shell).
+dev-shell:
+    devcontainer exec --workspace-folder {{workspace}} --docker-path {{docker_path}} fish -l
+
+# Show the container state.
+dev-status:
+    podman ps --filter label=devcontainer.local_folder={{workspace}}
+
+# Stop the container (keeps it and its volumes).
+dev-down:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ids=$(podman ps -q --filter label=devcontainer.local_folder={{workspace}})
+    if [[ -z "$ids" ]]; then
+        echo "No running dev container."
+        exit 0
+    fi
+    podman stop $ids
+
+# Delete the container (volumes survive; `just up` recreates it).
+dev-clean:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ids=$(podman ps -aq --filter label=devcontainer.local_folder={{workspace}})
+    if [[ -z "$ids" ]]; then
+        echo "No dev container to remove."
+        exit 0
+    fi
+    podman rm -f $ids
+
+# Check host prerequisites and the display-socket detection.
+dev-doctor:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    rc=0
+    for cmd in devcontainer podman just; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            printf 'ok    %-12s %s\n' "$cmd" "$("$cmd" --version 2>&1 | head -1)"
+        else
+            printf 'FAIL  %-12s not found\n' "$cmd"
+            rc=1
+        fi
+    done
+    if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${XDG_RUNTIME_DIR:-}/$WAYLAND_DISPLAY" ]]; then
+        printf 'ok    %-12s %s/%s (will be mounted)\n' wayland "$XDG_RUNTIME_DIR" "$WAYLAND_DISPLAY"
+    elif [[ -n "${DISPLAY:-}" ]]; then
+        printf 'warn  %-12s X11 session: container starts without clipboard\n' display
+    else
+        printf 'warn  %-12s no graphical session: container starts without clipboard\n' display
+    fi
+    exit "$rc"
+
 
 # ── Bootstrap ─────────────────────────────────
 
@@ -232,7 +304,7 @@ vault-token:
     echo "$token"
 
 # Show cluster nodes and versions
-status:
+status-cluster:
     @echo "=== Nodes ===" && \
     kubectl get nodes -o wide && \
     echo "" && \
