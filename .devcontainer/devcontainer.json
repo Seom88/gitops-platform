@@ -14,7 +14,6 @@
     "source=${localEnv:HOME}/.kube/devcontainer/kubeconfig,target=/home/vscode/.kube/config,type=bind,readonly=true",
     "type=volume,source=gitops-ssh-known-hosts,target=/home/vscode/.ssh-known-hosts",
     "source=/dev/null,target=/workspace/.env,type=bind,readonly=true",
-    "source=/dev/null,target=/workspace/kubeconfig,type=bind,readonly=true",
     "type=volume,source=gitops-fish-history,target=/home/vscode/.local/share/fish",
     "type=volume,source=gitops-pi,target=/home/vscode/.pi",
     "type=volume,source=gitops-engram,target=/home/vscode/.engram",
