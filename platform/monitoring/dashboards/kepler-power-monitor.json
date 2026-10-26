@@ -605,7 +605,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (zone) (max by (node_name, zone) (kepler_node_cpu_watts{job=\"$job\", zone=~\"$zone\"}))",
+          "expr": "sum by (zone) (rate(kepler_node_cpu_joules_total{job=\"$job\", zone=~\"$zone\"}[5m]))",
           "hide": false,
           "interval": "",
           "legendFormat": "Zone - {{zone}}",
@@ -697,7 +697,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (node_name, zone) (kepler_node_cpu_watts{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"})",
+          "expr": "max by (node_name, zone) (rate(kepler_node_cpu_joules_total{job=\"$job\", node_name=~\"$node\", zone=~\"$zone\"}[5m]))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{zone}} - {{node_name}}",

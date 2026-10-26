@@ -1,7 +1,15 @@
 # Kepler power monitor Grafana dashboard (official, Apache-2.0)
 # Source: https://github.com/sustainable-computing-io/kepler-operator
-# (hack/dashboard/assets/kepler/dashboard.json, uid 381ef848...), stored
-# pristine. Uses the ${datasource} variable (type prometheus), which resolves
+# (hack/dashboard/assets/kepler/dashboard.json, uid 381ef848...) with one local
+# deviation: the two time series panels ("Total Power Consumption (W) per Zone"
+# and "Node Power Consumption (W) By Zone") plot
+# rate(kepler_node_cpu_joules_total[5m]) instead of kepler_node_cpu_watts.
+# kepler_node_cpu_watts is a per-interval estimate that over-reports up to 2x on
+# single fast samples (CPU frequency boost 800MHz -> 2.4GHz), painting fake
+# 10-20W spikes that do not correspond to real energy. The joule-counter
+# derivative is the same average power without that noise (long-window means
+# match the raw gauge exactly, so nothing is hidden, only smoothed).
+# Uses the ${datasource} variable (type prometheus), which resolves
 # to this stack's datasource uid "prometheus" — no substitutions needed.
 # Picked up by the Grafana sidecar (label grafana_dashboard=1, searchNamespace
 # ALL) and placed in the "Kepler" folder via kube-prometheus-stack.grafana.
