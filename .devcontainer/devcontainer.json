@@ -11,7 +11,8 @@
   "workspaceMount": "type=bind,source=${localWorkspaceFolder},target=/workspace",
   "mounts": [
     "source=${localEnv:HOME}/.ssh/id_ed25519,target=/home/vscode/.ssh/id_ed25519,type=bind,readonly=true",
-    "source=${localEnv:HOME}/.kube/devcontainer/kubeconfig,target=/home/vscode/.kube/config,type=bind,readonly=true",
+    "source=${localEnv:HOME}/.kube/devcontainer/prod,target=/home/vscode/.kubeconfigs/prod,type=bind,readonly=true",
+    "source=${localEnv:HOME}/.kube/devcontainer/dev,target=/home/vscode/.kubeconfigs/dev,type=bind,readonly=true",
     "type=volume,source=gitops-ssh-known-hosts,target=/home/vscode/.ssh-known-hosts",
     "source=/dev/null,target=/workspace/.env,type=bind,readonly=true",
     "type=volume,source=gitops-fish-history,target=/home/vscode/.local/share/fish",
@@ -31,7 +32,7 @@
     "WAYLAND_DISPLAY": "wayland-0"
   },
   "remoteEnv": {
-    "KUBECONFIG": "/home/vscode/.kube/config",
+    "KUBECONFIG": "/home/vscode/.kubeconfigs/prod/kubeconfig:/home/vscode/.kubeconfigs/dev/kubeconfig",
     "PNPM_HOME": "/home/vscode/.local/share/pnpm",
     "PATH": "/home/vscode/.local/bin:/home/vscode/.local/share/pnpm/bin:/home/vscode/.local/share/pnpm:${containerEnv:PATH}",
     "OPENCODE_CONFIG": "/workspace/.devcontainer/local-config/opencode.lmstudio.json"
@@ -41,6 +42,7 @@
     "--env-file=${localWorkspaceFolder}/.env"
   ],
   "features": {},
+  "initializeCommand": "bash .devcontainer/scripts/dev-kubeconfig.sh",
   "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
   "postStartCommand": "bash .devcontainer/scripts/ssh-git-setup.sh && bash .devcontainer/scripts/clipboard-setup.sh"
 }

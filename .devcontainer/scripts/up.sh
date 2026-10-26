@@ -4,10 +4,12 @@ set -eu
 # up.sh exists because devcontainer.json mounts are static, and a bind mount
 # whose source is a missing Wayland socket aborts `devcontainer up`. This
 # wrapper finds the real host socket only when it exists, prepends the matching
-# --mount, bootstraps the local env file, and forwards every extra argument.
+# --mount, ensures the kubeconfig staging directory exists, and forwards every
+# extra argument.
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 workspace_dir=$(dirname -- "$(dirname -- "$script_dir")")
+
 docker_path=${DOCKER_PATH:-podman}
 
 # devcontainer.json pins these inside the container:
@@ -71,6 +73,11 @@ elif [ -n "${DISPLAY:-}" ]; then
 else
 	printf '%s\n' "up.sh: no graphical session detected - starting without clipboard." >&2
 fi
+
+# devcontainer.json bind-mounts these subdirectories read-only. initializeCommand
+# populates them before creation, but create them here too so a manual
+# `devcontainer up --skip-post-create` cannot fail on a missing mount source.
+mkdir -p "$HOME/.kube/devcontainer/prod" "$HOME/.kube/devcontainer/dev"
 
 # devcontainer-cli's final build stage (dev_containers_target_stage) leaves
 # /home/vscode, .local and .local/share owned by root under podman/buildah.

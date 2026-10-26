@@ -24,6 +24,10 @@ dev-build:
 dev-up:
     {{workspace}}/.devcontainer/scripts/up.sh
 
+# Prepare/refresh the devcontainer kubeconfigs (host, manual).
+dev-kubeconfig:
+    {{workspace}}/.devcontainer/scripts/dev-kubeconfig.sh
+
 # Recreate the container after changing devcontainer.json or the Dockerfile.
 # Named volumes survive, so dependencies and OpenCode state are kept.
 dev-recreate:

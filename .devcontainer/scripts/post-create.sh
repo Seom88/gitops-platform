@@ -29,8 +29,8 @@ echo "📦 Install pi config..."
 mkdir -p ~/.pi/agent
 ln -sf /workspace/.devcontainer/local-config/pi.lmstudio.json ~/.pi/agent/lmstudio.json
 pi install npm:pi-lmstudio
-pi install npm:pi-context-prune
 pi install npm:pi-wtf
+pi update --extensions
 
 echo "✅ post-creation completed successfully."
 echo "Note: Run gentle-ai to configure the AI agent and install dependencies, then run opencode-ai to start the OpenCode CLI."

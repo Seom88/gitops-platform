@@ -11,6 +11,7 @@ scripts=(
   platform/vault/scripts/bootstrap-vault.sh
 )
 for f in scripts/*.sh; do [ -e "$f" ] && scripts+=("$f"); done
+for f in .devcontainer/scripts/*.sh; do [ -e "$f" ] && scripts+=("$f"); done
 
 if ! command -v shellcheck >/dev/null 2>&1; then
   if [ "${SCRIPTS_STRICT:-0}" = "1" ]; then
