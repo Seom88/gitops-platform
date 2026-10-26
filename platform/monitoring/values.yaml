@@ -27,8 +27,18 @@ loki:
       # cost of backup time and energy (ADR-025). The annotation drops the
       # PVC and its volume from the backup; the StatefulSet recreates the
       # claim from this template on restore.
+      #
+      # These annotations only reach claims created FROM this template. The
+      # claim that existed when Loki moved to local storage was preserved and
+      # carries none, so the pod-level `backup-volumes-excludes` below is the
+      # one that actually keeps the volume out of the backup today.
       annotations:
         velero.io/exclude-from-backup: "true"
+    podAnnotations:
+      # Excludes the `storage` volume (/var/loki) from Velero fs-backup for
+      # this pod. Pod-level, so it survives pod and claim recreation without
+      # needing a manual step on Longhorn.
+      backup.velero.io/backup-volumes-excludes: storage
     # Lean homelab sizing (prod): log volume fits the small request; the
     # limit caps query spikes without starving neighbors.
     resources:
