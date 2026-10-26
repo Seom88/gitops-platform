@@ -102,6 +102,25 @@ RUN install -d -o vscode -g vscode /home/vscode/.cache \
 RUN install -d -m 700 -o vscode -g vscode /home/vscode/.ssh \
     && install -d -m 700 -o vscode -g vscode /home/vscode/.kube
 
+# Pre-create writable state paths owned by vscode. Podman/buildah may leave
+# /home/vscode root-owned, preventing Dev Containers lifecycle markers and
+# VS Code Server installation. Creating these paths in the image avoids needing
+# a host-side wrapper or a root ownership repair after container startup.
+RUN install -d -o vscode -g vscode \
+        /home/vscode/.devcontainer \
+        /home/vscode/.vscode-server \
+        /home/vscode/.vscode-remote \
+        /home/vscode/.local/share/fish \
+        /home/vscode/.pi \
+        /home/vscode/.engram \
+        /home/vscode/.codegraph \
+        /home/vscode/.gentle-ai \
+        /home/vscode/.local/share/opencode \
+        /home/vscode/.local/state/opencode \
+        /home/vscode/.cache/opencode \
+        /home/vscode/.config/opencode \
+        /home/vscode/.ssh-known-hosts
+
 # Prebuilt engram (the engram MCP plugin hardcodes this path).
 COPY --from=engram --chown=vscode:vscode /out/engram /home/vscode/.local/bin/engram
 

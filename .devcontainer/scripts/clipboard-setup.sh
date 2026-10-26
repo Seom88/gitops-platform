@@ -2,7 +2,8 @@
 # clipboard-setup.sh
 # Auto-start a compositor-independent Wayland clipboard provider inside the container.
 #
-# up.sh mounts the host compositor's socket at /run/user/1000/wayland-0. Any client
+# devcontainer.json mounts the host compositor's socket at
+# /run/user/1000/wayland-0. Any client
 # speaking the primary-selection protocol can own that clipboard, and KDE Plasma,
 # Hyprland, Niri and Sway all expose it identically - so we run a persistent
 # wl-copy bound to that socket. No host-side config needed; works today on KDE and

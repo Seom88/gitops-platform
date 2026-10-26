@@ -177,6 +177,7 @@ Details: [`docs/roadmap.md`](./docs/roadmap.md)
 - [Cluster Recovery](./docs/cluster-recovery.md) — backup & restore runbook
 - [Customization](./docs/customization-guide.md) — fork and adapt
 - [Devcontainer](./docs/devcontainer.md) — isolated AI agent environment
+- [Devcontainer security considerations](./docs/devcontainer-security-notes.md) — deferred security review notes and possible mitigations
 - [ADRs](./docs/adrs/) — why each key decision was made
 
 ## Work with me

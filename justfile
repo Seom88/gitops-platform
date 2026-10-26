@@ -20,9 +20,9 @@ workspace := justfile_directory()
 dev-build:
     devcontainer build --workspace-folder {{workspace}} --docker-path {{docker_path}}
 
-# Create/start the container (adds the Wayland socket only if it exists).
+# Create/start the container. VS Code's "Rebuild Container" uses the same config.
 dev-up:
-    {{workspace}}/.devcontainer/scripts/up.sh
+    devcontainer up --workspace-folder {{workspace}} --docker-path {{docker_path}}
 
 # Prepare/refresh the devcontainer kubeconfigs (host, manual).
 dev-kubeconfig:
@@ -31,7 +31,7 @@ dev-kubeconfig:
 # Recreate the container after changing devcontainer.json or the Dockerfile.
 # Named volumes survive, so dependencies and OpenCode state are kept.
 dev-recreate:
-    {{workspace}}/.devcontainer/scripts/up.sh --remove-existing-container
+    devcontainer up --workspace-folder {{workspace}} --docker-path {{docker_path}} --remove-existing-container
 
 # Interactive shell as the container user (fish, the default shell).
 dev-shell:
@@ -76,12 +76,13 @@ dev-doctor:
             rc=1
         fi
     done
-    if [[ -n "${WAYLAND_DISPLAY:-}" && -S "${XDG_RUNTIME_DIR:-}/$WAYLAND_DISPLAY" ]]; then
-        printf 'ok    %-12s %s/%s (will be mounted)\n' wayland "$XDG_RUNTIME_DIR" "$WAYLAND_DISPLAY"
-    elif [[ -n "${DISPLAY:-}" ]]; then
-        printf 'warn  %-12s X11 session: container starts without clipboard\n' display
+    runtime_dir="${XDG_RUNTIME_DIR:-/run/user/1000}"
+    display_name="${WAYLAND_DISPLAY:-wayland-0}"
+    if [[ -S "$runtime_dir/$display_name" ]]; then
+        printf 'ok    %-12s %s/%s (will be mounted)\n' wayland "$runtime_dir" "$display_name"
     else
-        printf 'warn  %-12s no graphical session: container starts without clipboard\n' display
+        printf 'FAIL  %-12s no Wayland socket at %s/%s — container creation will fail\n' wayland "$runtime_dir" "$display_name"
+        rc=1
     fi
     exit "$rc"
 

@@ -10,6 +10,7 @@
   "workspaceFolder": "/workspace",
   "workspaceMount": "type=bind,source=${localWorkspaceFolder},target=/workspace",
   "mounts": [
+    "source=${localEnv:XDG_RUNTIME_DIR:/run/user/1000}/${localEnv:WAYLAND_DISPLAY:wayland-0},target=/run/user/1000/wayland-0,type=bind",
     "source=${localEnv:HOME}/.ssh/id_ed25519,target=/home/vscode/.ssh/id_ed25519,type=bind,readonly=true",
     "source=${localEnv:HOME}/.kube/devcontainer/prod,target=/home/vscode/.kubeconfigs/prod,type=bind,readonly=true",
     "source=${localEnv:HOME}/.kube/devcontainer/dev,target=/home/vscode/.kubeconfigs/dev,type=bind,readonly=true",
@@ -27,6 +28,7 @@
   ],
   "containerEnv": {
     "PROJECT_NAME": "gitops-platform",
+    "GIT_CONFIG_GLOBAL": "/home/vscode/.ssh-known-hosts/gitconfig",
     "PI_CLIPBOARD_OSC52": "1",
     "XDG_RUNTIME_DIR": "/run/user/1000",
     "WAYLAND_DISPLAY": "wayland-0"
@@ -39,7 +41,9 @@
   },
   "runArgs": [
     "--add-host=host.docker.internal:host-gateway", 
-    "--env-file=${localWorkspaceFolder}/.env"
+    "--env-file=${localWorkspaceFolder}/.env",
+    "--env=GIT_USER_NAME",
+    "--env=GIT_USER_EMAIL"
   ],
   "features": {},
   "initializeCommand": "bash .devcontainer/scripts/dev-kubeconfig.sh",

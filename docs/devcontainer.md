@@ -28,9 +28,9 @@ The staged prod kubeconfig must use the **direct API server**, not the Tailscale
 
 The dev kubeconfig must contain only dev-cluster credentials (do not point it at a file that also carries prod admin contexts) and should be self-contained (embedded certificate data), because it is copied into the container as-is.
 
-`runArgs` passes the repo-root `.env` with `--env-file`. Any value in that file is readable from inside the container — through `podman inspect` on the host and through `/proc/*/environ` in the container — so it must hold only agent API keys and the git identity, never cluster credentials.
+`runArgs` passes the repo-root `.env` with `--env-file` and explicitly forwards `GIT_USER_NAME` and `GIT_USER_EMAIL` from that file into the container. Any value in the file is readable from inside the container — through `podman inspect` on the host and through `/proc/*/environ` in the container — so it must hold only agent API keys and the git identity, never cluster credentials.
 
-SSH exposure is narrow: only `${localEnv:HOME}/.ssh/id_ed25519` is mounted, read-only at `/home/vscode/.ssh/id_ed25519`. A writable `known_hosts` and generated `ssh_config` live on the `gitops-ssh-known-hosts` volume, and `git config --global core.sshcommand` points at that config. Set `GIT_SSH_KEY` to override key selection; the selected key is validated with `ssh-keygen -y`.
+SSH exposure is narrow: only `${localEnv:HOME}/.ssh/id_ed25519` is mounted, read-only at `/home/vscode/.ssh/id_ed25519`. A writable `known_hosts`, generated `ssh_config`, and container-specific Git global config live on the `gitops-ssh-known-hosts` volume; `GIT_CONFIG_GLOBAL` points Git at that file for every process, avoiding reliance on a writable home `.gitconfig`. The Git config points `core.sshcommand` at the generated SSH config and stores `GIT_USER_NAME` / `GIT_USER_EMAIL`. Set `GIT_SSH_KEY` to override key selection; the selected key is validated with `ssh-keygen -y`.
 
 ## Prerequisites (host)
 
@@ -57,7 +57,7 @@ DEVCONTAINER_DEV_KUBECONFIG=$HOME/.kube/dev.yaml
 No manual kubeconfig step is required: `initializeCommand` prepares both credentials before the container is created.
 
 ```bash
-just dev-up   # or ./.devcontainer/scripts/up.sh
+just dev-up   # or: devcontainer up --workspace-folder .
 ```
 
 To prepare/refresh the credentials without starting the container:
@@ -66,15 +66,11 @@ To prepare/refresh the credentials without starting the container:
 just dev-kubeconfig   # or ./.devcontainer/scripts/dev-kubeconfig.sh
 ```
 
-`up.sh` only ensures the staging subdirectories exist; the static mounts are declared in `devcontainer.json`. If you used the old single-file setup, `$HOME/.kube/devcontainer/kubeconfig` is no longer mounted and can be deleted.
+If you used the old single-file setup, `$HOME/.kube/devcontainer/kubeconfig` is no longer mounted and can be deleted.
 
-`up.sh` is a thin wrapper around `devcontainer up`. Before starting it:
+The Wayland socket is resolved by `devcontainer.json` itself from the host environment: `${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY}`, defaulting to `/run/user/1000/wayland-0`. Only that single socket crosses into the container — never the whole `XDG_RUNTIME_DIR`, which also holds the host `dbus`, `pipewire`, `gpg-agent` and `ssh-agent` sockets. VS Code's **Dev Containers: Rebuild Container** and `just dev-up` therefore drive exactly the same configuration, with no wrapper.
 
-- injects the host Wayland socket only when it exists (detected by globbing `/run/user/$uid/wayland-*`), because a bind to a missing socket aborts `up` and mounts in `devcontainer.json` cannot be conditional;
-- ensures `$HOME/.kube/devcontainer/{prod,dev}` exist, since both are bind-mounted by `devcontainer.json`;
-- forwards extra arguments, e.g. `./.devcontainer/scripts/up.sh --remove-existing-container`.
-
-On X11, TTY or SSH sessions no Wayland socket is mounted, so the container starts without clipboard support; `up.sh` reports the detected session on stderr.
+Because a bind mount cannot be conditional, a host with no Wayland socket at that path (X11 session, TTY, SSH) makes container creation fail instead of starting without clipboard. `just dev-doctor` reports this before you try. Log in to a Wayland session, or export `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY` in the environment VS Code is launched from, then create the container again.
 
 Everyday recipes:
 
@@ -134,5 +130,5 @@ Both kubeconfigs are mounted read-only, so `kubectl config use-context` cannot p
 - **`error: serviceaccounts "dev-agents" not found`** in the preparation script: the prod ArgoCD ts-operator Application has not synced the new RBAC yet — wait for the sync, or run `just sync`.
 - **Token expired errors (401) on prod**: run `just dev-kubeconfig`; the running container picks up the new file through the bind mount.
 - **Git over SSH fails**: `~/.ssh/id_ed25519` is absent, so git falls back to the default identity and authentication fails — place the key on the host and restart the container.
-- **Wayland clipboard does not work**: start with `just dev-up` or `./.devcontainer/scripts/up.sh`; plain `devcontainer up` adds no display mount, and on X11 or headless the clipboard is intentionally absent.
+- **Container creation fails because the `wayland-0` bind source does not exist**: the host has no Wayland socket at `${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}` (X11, TTY or SSH session). The mount is unconditional. Log in to a Wayland session, or export both variables in the environment VS Code inherits, and recreate the container.
 - **`.env` missing**: `devcontainer up` passes it with `--env-file` and fails if absent. Run `just secrets-init` (or copy `.env.example` to `.env`) and fill in the values.

@@ -10,14 +10,23 @@
 set -euo pipefail
 
 SSH_DIR=/home/vscode/.ssh
-KH_DIR=/home/vscode/.ssh-known-hosts
+KH_DIR="${SSH_GIT_DIR:-/home/vscode/.ssh-known-hosts}"
 KH_FILE="${KH_DIR}/known_hosts"
 SSH_CONFIG="${KH_DIR}/ssh_config"
+GIT_CONFIG="${KH_DIR}/gitconfig"
 
 # 1) Writable known_hosts location (the mounted key is read-only).
-install -d -m 700 -o vscode -g vscode "${KH_DIR}"
+if [ -n "${SSH_GIT_DIR:-}" ]; then
+  install -d -m 700 "${KH_DIR}"
+else
+  install -d -m 700 -o vscode -g vscode "${KH_DIR}"
+fi
 [ -f "${KH_FILE}" ] || : > "${KH_FILE}"
 chmod 644 "${KH_FILE}"
+
+# Keep container-specific Git settings on this writable volume instead of
+# assuming ~/.gitconfig is writable (it may be provided by the host or a mount).
+export GIT_CONFIG_GLOBAL="${GIT_CONFIG}"
 
 # 2) Pick a usable private key: GIT_SSH_KEY first, then well-known names, then
 #    any other regular file that is not a known non-key. Every candidate is
