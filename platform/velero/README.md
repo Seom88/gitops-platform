@@ -2,8 +2,8 @@
 
 ![Backend](https://img.shields.io/badge/Backend-RustFS_S3_velero--homelab-blue?style=flat-square)
 ![Namespace](https://img.shields.io/badge/Namespace-velero-green?style=flat-square)
-![Chart](https://img.shields.io/badge/Chart-vmware--tanzu%2Fvelero_12.1.0-orange?style=flat-square)
-![App](https://img.shields.io/badge/App-1.18.1-yellow?style=flat-square)
+![Chart](https://img.shields.io/badge/Chart-vmware--tanzu%2Fvelero_12.2.1-orange?style=flat-square)
+![App](https://img.shields.io/badge/App-1.18.2-yellow?style=flat-square)
 
 Velero backs up cluster manifests and workload data (everything except Vault — see Vault policy below) to an external RustFS S3 bucket (`velero-homelab` at `https://rustfs.lonk-mirfak.ts.net`, from `sharedS3.tailnetFqdn`) with GitOps automation and no manual bucket setup. RustFS aborts TLS unless SNI equals its LE-cert FQDN, so every consumer dials the FQDN; the bucket-init Job resolves the FQDN directly via kube-dns → coredns-custom (`lonk-mirfak.ts.net → 100.100.100.100`) → node tailscaled with `--accept-dns`, gates on private IPs, and pins the FQDN to those IPs in `/etc/hosts` at runtime (live SNI evidence 2026-09-23).
 
@@ -25,19 +25,19 @@ aws_secret_access_key=...
 flowchart LR
     ENV["SOPS *.enc.yaml<br/>dedicated keys"] --> BOOT["bootstrap/init-sops.sh<br/>Secret cloud-credentials"]
     BOOT --> JOB["Job velero-bucket-init<br/>hook Sync wave 0"]
-    JOB --> CHART["Helm chart velero<br/>vmware-tanzu 12.1.0 / app 1.18.1"]
+    JOB --> CHART["Helm chart velero<br/>vmware-tanzu 12.2.1 / app 1.18.2"]
     CHART --> BSL["BackupStorageLocation default<br/>bucket velero-homelab (RustFS)"]
     BSL --> RUSTFS[("RustFS S3")]
     CHART -.->|excluded| VAULT["Vault ns<br/>re-bootstrap, never restore"]
 ```
 
-Wave `-1` `tailscale-operator` (tailnet DNS stub `coredns-custom` in `kube-system`: `lonk-mirfak.ts.net → 100.100.100.100`, the node tailscaled resolver with `--accept-dns`) → wave `0` `velero` + `longhorn` → wave `1` `vault`. The bucket-init Job resolves the FQDN via kube-dns (private-IP gate + runtime hosts-pin of the FQDN); the velero server pod resolves the FQDN through the same chain (pods → kube-dns → `coredns-custom` → node tailscaled). Guarantees DNS and storage are ready before Vault creates PVCs.
+Wave `-2` `tailscale-operator` (tailnet DNS stub `coredns-custom` in `kube-system`: `lonk-mirfak.ts.net → 100.100.100.100`, the node tailscaled resolver with `--accept-dns`) → wave `-1` `longhorn` → wave `0` `velero` → wave `1` `vault` when Vault is explicitly enabled. The bucket-init Job resolves the FQDN via kube-dns (private-IP gate + runtime hosts-pin of the FQDN); the velero server pod resolves the FQDN through the same chain (pods → kube-dns → `coredns-custom` → node tailscaled). Guarantees DNS and storage are ready before an enabled Vault instance creates PVCs.
 
 ## Schedules
 
 | Schedule | Cron | Scope | TTL | Status |
 |----------|------|-------|-----|--------|
-| `daily-full` | `0 2 * * *` | all namespaces except `vault`, control-plane (`velero`, `kube-*`, `longhorn-system`, `argocd`) | 30d | active |
+| `daily-full` | `0 18 * * *` | all namespaces except `vault`, control-plane (`velero`, `kube-*`, `longhorn-system`, `argocd`) | 30d | active |
 | `vault-hourly` | `0 * * * *` | `vault` namespace (retired) | 7d | `disabled: true` — see Vault policy |
 
 - `defaultVolumesToFsBackup: true` + `deployNodeAgent: true` + `nodeAgent.enabled: true` → Longhorn PVCs backed up via filesystem copy (no CSI snapshots). The node-agent gate and the FsBackup default must stay on together.
@@ -110,6 +110,6 @@ velero backup get
 
 ## References
 
-- [Cluster recovery](../../docs/cluster-recovery.md) — detailed flow, wave ordering, and the [restore runbook](../../docs/cluster-recovery.md#2-restore-runbook)
+- [Cluster recovery](../../docs/cluster-recovery.md) — detailed flow, wave ordering, and the [restore runbook](../../docs/cluster-recovery.md#2-restore-step-by-step)
 - [ADR-009](../../docs/adrs/009-vault-dr-and-velero-backup.md) — Vault DR golden rule (its Vault-specific runbook was deleted on 2026-09-28)
 - [ADR-004](../../docs/adrs/004-tailscale-oauth-seed-strategy.md) — bootstrap secret precedent

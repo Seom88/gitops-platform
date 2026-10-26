@@ -1,6 +1,6 @@
 # Roadmap
 
-**Status:** v1.0.0 **scope complete, not tagged** — manual Velero restore works; formal restore drill deferred to v2.0 · Cilium 1.20.1 (ADR-014) · Last updated: 18 Oct 2026
+**Status:** v1.0.0 **scope complete, not tagged** — manual Velero restore works; formal restore drill deferred to v2.0 · Cilium 1.20.1 (ADR-014) · Last updated: 26 Oct 2026
 
 This document tracks what is currently deployed in the cluster, what is required to complete the **v1.0.0** release, and what is planned for **v2.0**. The cluster uses Cilium 1.20.1 + Gateway API 1.2.3 + CiliumNetworkPolicy (ADR-014); subsequent releases are expected to be additive. The [README](../README.md) contains a short summary and links here.
 
@@ -18,9 +18,9 @@ Nothing. The v1 scope is deployed and the manual restore path works.
 
 **Ownership.** `argocd` is owned by the infra repo (this repo consumes ArgoCD as a pre-installed cluster prerequisite). `external-secrets` stays disabled until the Vault return in v2.0 ([ADR-017](./adrs/017-vault-paused-sops-default.md)).
 
-**Namespace ownership is a boundary, not a gap.** This repository deploys workloads into exactly twelve namespaces and renders a gated `CiliumNetworkPolicy` for each. It deploys nothing at runtime into `argocd` — the ArgoCD `Application` objects under `gitops/` are consumed by the pre-installed cluster prerequisite, and the only other thing this repo places there is the `ts-operator`-owned `argocd` Ingress, which lives in `namespace: tailscale` and selects *toward* `argocd`, not inside it. `external-secrets` is the upstream chart `charts.external-secrets.io` and is **disabled** (`eso.enabled: false`). Neither has a first-party chart here, so there is no template to add; their policy belongs to the provisioning layer and to the upstream chart respectively. Full reasoning in [Policy coverage](#policy-coverage-adr-014). This is a disclosure for the release notes, not a deliverable of this release.
+**Namespace ownership is a boundary, not a gap.** This repository deploys workloads into exactly twelve active namespaces and renders a gated `CiliumNetworkPolicy` for the ten first-party workload namespaces among them (`homepage`, `immich`, `kepler`, `longhorn-system`, `monitoring`, `nextcloud`, `tailscale`, `trivy-system`, `valkey`, `velero`). `cert-manager` and `cnpg-system` run upstream charts and are not covered by first-party policies; `vault` is covered but gated off. It deploys nothing at runtime into `argocd` — the ArgoCD `Application` objects under `gitops/` are consumed by the pre-installed cluster prerequisite, and the only other thing this repo places there is the `ts-operator`-owned `argocd` Ingress, which lives in `namespace: tailscale` and selects *toward* `argocd`, not inside it. `external-secrets` is the upstream chart `charts.external-secrets.io` and is **disabled** (`eso.enabled: false`). Neither has a first-party chart here, so there is no template to add; their policy belongs to the provisioning layer and to the upstream chart respectively. Full reasoning in [Policy coverage](#policy-coverage-adr-014). This is a disclosure for the release notes, not a deliverable of this release.
 
-Nothing else gates v1.0.0. The **substrate** (Talos today; single-node bare-metal cutover planned per [ADR-019](./adrs/019-single-node-bare-metal-migration.md)) is an operational concern of the maintainer's, **not** a v1 gate — it is tracked in [`odd/tasks/ci-kubeconfig-k3s.md`](../odd/tasks/ci-kubeconfig-k3s.md) and outside this release's scope.
+Nothing else gates v1.0.0. The **substrate** is the maintainer's single mini PC (`aleph`, AlmaLinux 10.2, single-node k3s v1.36.5) — the migration completed per [ADR-019](./adrs/019-single-node-bare-metal-migration.md) — and is an operational concern, **not** a v1 gate. It is tracked in [`odd/tasks/ci-kubeconfig-k3s.md`](../odd/tasks/ci-kubeconfig-k3s.md) and outside this release's scope.
 
 ---
 
@@ -30,9 +30,9 @@ Stated precisely, because the previous "10 charts — Complete" claim was wrong 
 
 | | Count | Detail |
 |---|---|---|
-| First-party charts in this repo | 12 | `gitops` + 11 under `platform/` and `apps/` |
-| …that render `cilium-networkpolicies.yaml` | **11** | `platform/{vault,velero,longhorn,monitoring,trivy-operator,ts-operator,valkey,kepler}`, `apps/{homepage,immich,nextcloud}` |
-| …that do not | **1** | `gitops` (the App-of-Apps chart) — see note below |
+| First-party charts in this repo | 13 | `gitops` + 12 under `platform/` and `apps/` |
+| …that render a `CiliumNetworkPolicy` | **11** | `platform/{vault,velero,longhorn,monitoring,trivy-operator,ts-operator,valkey,kepler}`, `apps/{homepage,immich,nextcloud}` |
+| …that do not | **2** | `gitops` (the App-of-Apps chart) and `s3-bucket-lib` (a Helm library chart that renders no workloads) |
 
 The `argocd` and `external-secrets` workloads are **not first-party charts in this repo**; there is no `platform/argocd/` or `platform/external-secrets/` directory to add a template to. They are:
 
@@ -47,7 +47,7 @@ Both are currently disabled by default (`vault.enabled: false`, `eso.enabled: fa
 
 The cluster runs on end-to-end GitOps: ArgoCD as the App-of-Apps, SOPS + age as the default secrets path (Vault paused, not deleted — ADR-017), Tailscale per-app ingress (one device per app), and distributed storage via Longhorn + external RustFS S3. On top of that there's a CI layer that validates every push (`ci.yaml`: lint + Trivy in one run) — and nothing it touches deploys: the deploy is pure ArgoCD pull (the former `deploy.yaml` was removed, see [CI/CD](./ci-cd.md)).
 
-**Topology.** The cluster was reduced from 3 workers to 1 node ([ADR-019](./adrs/019-single-node-bare-metal-migration.md)). This repo therefore delivers **pod-level** HA — PDBs, multi-replica stateless workloads, Longhorn snapshots, and off-cluster S3 backups — but **not node-level HA**. Node failure is total downtime: there is no pod redistribution and no Raft quorum. Multi-node HA is a property of the cluster, not of this repository. The migration target is single-node bare metal; the substrate choice is a maintainer concern and is not a v1.0.0 gate.
+**Topology.** The cluster was reduced from 3 workers to 1 node ([ADR-019](./adrs/019-single-node-bare-metal-migration.md)). This repo therefore delivers **pod-level** HA — PDBs, multi-replica stateless workloads, Longhorn snapshots, and off-cluster S3 backups — but **not node-level HA**. Node failure is total downtime: there is no pod redistribution and no Raft quorum. Multi-node HA is a property of the cluster, not of this repository. The cluster now runs single-node bare metal (`aleph`, AlmaLinux 10.2, k3s v1.36.5); the substrate choice is a maintainer concern and is not a v1.0.0 gate.
 
 **What's already running in CI/CD**, verified directly against `.github/workflows/`:
 - `ci.yaml` validate job: Helm dependency builds, `helm lint` and `helm template` (both prod and dev values), inline-image convention (`validate-images`), secret scan (`detect-secrets` baseline-gated), ShellCheck on the bootstrap scripts, YAML/JSON sanity checks, and `yamllint` as a non-blocking extra check.
@@ -66,20 +66,20 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 
 ### Phase 1 — Foundation ✅ Complete
 
-- [x] Bootstrap script: empty cluster → ArgoCD → Vault → apps
+- [x] Bootstrap script: ArgoCD prerequisite → repository App-of-Apps → platform and user apps
 - [x] Vault (Raft, TLS, auto-unseal) — **built, then frozen and paused**; it is not a v1.0.0 deliverable. See [Vault return (ADR-017)](#vault-return-adr-017) under v2.0.
 - [x] External Secrets Operator with per-service ClusterSecretStores — installed, but **disabled by default** alongside Vault (`eso.enabled: false`, ADR-017). The default secrets path is SOPS + age.
 - [x] cert-manager for automated TLS
 - [x] Tailscale operator with secure ingress (no public ports)
 - [x] ArgoCD with custom health checks
-- [x] Longhorn as distributed storage (wave 0)
+- [x] Longhorn as distributed storage (wave -1)
 - [x] Prometheus + Grafana + Loki
 - [x] External RustFS as S3-compatible storage (Loki + Velero buckets)
 - [x] Architecture Decision Records (ADRs)
 
 ### Phase 2 — Automation & Observability ✅ Complete
 
-- [x] Monitoring stack deployed (Prometheus + Grafana + Loki + Alloy — Alloy `chart 1.12.1` DaemonSet via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to Loki gateway; stateless, RBAC auto-created; replaces Promtail — deprecated)
+- [x] Monitoring stack deployed (Prometheus + Grafana + Loki + Alloy — Alloy `chart 1.14.0` DaemonSet via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to Loki gateway; stateless, RBAC auto-created; replaces Promtail — deprecated)
 - [x] Dashboards reachable via Tailscale ingress (one device per app, each served at `/` root — ADR-018; Grafana at `https://grafana.lonk-mirfak.ts.net/`, Prometheus at `https://prometheus.lonk-mirfak.ts.net/`; Loki datasource with `X-Scope-OrgID: fake`, Explore + LogQL)
 - [x] CI pipeline — `ci.yaml` (validate job: lint, render, image-convention, secret scan, ShellCheck, sanity checks + security jobs: Trivy images + misconfig, SARIF, weekly cron); deploys moved to pure ArgoCD pull — former `deploy.yaml` removed (see [CI/CD](./ci-cd.md))
 - [x] Renovate — weekly updates with mandatory manual review for critical components (Vault, Longhorn, cert-manager) and grouped automerge for the rest
@@ -89,17 +89,17 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 - [x] Longhorn — distributed block storage
 - [x] External RustFS — S3-compatible object storage
 - [x] Loki → RustFS integration for centralized logging (SingleBinary + gateway, bucket `loki`)
-- [x] Velero — **automated backup** (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 02:00, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`) — deployed and running. Vault is excluded by policy; its hourly protection is the Longhorn `vault-hourly-snapshot` RecurringJob, not a Velero schedule. **Manual restore executed** (immich pilot, Oct 2026) and working after the runbook fixes; the formal drill with RTO/RPO evidence is deferred to v2.0. See [What blocks v1.0.0](#what-blocks-v100).
+- [x] Velero — **automated backup** (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 18:00 UTC, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.1` / app `1.18.2`) — deployed and running. Vault is excluded by policy; its hourly protection is the Longhorn `vault-hourly-snapshot` RecurringJob, not a Velero schedule. **Manual restore executed** (immich pilot, Oct 2026) and working after the runbook fixes; the formal drill with RTO/RPO evidence is deferred to v2.0. See [What blocks v1.0.0](#what-blocks-v100).
 
-### Phase 4 — Hardening & Developer Experience (in progress, v1.0)
+### Phase 4 — Hardening & Developer Experience ✅ Complete
 
-Remaining scope for v1.0.0. The Cilium CNI (breaking change at the infrastructure layer) is already deployed.
+Scope closed for v1.0.0. The Cilium CNI (breaking change at the infrastructure layer) is deployed.
 
 **CNI (v1.0.0):**
-- [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) — NetworkPolicy enforcement, Hubble observability, eBPF kubeProxyReplacement. Every namespace this repo deploys a workload into has a gated policy; namespaces owned by the provisioning layer do not: see [Policy coverage](#policy-coverage-adr-014).
+- [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014) — NetworkPolicy enforcement, Hubble observability, eBPF kubeProxyReplacement. Every enabled first-party workload namespace has a gated policy; namespaces running upstream charts (cert-manager, cnpg-system) are owned by the provisioning layer: see [Policy coverage](#policy-coverage-adr-014).
 
-**Security hardening (requires Cilium, planned for v1.0.0):**
-- [x] Container image vulnerability scanning (Trivy) integrated into CI — fail-closed `Security` workflow (digest-pinned first-party images block on HIGH/CRITICAL outside `.trivyignore`; upstream subchart images advisory; deploy gated on Security + Validate)
+**Security hardening (requires Cilium, v1.0.0):**
+- [x] Container image vulnerability scanning (Trivy) integrated into CI — fail-closed security jobs (digest-pinned first-party images block on HIGH/CRITICAL outside `.trivyignore`; upstream subchart images advisory; CI is validation and scan only, deployment is ArgoCD pull)
 - [x] Git secrets detection (`detect-secrets`) — pre-commit hook + `.secrets.baseline` (audited) + CI step, fails on new secrets
 
 **Developer experience (v1.0):**
@@ -174,7 +174,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 ### Compliance & policy
 
 - Pod Security Admission `restricted` rollout — 6 infra namespaces stay `privileged` by exception (Longhorn, monitoring, etc.); homepage is restricted-ready pilot — moved from v1, requires full project to validate
-- NetworkPolicy gap-closing & hardening — per-namespace allows exist for every namespace this repo deploys a workload into ([Policy coverage](#policy-coverage-adr-014)); the remaining hardening work — Vault Raft 8201 audit, tightening broad allows — stays here. Must re-validate with every new app.
+- NetworkPolicy gap-closing & hardening — per-namespace allows exist for every first-party workload namespace ([Policy coverage](#policy-coverage-adr-014)); the remaining hardening work — Vault Raft 8201 audit, tightening broad allows — stays here. Must re-validate with every new app.
 - Security architecture documentation (minimal threat model, attack surface, incident response) — moved from v1
 - Kyverno — admission-time policy enforcement (policy-as-code)
 - CIS Benchmark — automated Kubernetes security validation
@@ -203,7 +203,7 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 
 ### Documentation & onboarding
 
-- Customization guide refreshed (current `platform/*.yaml` layout + real wave table) and tested end-to-end — moved from v1, waits until the app set stabilizes (v2 changes ingress)
+- [x] Customization guide refreshed for the current `platform/*.yaml` layout and wave table (Oct 2026) — the end-to-end fork test still waits for the v2 ingress change
 
 ---
 
@@ -214,11 +214,11 @@ Reduce Tailscale as a single point of trust and cut tailnet sprawl while keeping
 - [x] Zero-trust ingress via Tailscale
 - [x] Longhorn + RustFS (external S3)
 - [x] Prometheus + Grafana + Loki + Alloy (DaemonSet log collector)
-- [x] Velero — **automated backup** (Wave 0, RustFS S3 `velero-homelab`, chart `12.2.0` / app `1.18.2`)
+- [x] Velero — **automated backup** (Wave 0, RustFS S3 `velero-homelab`, chart `12.2.1` / app `1.18.2`)
 - [x] Cilium CNI (eBPF, Gateway API, CiliumNetworkPolicy) — Cilium 1.20.1 + Gateway API 1.2.3 (ADR-014)
 - [x] Validation CI (GitHub Actions)
 - [x] Git secrets gate — `detect-secrets` hook + baseline + CI step
-- [x] Trivy in CI (fail-closed `Security` workflow for digest-pinned images; deploy gated on Security + Validate) + advisory misconfig scans, SARIF
+- [x] Trivy in CI (fail-closed `Security` workflow for digest-pinned images; deployment remains ArgoCD pull) + advisory misconfig scans, SARIF
 - [x] Real application examples (Homepage digest-pinned, wave 3 `apps/homepage`; Immich on CloudNativePG, wave 5; Nextcloud on CloudNativePG + shared Valkey, wave 6)
 - [x] Architecture Decision Records
 
@@ -236,11 +236,11 @@ Nothing else is open for v1.0.
 **Planned for v2.0:**
 - [ ] Formal Velero restore drill (RTO/RPO validation) — deferred from v1.0; clean-cluster restore with captured evidence + runbook update
 - [ ] Vault return — re-enable Vault/ESO under ADR-017 (flag flip + restore from the frozen archive)
-- [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 10→2 devices — 9 per-app `Ingress`es merged into `gateway-envoy`; MagicDNS kept, own-domain split DNS deferred)
+- [ ] Decoupling & vendor-agnostic ingress — Gateway API BYOD (Envoy Gateway, `GatewayClass: tailscale`; 9 per-app `Ingress`es → 1 `gateway-envoy` device; MagicDNS kept, own-domain split DNS deferred)
 - [ ] Compliance & policy (PSA restricted rollout, NetworkPolicy hardening, threat-model doc, Kyverno, CIS Benchmark, RBAC audit, compliance dashboard)
-- [ ] Documentation & onboarding (customization guide refresh + e2e)
+- [ ] Documentation & onboarding (end-to-end fork validation after the v2 ingress change; the customization guide refresh is complete)
 - [ ] Observability & audit (centralized audit logging)
-- [ ] Supply chain & image security (supply chain hardening + Trivy Operator)
+- [ ] Supply chain & image security (supply chain hardening; Trivy Operator is already deployed and tracked above)
 - [ ] Automation (secrets rotation via CronJob)
 - [ ] Python automation & image security (Ops CLI, infrastructure tests, observability exporter, compliance scanning)
 

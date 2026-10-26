@@ -122,7 +122,7 @@ velero:
     features: ""
 
     # Repository maintenance Jobs GC — native Velero knob (verified against the
-    # vendored subchart velero 12.2.0: values `configuration.repositoryMaintenanceJob`
+    # vendored subchart velero 12.2.1: values `configuration.repositoryMaintenanceJob`
     # + template repo-maintenance-configmap.yaml + `--repo-maintenance-job-configmap`
     # server arg in deployment.yaml). The upstream default happens to be 3 too —
     # pinned here so a subchart bump cannot silently lift the cap. Velero prunes

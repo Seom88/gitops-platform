@@ -18,7 +18,7 @@ Survival storage is external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Veler
 
 Chart `platform/velero`, namespace `velero`. BSL `default`: bucket `velero-homelab`, prefix `velero/`.
 
-Schedule `daily-full` — `0 2 * * *`, TTL `720h`:
+Schedule `daily-full` — `0 18 * * *`, TTL `720h`:
 
 | Includes | Excludes |
 |---|---|
@@ -45,7 +45,7 @@ If it fails with `Permission denied` in `bootstrap/`: `chmod +x bootstrap/*.sh` 
 
 ### Step 1 — Freeze GitOps
 
-Every `Application` runs `automated: {prune, selfHeal}`: left alive, it reverts whatever the restore writes mid-flight (observed: CNPG killing pods with `FindingCluster Unknown` while Velero was still in `restore-wait`). A `deny` window on the `default` project — where the 12 apps live, and which is not in Git so nothing reverts it — freezes all syncs, automatic and manual, leaving UI and health alive:
+Every `Application` runs `automated: {prune, selfHeal}`: left alive, it reverts whatever the restore writes mid-flight (observed: CNPG killing pods with `FindingCluster Unknown` while Velero was still in `restore-wait`). A `deny` window on the `default` project — where the applications live, and which is not in Git so nothing reverts it — freezes all syncs, automatic and manual, leaving UI and health alive:
 
 ```bash
 # ArgoCD login: `just pf-argocd` in another terminal, password from `just argocd-password`.
@@ -62,7 +62,7 @@ Single-app alternative (proven on `immich`, Oct 2026): instead of the project wi
 
 ### Step 2 — Pause backups and quiesce workloads
 
-The `02:00` `daily-full` must not fire mid-restore (snapshot of half-restored volumes + contention with the node-agent):
+The `18:00` `daily-full` must not fire mid-restore (snapshot of half-restored volumes + contention with the node-agent):
 
 ```bash
 velero schedule pause daily-full

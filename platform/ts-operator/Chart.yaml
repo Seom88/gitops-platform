@@ -1,6 +1,6 @@
 apiVersion: v2
 name: ts-operator
-description: Tailscale Kubernetes operator (1.102.3) — wave -1 healthy gate for platform ingresses
+description: Tailscale Kubernetes operator (1.104.1) — wave -2 healthy gate for platform ingresses
 type: application
 version: 1.1.0
 appVersion: "1.96.5"

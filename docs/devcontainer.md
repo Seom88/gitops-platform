@@ -1,6 +1,6 @@
 # Devcontainer — Isolated AI Agent Environment
 
-A Podman devcontainer for running AI coding agents (opencode, gentle-ai) against this repository with a deliberately restricted view of the world. Design rationale: [ADR-025](adrs/025-devcontainer-ai-agents.md).
+A Podman devcontainer for running AI coding agents (opencode, gentle-ai) against this repository with a deliberately restricted view of the world. Design rationale: [ADR-026](adrs/026-devcontainer-ai-agents.md).
 
 ## Security model
 

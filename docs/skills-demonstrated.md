@@ -1,6 +1,6 @@
 # Skills Demonstrated
 
-This document outlines the technical and operational skills demonstrated by the `gitops-platform` project, with specific evidence and links to implementation details.
+This document outlines the technical and operational skills demonstrated by the `gitops-platform` project, with specific evidence and links to implementation details. It is a **personal homelab** running on one mini PC — not a demo — and every claim below points to the code, runbook or decision behind it.
 
 ---
 
@@ -20,32 +20,32 @@ This document outlines the technical and operational skills demonstrated by the 
 - **Multi-environment support** — `values.yaml` (prod) and `values-dev.yaml` (dev branch) for declarative environment differences
 
 **What Recruiters See:**
-You understand how to build systems that scale. This isn't just installing tools — it's composing them intelligently with dependencies, health checks, and safety gates.
+You understand how to compose a platform from independently operated layers. This is not just installing tools — it is managing dependencies, health checks, safety gates and the explicit limits of a small single-node deployment.
 
 ---
 
 ## 🔐 Secrets Management & Security
 
 **Skills:**
-- HashiCorp Vault HA operations and design
+- HashiCorp Vault design (paused — ADR-017)
 - Kubernetes auth methods
 - SOPS + age encryption in git (default secrets path — ADR-017)
 - External Secrets Operator (paused with Vault — ADR-017)
-- Secret rotation and lifecycle management
+- Secret lifecycle management (automated rotation remains planned)
 - Least-privilege access controls (RBAC, per-service ClusterSecretStores)
 - Zero-trust networking principles
 - TLS certificate automation
 
 **Evidence:**
-- **Vault HA Setup (paused, ADR-017)** — 3-node Raft cluster with TLS, auto-unseal via CronJob; chart frozen in `main`, Applications gated on `vault.enabled: false` (server replica count currently 1 per ADR-019). SOPS + age is the live secrets path. See [`platform/vault/templates/`](../platform/vault/templates/) and [`bootstrap/init-sops.sh`](../bootstrap/init-sops.sh)
-- **External Secrets Operator (paused, ADR-017)** — Per-service ClusterSecretStores with sync-wave ordering; gated on `eso.enabled: false`. See [`platform/vault/templates/clustersecretstore.yaml`](../platform/vault/templates/clustersecretstore.yaml)
-- **Kubernetes Auth** — Vault auth configured per namespace. Bootstrap script handles initial setup at [`bootstrap/init-gitops.sh`](../bootstrap/init-gitops.sh) (lines for auth method config)
-- **Auto-Unseal** — CronJob that unseals Vault on node restart (raft recovery). See [`platform/vault/templates/autounseal-cronjob.yaml`](../platform/vault/templates/autounseal-cronjob.yaml)
+- **Vault design and controlled deferral (ADR-017)** — Raft design with TLS and a Deployment-based auto-unseal controller (1 replica on this single node); chart frozen in `main`, Applications gated on `vault.enabled: false` (server replica count currently 1 per ADR-019). SOPS + age is the live secrets path. See [`platform/vault/templates/`](../platform/vault/templates/) and [`bootstrap/init-sops.sh`](../bootstrap/init-sops.sh)
+- **External Secrets Operator (paused, ADR-017)** — Per-service ClusterSecretStores with sync-wave ordering; gated on `eso.enabled: false`. See [`platform/vault/templates/eso/cluster-store-monitoring.yaml`](../platform/vault/templates/eso/cluster-store-monitoring.yaml)
+- **Kubernetes Auth (paused path)** — Vault auth is configured per namespace in the frozen Vault/ESO design. The live deployment uses SOPS + age instead; the bootstrap path only configures Vault when it is re-enabled.
+- **Auto-Unseal** — `vault-autounseal` Deployment that watches Vault pods and unseals them after a restart. See [`platform/vault/templates/unseal/deployment-autounseal.yaml`](../platform/vault/templates/unseal/deployment-autounseal.yaml)
 - **Cert-Manager Integration** — TLS certificates issued and renewed automatically for Vault and services. See [`platform/vault/templates/`](../platform/vault/templates/)
 - **Tailscale Zero-Trust** — Mesh VPN for secure ingress without exposing ports. See [`platform/ts-operator/`](../platform/ts-operator/) and ADR-001
 
 **What Recruiters See:**
-You can design and operate production secrets management systems. Vault is enterprise-grade; implementing it from scratch (not just installing) shows deep understanding of security patterns.
+You can ship a working secrets path and know when not to over-engineer it. SOPS + age is encrypted-in-git, applied out-of-band, and CI never holds a cluster credential; Vault was designed, built and deliberately paused when its operational cost outweighed the need.
 
 ---
 
@@ -89,10 +89,10 @@ You understand GitOps as a paradigm, not just a tool. Sync-wave ordering and hea
 **Evidence:**
 - **Tailscale Integration** — Mesh VPN operator (wave `-2`) + per-app Ingresses owned by each chart via `tailscaleIngress` values (one MagicDNS device per app, each at `/` root). See [`platform/ts-operator/`](../platform/ts-operator/) and ADRs 001/018
 - **Platform Ingress Templates** — Per-chart Ingress pattern (each chart renders its own `tailscale-ingress.yaml` → own device; orphan `argocd`/`hubble` live in `ts-operator/templates/infra/`). See [`platform/vault/templates/tailscale-ingress.yaml`](../platform/vault/templates/tailscale-ingress.yaml)
-- **Network Policies** — Identity-aware `CiliumNetworkPolicy` (`cilium.io/v2`) across the 10 charts that render policies (`vault`, `velero`, `longhorn`, `monitoring`, `trivy-operator`, `ts-operator`, `valkey`, `homepage`, `immich`, `nextcloud`) with allow-dns / allow-egress / allow-ingress (eBPF, kubeProxyReplacement strict, Hubble 4244/4245). See [`platform/*/templates/cilium-networkpolicies.yaml`](../platform/vault/templates/cilium-networkpolicies.yaml) (each gated by `ciliumNetworkPolicy.enabled=true`; Cilium 1.20.1, Gateway API 1.2.3). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` retained for non-Cilium clusters
-- **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (SingleBinary + external RustFS S3 + gateway) + Alloy (stateless DaemonSet log collector via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`; no PVC, RBAC auto-created; replaces Promtail — deprecated). See [`platform/monitoring/`](../platform/monitoring/) and [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) (`loki` + `alloy` blocks, chart `alloy:1.12.1`)
-- **Vault Metrics Export** — Prometheus endpoints for Vault health, sealed state, replication status
-- **Log Aggregation** — Loki with external RustFS S3 backend for centralized logging, shipped by Alloy. Grafana Explore + LogQL and dashboard Logs panels. See [`platform/monitoring/templates/loki-datasource.yaml`](../platform/monitoring/templates/loki-datasource.yaml)
+- **Network Policies** — Identity-aware `CiliumNetworkPolicy` (`cilium.io/v2`) across the 11 charts that render policies (`vault`, `velero`, `longhorn`, `monitoring`, `trivy-operator`, `ts-operator`, `valkey`, `kepler`, `homepage`, `immich`, `nextcloud`; kepler uses the singular `cilium-networkpolicy.yaml`) with allow-dns / allow-egress / allow-ingress (eBPF, kubeProxyReplacement strict, Hubble 4244/4245). See [`platform/*/templates/cilium-networkpolicies.yaml`](../platform/vault/templates/cilium-networkpolicies.yaml) (each gated by `ciliumNetworkPolicy.enabled=true`; Cilium 1.20.1, Gateway API 1.2.3). Legacy `networking.k8s.io/v1` `networkpolicy.yaml` retained for non-Cilium clusters
+- **Monitoring Stack** — Prometheus (metrics), Grafana (dashboards), Loki (SingleBinary + external RustFS S3 + gateway) + Alloy (stateless DaemonSet log collector via `discovery.kubernetes` → `loki.source.kubernetes` → `loki.write` to `http://monitoring-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push` with `X-Scope-OrgID: fake`; no PVC, RBAC auto-created; replaces Promtail — deprecated). See [`platform/monitoring/`](../platform/monitoring/) and [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) (`loki` + `alloy` blocks, chart `alloy:1.14.0`)
+- **Vault Metrics (when re-enabled)** — Prometheus endpoints for Vault health, sealed state, replication status
+- **Log Aggregation** — Loki with external RustFS S3 backend for centralized logging, shipped by Alloy. Grafana Explore + LogQL and dashboard Logs panels. See [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml)
 
 **What Recruiters See:**
 Zero-trust isn't just a buzzword for you — you've implemented it. Metrics collection and observability show maturity in ops thinking.
@@ -107,17 +107,35 @@ Zero-trust isn't just a buzzword for you — you've implemented it. Metrics coll
 - S3-compatible object storage architecture
 - Persistent volume management
 - Snapshot and backup strategies
-- HA database design (Raft consensus)
+- Stateful database design (CloudNativePG, Barman PITR) and single-node tradeoff analysis
 
 **Evidence:**
 - **Longhorn Deployment** — Wave -1 app with CSI readiness gates. See [`gitops/templates/platform/-1-longhorn.yaml`](../gitops/templates/platform/-1-longhorn.yaml) and ADR-005
 - **Longhorn Node Prep** — Nodes provide `iscsi-tools` and kubelet extraMounts for `/var/lib/longhorn`
-- **External S3** — RustFS as externalized object storage for backups and logs. See [`docs/rustfs-iam.md`](../rustfs-iam.md)
-- **Vault Raft HA (paused, ADR-017)** — 3-node consensus design for high-availability secrets; currently gated off (single-replica server on the 1-node cluster, ADR-019). See [`platform/vault/templates/statefulset.yaml`](../platform/vault/templates/statefulset.yaml)
+- **External S3** — RustFS as externalized object storage for backups and logs. See [`docs/rustfs-iam.md`](./rustfs-iam.md)
+- **Vault Raft (paused, ADR-017)** — consensus design retained in the chart; currently gated off and scaled to 1 replica because the cluster is single-node (ADR-019). See [`platform/vault/values.yaml`](../platform/vault/values.yaml)
 - **Persistent Volume Management** — Applications using Longhorn PVCs for state. See Vault StatefulSet configuration
 
 **What Recruiters See:**
-You understand how stateful workloads actually work in Kubernetes. CSI, snapshots, and HA quorum aren't theoretical.
+You understand how stateful workloads actually work in Kubernetes. CSI, snapshots, replication and quorum tradeoffs aren't theoretical here.
+
+---
+
+## 🧪 Disaster Recovery & Runbooks
+
+**Skills:**
+- Backup design across three layers (Velero, Longhorn, CloudNativePG/Barman)
+- Restore runbooks and evidence-based verification
+- Failure analysis and post-incident fixes
+- Honest gap tracking
+
+**Evidence:**
+- **Manual restore executed** — immich pilot, Oct 2026; the fixes and lessons are captured in [`docs/cluster-recovery.md` §6](./cluster-recovery.md#6-lessons-learned-immich-pilot-oct-2026).
+- **Three data paths** — Velero `daily-full` to RustFS S3 (velero-homelab), Longhorn snapshots, and CloudNativePG WAL/Barman PITR for PostgreSQL.
+- **Known gap** — the formal clean-cluster RTO/RPO drill is deferred to v2.0 and documented as a gap, not hidden. See [`docs/roadmap.md`](./roadmap.md#formal-restore-drill-deferred-from-v10).
+
+**What Recruiters See:**
+Backups are easy to claim and hard to prove. You ran a restore, wrote down what broke, fixed the runbook, and kept the remaining gap visible.
 
 ---
 
@@ -126,7 +144,7 @@ You understand how stateful workloads actually work in Kubernetes. CSI, snapshot
 **Skills:**
 - GitHub Actions workflow design
 - Validation and testing strategies
-- Continuous deployment from CI success (no manual approval gate)
+- GitOps pull-based delivery (CI never touches the cluster)
 - Dependency management with Renovate
 - Automated testing and lint checks
 - Local mirrors of CI logic
@@ -137,10 +155,47 @@ You understand how stateful workloads actually work in Kubernetes. CSI, snapshot
 - **GitOps pull deploys** — ArgoCD root app self-manages (automated + prune + selfHeal); break-glass bootstrap/secrets via `just init-prod` / `just secrets-apply`. See [`docs/ci-cd.md`](./ci-cd.md)
 - **Renovate Configuration** — Weekly dependency updates with manual review for critical components. See [`renovate.json`](../renovate.json)
 - **Local Validation** — `just validate` / `just validate-images` / `just scan-config` mirror CI checks offline. See [`justfile`](../justfile)
-- **Dry-Run** — `--validate` flag on bootstrap script for preview. See [`bootstrap/init-gitops.sh`](../bootstrap/init-gitops.sh)
+- **Read-only check** — `--check` on the bootstrap script verifies the root Application without applying; `--force` reapplies. See [`bootstrap/init-gitops.sh`](../bootstrap/init-gitops.sh)
 
 **What Recruiters See:**
 You know how to build safe, testable deployment pipelines. Fail-closed image scanning, secrets detection, and local CI mirrors show production thinking.
+
+---
+
+## 🤖 AI-Agent Isolation & Least Privilege
+
+**Skills:**
+- Container-based development environments (Podman, devcontainer CLI)
+- Least-privilege Kubernetes ServiceAccounts and RBAC
+- Secret masking and mount hygiene
+- Reproducible toolchains (digest-pinned images, pinned CLIs)
+- Guardrails for autonomous agents
+
+**Evidence:**
+- **Podman devcontainer** — `.devcontainer/` runs the repo with `.env` and the repo-root kubeconfig masked at `/dev/null`; SOPS age keys and the prod admin kubeconfig are never mounted; no container socket; the only prod credential is the read-only `dev-agents` ServiceAccount (`get`/`list`/`watch` + `pods/log`, no Secrets, exec, port-forward or writes). See [ADR-026](./adrs/026-devcontainer-ai-agents.md) and [`docs/devcontainer.md`](./devcontainer.md).
+- **Two staged kubeconfigs** — `dev-kubeconfig.sh` resolves the control-plane Tailscale IP directly, embeds the cluster CA, refuses `insecure-skip-tls-verify`, and stages prod (read-only) plus dev (full) contexts.
+- **Reproducible toolchain** — digest-pinned Debian 13 base, pinned kubectl/helm/velero/k9s/Node/engram versions, with engram built in a throwaway Go stage.
+
+**What Recruiters See:**
+You can let AI agents work in your repo without handing them the production cluster. That is threat modelling turned into defaults.
+
+---
+
+## ⚡ Energy-Aware Operations
+
+**Skills:**
+- Capacity planning on constrained hardware
+- Energy telemetry (Kepler RAPL) and right-sizing
+- Scheduling around power availability
+- Cost and consumption tradeoffs
+
+**Evidence:**
+- **Solar-aware backup window** — `daily-full` runs at 18:00 UTC (13:00 Bogotá) inside the solar window; 200 W panel + 768 Wh battery. See [ADR-025](./adrs/025-solar-energy-aware-operations.md).
+- **Kepler** — wave-3 exporter scraping RAPL power every 30 s, dashboard + ServiceMonitor, resources capped at 1 core / 256 MiB.
+- **Right-sizing** — Longhorn reservation cut 30% → 15%, Prometheus 15 → 12 GiB, Loki 5 → 2 GiB on a 32 GiB node.
+
+**What Recruiters See:**
+You can operate within a real power and memory budget, measure consumption, and tune requests instead of throwing hardware at the problem.
 
 ---
 
@@ -155,7 +210,7 @@ You know how to build safe, testable deployment pipelines. Fail-closed image sca
 
 **Evidence:**
 - **Helm Chart Structure** — Each platform component follows standard chart layout with templates, values overrides. See [`platform/`](../platform/)
-- **Kustomization** — Values-driven templating for env-specific overrides. See `values.yaml` vs `values-dev.yaml`
+- **Helm values overlays** — One chart, prod/dev overrides via `values.yaml` and `values-dev.yaml` (no Kustomize layer)
 - **Reusable Templates** — Ingress pattern, certificate templates, NetworkPolicy templates reused across apps
 - **ADR Documentation** — Each architectural decision documented with rationale. See [`docs/adrs/`](./adrs/)
 
@@ -174,10 +229,10 @@ You write code that's maintainable and reusable. This isn't spaghetti configurat
 - Clear explanation of complex systems
 
 **Evidence:**
-- **Architecture Decision Records** — 24 ADRs documenting decisions and re-entry conditions (superseded ones kept: ADR-004 → ADR-010, ADR-008 → ADR-024, ADR-012 → ADR-018). See [`docs/adrs/`](./adrs/)
+- **Architecture Decision Records** — 26 ADRs documenting decisions and re-entry conditions (superseded ones kept: ADR-004 → ADR-010, ADR-008 → ADR-024, ADR-012 → ADR-018). See [`docs/adrs/`](./adrs/)
 - **Getting Started Guide** — End-to-end walkthrough for new users. See [`docs/getting-started.md`](./getting-started.md)
 - **Customization Guide** — Forking instructions with dependency management. See [`docs/customization-guide.md`](./customization-guide.md)
-- **Secrets Structure** — Documentation of Vault secret organization. See [`docs/secrets-structure.md`](./secrets-structure.md)
+- **Secrets Structure** — SOPS-first secret organization, with the optional Vault path documented separately. See [`docs/secrets-structure.md`](./secrets-structure.md)
 - **README Quality** — Clear, structured, links to deeper docs. See main [README.md](../README.md)
 
 **What Recruiters See:**
@@ -198,14 +253,14 @@ You can explain technical decisions clearly. This matters for team communication
 - **Roadmap** — Clear phases with completion tracking. See [`docs/roadmap.md`](./roadmap.md)
 - **Changelog** — Detailed version history. See [`CHANGELOG.md`](../CHANGELOG.md)
 - **Phase 5 Vision** — Post-v1.0 Python automation planned with clear rationale
-- **ADR Evolution** — Decisions revisited and updated across 24 records (e.g., ADR-005: Longhorn back to GitOps; ADR-016 abandoned after the 2-node trial; ADR-012 superseded by ADR-018's per-app ingress)
+- **ADR Evolution** — Decisions revisited and updated across 26 records (e.g., ADR-005: Longhorn back to GitOps; ADR-016 abandoned after the 2-node trial; ADR-012 superseded by ADR-018's per-app ingress)
 
 **What Recruiters See:**
 This isn't a one-off project. You're building for growth and learning continuously.
 
 ---
 
-## � Project Maturity & Roadmap
+## 📈 Project Maturity & Roadmap
 
 **Current Status:** v1.0.0 is **not tagged**. Phases 1-4 are deployed; nothing blocks v1.0.0 (the formal Velero restore drill is deferred to v2.0 by decision). The authoritative release state is in [`docs/roadmap.md` § What blocks v1.0.0](./roadmap.md#what-blocks-v100). This file does not carry its own version string.
 

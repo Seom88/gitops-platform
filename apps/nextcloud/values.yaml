@@ -1,5 +1,5 @@
 # Nextcloud on Kubernetes — homelab wiring (Seom88).
-# Upstream chart: nextcloud/nextcloud 9.4.0 (appVersion 35.0.1), apache flavor.
+# Upstream chart: nextcloud/nextcloud 9.4.1 (appVersion 35.0.2), apache flavor.
 # DB: CloudNativePG (initdb; recovery branch templated but gated off) — ADR-022.
 # Cache/locking: shared platform/valkey on redis dbindex 1 (ADR-021).
 # Exposure: per-app Tailscale Ingress (ADR-018) — templates/tailscale-ingress.yaml.
@@ -26,7 +26,7 @@ backup:
   # Tailnet IP of the RustFS host (S3 API :443). FQDN-independent egress
   # fallback (Cilium toCIDR, velero pattern) — same literal as immich.
   tailnetIp: "100.89.39.31"
-  # 01:55 UTC daily, ahead of Velero `daily-full` (02:00). Barman first leaves
+  # 01:55 UTC daily, comfortably ahead of Velero `daily-full` (18:00 UTC). Barman first leaves
   # an orphaned file recoverable on disk; Velero first would capture the row
   # without the file.
   schedule: "55 1 * * *"

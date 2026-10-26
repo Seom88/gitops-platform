@@ -536,7 +536,7 @@ backup:
   # today 03-monitoring.yaml passes no parameters, so this literal remains the
   # source. If the RustFS host changes, update both.
   tailnetIp: "100.89.39.31"
-  # 01:55 UTC daily, ahead of Velero `daily-full` (02:00). Nothing coordinates
+  # 01:55 UTC daily, comfortably ahead of Velero `daily-full` (18:00 UTC). Nothing coordinates
   # the two backups, so the gap between them is only safe in one direction:
   # Barman first leaves an orphaned file recoverable on disk; Velero first
   # captures the database row without the file, and the bytes are gone.

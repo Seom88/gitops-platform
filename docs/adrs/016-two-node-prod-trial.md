@@ -2,7 +2,7 @@
 
 **Status:** Abandoned (rolled back to 3w on 2026-09-21) · **Date:** 2026-09-16 · **Deciders:** Seom88 · **Related:** [ADR-015](015-lean-cpu-sizing-homelab-vs-datacenter.md)
 
-> **Outcome:** trial reverted. 2w saved some RAM but no meaningful energy saving, and the extra RAM is not needed right now. Prod stays on 3 workers (Vault 3 replicas, `longhorn-prod` 3 replicas).
+> **Historical outcome:** trial reverted. 2w saved some RAM but no meaningful energy saving, and the extra RAM is not needed right now. The later single-node migration in [ADR-019](019-single-node-bare-metal-migration.md) supersedes this topology; the 3-worker configuration below is historical and is not the current cluster state.
 
 Run prod on 2 workers instead of 3 to save resources. ADR-015 covered CPU sizing; this ADR covers topology and HA only.
 

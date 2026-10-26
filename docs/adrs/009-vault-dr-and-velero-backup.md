@@ -5,7 +5,7 @@
 > [!NOTE]
 > **Addendum.** The dedicated Vault runbook this ADR pointed to has been deleted: it described a multi-VM Raft topology that no longer exists ([ADR-019](019-single-node-bare-metal-migration.md), and Vault is now paused per [ADR-017](017-vault-paused-sops-default.md)), so every procedure in it was unrunnable as written.
 >
-> §Decision 1 survives and still governs: never restore divergent Raft logs, and use `vault operator raft snapshot save/restore` for atomic point-in-time recovery — on a single replica, restore the last `raft-*.snap` from the frozen archive and never attempt a VM-level replay. §Decision 3 (Velero as an external-RustFS complement) is likewise unchanged. The restore procedure is [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook). The version pins and wave numbers in the body are history, not current state.
+ > §Decision 1 survives and still governs: never restore divergent Raft logs, and use `vault operator raft snapshot save/restore` for atomic point-in-time recovery — on a single replica, restore the last `raft-*.snap` from the frozen archive and never attempt a VM-level replay. §Decision 3 (Velero as an external-RustFS complement) is likewise unchanged. The restore procedure is [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-step-by-step). The version pins and wave numbers in the body are history, not current state.
 
 ## Context
 
@@ -98,7 +98,7 @@ Velero is wave `0` (with `longhorn`), before `vault` wave `1` — guarantees `Ba
 
 4. **Bucket init:** wave `-1` Job `velero-bucket-init` idempotently creates `velero-homelab` before Velero chart; `Prune=false`.
 
-5. **Runbook location:** superseded. The dedicated Vault runbook described a multi-VM topology that no longer exists; the procedure now lives in [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook) and §Decision 1 above remains the rule it enforced.
+5. **Runbook location:** superseded. The dedicated Vault runbook described a multi-VM topology that no longer exists; the procedure now lives in [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-step-by-step) and §Decision 1 above remains the rule it enforced.
 
 ## Consequences
 
@@ -145,7 +145,7 @@ Velero is wave `0` (with `longhorn`), before `vault` wave `1` — guarantees `Ba
 
 ## References
 
-- Runbook: `docs/runbook-vault-restore.md` — single-leader Proxmox restore + Raft snapshot + Velero complement. Deleted; see §Decision 1 and [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook)**
+- Runbook: `docs/runbook-vault-restore.md` — single-leader Proxmox restore + Raft snapshot + Velero complement. Deleted; see §Decision 1 and [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-step-by-step)**
 - Deep-dive Velero: `docs/cluster-recovery.md` (renamed from `docs/velero.md`) — chicken-egg, bootstrap flow, wave ordering, Job spec, secrets/CI, verification, troubleshooting
 - CI/CD: `docs/ci-cd.md` — `validate.yaml`/`deploy.yaml`, `ensureVeleroCredentials()` summary
 - Precedent: `docs/adrs/004-tailscale-oauth-seed-strategy.md` option A — bootstrap Secret outside Vault/ESO
@@ -154,4 +154,3 @@ Velero is wave `0` (with `longhorn`), before `vault` wave `1` — guarantees `Ba
 - Vault Raft: https://developer.hashicorp.com/vault/docs/enterprise/raft — `operator raft snapshot save/restore`, `join/remove-peer/list-peers`
 - Velero: https://velero.io/docs/ — AWS plugin, `BackupStorageLocation`, `nodeAgent` (restic), `Schedule`
 - Proxmox: https://pve.proxmox.com/wiki/Backup_and_Restore — `vzdump`, `qmrestore`
-

@@ -2,6 +2,9 @@
 
 **Status:** Accepted · **Date:** 2026-10-10 · **Deciders:** Seom88 · **Related:** [ADR-014](014-cilium-cni-and-identity-networkpolicies.md) (zero-trust policies), [ADR-015](015-lean-cpu-sizing-homelab-vs-datacenter.md) (deprecated 2026-10-10), [ADR-018](018-per-app-tailscale-ingress.md) (per-app ingress), [ADR-019](019-single-node-bare-metal-migration.md) (single node), [ADR-021](021-shared-valkey-cache-service.md) (shared cache)
 
+> [!NOTE]
+> **Addendum (2026-10-26).** Current pins: upstream chart `9.4.1`, appVersion `35.0.2`, data PVC `50Gi`. The decision and smoke-test record below refer to the versions and sizing at authoring time.
+
 ## Context
 
 The user asked for Nextcloud on the homelab cluster: files, calendar, contacts and sync clients, exposed only through the tailnet. The substrate already has every moving part this needs — the CloudNativePG operator with two production clusters, the shared Valkey cache from ADR-021 (built explicitly with nextcloud as its second consumer), per-app Tailscale Ingresses, and the Longhorn encrypted storage class. This ADR records how those pieces are wired for nextcloud and which upstream chart form was chosen.
@@ -40,7 +43,7 @@ The user asked for Nextcloud on the homelab cluster: files, calendar, contacts a
 
 ### Negative
 
-- Repo grows to 12 first-party charts / 11 with network policies / 11 namespaces — roadmap, CHANGELOG and the deep-dive docs are updated to match.
+- Repo grows to 13 first-party charts / 11 with network policies / 12 active workload namespaces (including the two upstream chart namespaces) — roadmap, CHANGELOG and the deep-dive docs are updated to match.
 - Single node (ADR-019): 2 CNPG instances give quorum but no node-HA; a node failure still takes the app down. Accepted posture, restated, not changed.
 - Valkey is now a shared failure domain for immich and nextcloud. Cache loss degrades both (queues drain, file locking falls back to the DB), it destroys nothing.
 - The admin password and the backup credentials are namespace-local SOPS secrets that must be encrypted **before commit** (they ship as placeholders in `apps/nextcloud/sops/`).

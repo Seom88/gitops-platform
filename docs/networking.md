@@ -20,7 +20,7 @@
 | Cilium CNI | `1.20.1` | Cluster prerequisite — installed before this repo syncs |
 | Gateway API CRDs | `1.2.3` | Cluster prerequisite — installed before Cilium |
 | Hubble relay | `4244` (gRPC) / `4245` (UI/health) | Cilium + per-chart Tailscale Ingress |
-| Policy API | `cilium.io/v2` (`CiliumNetworkPolicy`) | `platform/*/templates/cilium-networkpolicies.yaml` + `apps/*/templates/` (10 charts) |
+| Policy API | `cilium.io/v2` (`CiliumNetworkPolicy`) | `platform/*/templates/cilium-networkpolicies.yaml` + `apps/*/templates/` (11 charts) |
 
 ## Cluster prerequisites
 
@@ -110,7 +110,7 @@ Cross-namespace to storage is still deny-by-default; only intra-namespace is ope
 ## Verification
 
 ```bash
-# Policies present (10 charts × 3)
+# Policies present (11 charts × 3)
 kubectl get ciliumnetworkpolicies -A
 kubectl get ciliumnetworkpolicies -n vault -o yaml | grep -E "endpointSelector|toFQDNs|toEntities"
 

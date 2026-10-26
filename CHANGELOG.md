@@ -8,7 +8,7 @@ This project has never been released. There is no version tag and no published b
 
 ### Planned (Roadmap)
 
-- **Velero restore drill** — the only item blocking `v1.0.0`. Backup is running; restore is undrilled. See [What blocks v1.0.0](./docs/roadmap.md#what-blocks-v100).
+- **Formal Velero restore drill** — the manual restore path already works (immich pilot, Oct 2026). What remains is a clean-cluster drill with captured RTO/RPO evidence, deferred to v2.0 by decision. Nothing blocks `v1.0.0`. See [What blocks v1.0.0](./docs/roadmap.md#what-blocks-v100).
 - **Vault return (ADR-017)** — re-enable from the frozen archive when dynamic secrets, auto-rotation, or audit become requirements.
 - **Phase 5 — Python automation & image security**: ops CLI (Typer), infrastructure tests (pytest/testinfra), Prometheus exporter, maintenance automation
 - **v2.0 — Gateway API BYOD**: consolidate per-app Tailscale Ingresses onto a single `gateway-envoy` device.
@@ -20,7 +20,7 @@ This project has never been released. There is no version tag and no published b
 **Cluster foundation**
 
 - **App-of-Apps** — ApplicationSets driven by Helm values, platform local/helm split, per-environment values (`values.yaml` / `values-dev.yaml`)
-- **GitOps-only architecture** — ArgoCD and Longhorn installation moved out to the provisioning repo; this repo is a pure App-of-Apps layer consuming cluster prerequisites
+- **GitOps-only architecture** — ArgoCD remains a cluster prerequisite; Longhorn is a first-party wave -1 chart in this repo, and every deploy is ArgoCD pull
 - **Longhorn** — distributed block storage (plus local-path for dev environments)
 - **RustFS (external)** — S3-compatible object storage (LAN/Tailscale), all in one external endpoint; Loki backed by RustFS S3 (the bucket-init Job creates the `loki` bucket itself, so the `loki-backup` key carries object-level verbs plus `s3:CreateBucket` on `arn:aws:s3:::loki`; see `docs/rustfs-iam.md`)
 - **Monitoring stack** — kube-prometheus-stack (Prometheus + Grafana), Loki, and Alloy as a stateless `DaemonSet` log collector
@@ -28,37 +28,43 @@ This project has never been released. There is no version tag and no published b
 - **Kepler Power Monitor Dashboard** — the official kepler-operator "Power Monitor Dashboard" vendored into `platform/monitoring/dashboards/kepler-power-monitor.json`, with template defaults patched for this deployment (`job=kepler`, `node` includeAll) and its ConfigMap following the repo `grafana_dashboard`/`grafana_folder` sidecar convention; the hex dashboard UID audited into `.secrets.baseline` as a `detect-secrets` false positive.
 - **cert-manager** — automated TLS certificates
 - **Tailscale operator** — secure `.tailnet` ingress for platform services, no public ports
-- **Justfile** — task automation: `init-prod`/`init-dev`, port-forwards, status, checks, helm helpers
+- **Justfile** — task automation: `init-prod`/`init-dev`, port-forwards, `status-cluster`, checks, helm helpers
 - **Architecture Decision Records** — decision history with re-entry conditions
 
 **Secrets** — see ADR-017
 
-- **Vault HA** — 3-node Raft with TLS, auto-unseal CronJob, Kubernetes auth, and NetworkPolicies. **Paused, not removed**; the ArgoCD Applications are gated on `vault.enabled`.
+- **Vault (paused)** — the repository retains the frozen Raft/TLS/Kubernetes-auth design and Deployment-based auto-unseal controller. It is **not active by default**: Vault is single-replica on this single-node cluster, and the ArgoCD Applications are gated on `vault.enabled`.
 - **External Secrets Operator** — per-service `ClusterSecretStore`s with sync-wave ordered configuration. **Paused, not removed**; gated on `eso.enabled`.
 - **SOPS + age as the default secrets path** — encrypted-in-git via `<chart>/sops/*.enc.yaml`, `bootstrap/init-sops.sh` + `just secrets-apply`. See `docs/sops.md`.
 
 **Networking** — see ADR-014
 
-- **Cilium 1.20.1 eBPF CNI + Gateway API 1.2.3 + CiliumNetworkPolicy + Hubble** — `ipam: kubernetes`, `kubeProxyReplacement: strict`, `socketLB: hostNamespaceOnly`, `gatewayAPI.enabled`, `cgroup.hostRoot`. Per-namespace `CiliumNetworkPolicy` (gated by `ciliumNetworkPolicy.enabled=true`) with `allow-dns` (kube-dns 53 + `toFQDNs`/`rules.dns`), `allow-egress` (kube-apiserver 443/6443, hubble-relay 4244, intra-ns), `allow-ingress` (intra-ns, tailscale/cluster-gateway, host/remote-node/kube-apiserver probes). Gateway post-DNAT ports 8080/3000/8081. See `docs/networking.md`.
-- **Policy coverage: every namespace this repo deploys a workload into.** The `argocd` namespace is a pre-installed cluster prerequisite and `external-secrets` is an upstream chart, both disabled by default — their policy belongs to the provisioning layer. See [Policy coverage](./docs/roadmap.md#policy-coverage-adr-014).
+- **Cilium 1.20.1 eBPF CNI + Gateway API 1.2.3 + CiliumNetworkPolicy + Hubble** — `ipam: kubernetes`, `kubeProxyReplacement: strict`, `socketLB: hostNamespaceOnly`, `gatewayAPI.enabled`, `cgroup.hostRoot`. Per-namespace `CiliumNetworkPolicy` (gated by `ciliumNetworkPolicy.enabled=true`) with `allow-dns` (kube-dns 53 + `toFQDNs`/`rules.dns`), `allow-egress` (kube-apiserver 443/6443, hubble-relay 4244, intra-ns), `allow-ingress` (intra-ns, Tailscale proxy, host/remote-node/kube-apiserver probes). See `docs/networking.md`.
+- **Policy coverage: every first-party workload namespace.** Eleven charts render a gated `CiliumNetworkPolicy` (kepler uses the singular filename); `cert-manager` and `cnpg-system` run upstream charts, while `argocd` is a pre-installed prerequisite and `external-secrets` is an upstream chart disabled by default — their policy belongs to the provisioning layer. See [Policy coverage](./docs/roadmap.md#policy-coverage-adr-014).
 
 **CI/CD and supply chain**
 
-- **Unified CI (`ci.yaml`)** — `validate.yaml` + `security.yaml` merged into one `CI` workflow (validate + security jobs); `deploy.yaml` gate simplified to a single-workflow lookup. Each push/PR fires 1 CI run + 1 Deploy run instead of 2+2. See `docs/ci-cd.md`.
+- **Unified CI (`ci.yaml`)** — `validate.yaml` + `security.yaml` merged into one `CI` workflow (validate + security jobs). The former `deploy.yaml` was removed entirely: CI never touches the cluster and deployment is pure ArgoCD pull. See `docs/ci-cd.md`.
 - **Local CI parity (T1–T3)** — `just validate-images` and `just scan-config` mirror CI locally; pre-commit gains the `inline-image-convention` hook and `detect-secrets` excludes for `Chart.lock` / `*.enc.yaml`. Trivy image scans stay CI-only.
 - **Trivy Operator (in-cluster)** — `platform/trivy-operator` (wave 3, `sync-only`): continuous scanning every 6h, results as CRDs + Prometheus metrics; complements CI-time Trivy.
 - **detect-secrets** — pre-commit hook + audited `.secrets.baseline` + CI step, fails on new secrets.
 - **Renovate** — weekly updates with mandatory manual review for critical components and grouped automerge for the rest.
 - **Pre-commit fast gates** — `detect-secrets`, `check-yaml`/`check-json`, `yamllint`, `shellcheck`.
 
+**Developer environment (Oct 2026)**
+
+- **Podman devcontainer for AI agents** — `.devcontainer/` with a digest-pinned Debian 13 base, fish/starship, kubectl/helm/velero/k9s, Node/pnpm, Python/uv and engram; `.env` and the repo-root kubeconfig masked at `/dev/null`, no container socket, only `~/.ssh/id_ed25519` mounted read-only, and a read-only `dev-agents` production ServiceAccount. See [ADR-026](./docs/adrs/026-devcontainer-ai-agents.md) (renumbered from 025 to avoid the solar ADR collision) and `docs/devcontainer.md`.
+- **Two staged kubeconfigs** — `dev-kubeconfig.sh` runs on the host before create/start, stages prod (read-only) and dev (full) contexts, resolves the control-plane Tailscale IP directly, embeds the cluster CA, and refuses `insecure-skip-tls-verify` or a `*.ts.net` proxy.
+- **CI tooling** — `HELM_VERSION` bumped to v4.3.1; `actions/checkout@v7` and `azure/setup-helm@v5`.
+
 **Storage and applications**
 
-- **Velero** — automated backup (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` moved from `02:00` (≈21:00 COT, night reserve) to the solar peak `18:00` server-pod UTC = 13:00 America/Bogota — panel output covers the burst, 30d TTL, all namespaces, Longhorn volumes via FsBackup; subchart `12.2.0` / app `1.18.2`). Vault is excluded by policy — Raft restores from Velero corrupt the cluster. **Backup is running; restore is not verified** — no drill has been run. See [What blocks v1.0.0](./docs/roadmap.md#what-blocks-v100) · [ADR-025](./docs/adrs/025-solar-energy-aware-operations.md).
+- **Velero** — automated backup (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` moved from `02:00` (≈21:00 COT, night reserve) to the solar peak `18:00` server-pod UTC = 13:00 America/Bogota — panel output covers the burst, 30d TTL, all namespaces, Longhorn volumes via FsBackup; subchart `12.2.1` / app `1.18.2`). Vault is excluded by policy — Raft restores from Velero corrupt the cluster. **Backup is running; the manual restore path is verified** (immich pilot, Oct 2026). The formal clean-cluster drill remains v2.0. See [What blocks v1.0.0](./docs/roadmap.md#what-blocks-v100) · [ADR-025](./docs/adrs/025-solar-energy-aware-operations.md).
 - **Shared Valkey cache service** — `platform/valkey` (wave 2, `wave-policy: healthy`, namespace `valkey`, PVC 1Gi `longhorn-encrypted`) consumed by immich (redis db 0) and nextcloud (redis db 1); no `requirepass`, isolation via per-namespace Cilium policy generated from a `consumers` list. immich now points at `valkey.valkey.svc.cluster.local` on server + machine-learning, and its bundled `immich-valkey` subchart resources are disabled and pruned. See [ADR-021](./docs/adrs/021-shared-valkey-cache-service.md).
 - **Barman** — Postgres WAL archiving + PITR for stateful app databases.
 - **Homepage** — digest-pinned dashboard (wave 3), tailnet suffix centralized via `myDomain` for dashboard links only.
-- **Immich + CloudNativePG** — `apps/immich` (wave 5) on the `04-cloudnative-pg` operator (wave 4); library PVC 100Gi→30Gi, DB PVCs 5Gi→2Gi each; `existingClaim` double-nesting fix for the `immich.immich` wrapper/subchart values.
-- **Nextcloud** — `apps/nextcloud` (wave 6, `sync-only`): upstream chart `nextcloud/nextcloud 9.4.0` (appVersion 35.0.1, apache flavor, digest-pinned) over a dedicated `nextcloud-database` CNPG cluster (initdb, PG 18.6, Barman to the shared `cnpg-db-backups` bucket with prefix `nextcloud/`), cache + file locking on the shared Valkey (redis `dbindex: 1`), data PVC 8Gi `longhorn-encrypted`, per-app Ingress `nextcloud.lonk-mirfak.ts.net`, and a Homepage entry. See [ADR-022](./docs/adrs/022-nextcloud-on-kubernetes.md).
+- **Immich + CloudNativePG** — `apps/immich` (wave 5) on the cloudnative-pg operator (wave -1); library PVC 100Gi→30Gi, DB PVCs 5Gi→2Gi each; `existingClaim` double-nesting fix for the `immich.immich` wrapper/subchart values.
+- **Nextcloud** — `apps/nextcloud` (wave 6, `sync-only`): upstream chart `nextcloud/nextcloud 9.4.1` (appVersion 35.0.2, apache flavor, digest-pinned) over a dedicated `nextcloud-database` CNPG cluster (initdb, PG 18.6, Barman to the shared `cnpg-db-backups` bucket with prefix `nextcloud/`), cache + file locking on the shared Valkey (redis `dbindex: 1`), data PVC 50Gi `longhorn-encrypted`, per-app Ingress `nextcloud.lonk-mirfak.ts.net`, and a Homepage entry. See [ADR-022](./docs/adrs/022-nextcloud-on-kubernetes.md).
 - **Collabora Online (CODE) on Nextcloud** — the bundled `collabora` subchart enabled (1 replica, HPA off, `collabora/code:25.04.9.4.1`), exposed at `collabora.lonk-mirfak.ts.net` through its own per-app Ingress; 9980 opened on the app ingress policy and on `ts-operator-proxy-egress`, which is the one that silently breaks it. The ingress template now loops over the `tailscaleIngress` values block instead of hardcoding one object. The Nextcloud-side wiring (`richdocuments`, disabling the conflicting bundled `office` app, and `wopi_url`) is an idempotent `post-install,post-upgrade` helm hook Job — `apps/nextcloud/templates/collabora-occ-job.yaml` — that mounts the same PVC subPaths the app Deployment does, so `occ` reads the real `config.php` with no credentials in git, and gates on coolwsd actually serving a discovery document. See [ADR-023](./docs/adrs/023-collabora-online-code.md).
 - **Measured storage rightsizing** — Longhorn `default-disk` reserve 30%→15% (~70Gi freed), encrypted volumes enrolled in daily remote backup; Prometheus 15Gi→12Gi, Loki 5Gi→2Gi (chunks/rules on RustFS `loki` bucket).
 - **Tailscale ingress per chart** — `platform/ts-ingress` chart deleted; each chart owns its own Tailscale Ingress (amends ADR-018). All Ingresses now share a 2-replica `ProxyGroup` (`ingress-proxies`) + `ProxyClass` (`prod-proxies`), annotated `tailscale.com/proxy-group: ingress-proxies`; ProxyGroup proxy traffic is allow-listed through the per-app Cilium policies (without that entry, tailnet Proxies run but every app is unreachable).

@@ -1,4 +1,4 @@
-# ADR-025: Podman Devcontainer for AI Agents — Debian Slim, pnpm, Least-Privilege SA RBAC
+# ADR-026: Podman Devcontainer for AI Agents — Least-Privilege SA RBAC
 
 **Status:** Accepted · **Date:** 2026-10-18 · **Deciders:** Seom88 · **Related:** [ADR-010](010-tailscale-oauth-ci-generated.md) (CI OAuth secrets), [ADR-011](011-tailscale-dns-np.md) (operator DNS), [`docs/ci-cd.md`](../ci-cd.md) (kubeconfig paths), [`docs/devcontainer.md`](../devcontainer.md) (usage guide), [`docs/sops.md`](../sops.md) (secret hygiene)
 
@@ -17,7 +17,7 @@ AI coding agents (opencode + gentle-ai) work inside this repository, and agents 
 
 **A digest-pinned `debian:bookworm-slim` Podman devcontainer (non-root `agent` user) talking to prod's k3s API server directly over the tailnet IP with agent RBAC carried by a dedicated ServiceAccount — never by a Tailscale identity — and to the separate dev cluster using its own kubeconfig.**
 
-- **Minimal image tooling** (no helm/trivy/yamllint/shellcheck/just replication of the `scripts/`+`justfile` toolchain): git, kubectl `v1.37.0` (matches the repo's in-cluster pin), Node.js 24 LTS from the official tarball, pnpm via the standalone installer (pinned `PNPM_VERSION`), ripgrep, jq.
+- **Minimal image tooling** (no helm/trivy/yamllint/shellcheck/just replication of the `scripts/`+`justfile` toolchain): git, kubectl `v1.37.1`, Node.js 24 LTS from the official tarball, pnpm via the standalone installer (pinned `PNPM_VERSION`), ripgrep, jq.
 - **Agents via pnpm:** `opencode-ai` installs through pnpm global (`--allow-build=opencode-ai` is required — pnpm ≥ 10 blocks lifecycle scripts by default and opencode-ai's postinstall selects the native binary). `npm` is not present in the image.
 - **Recorded pnpm exception — gentle-ai:** it is absent from the npm/pnpm registries (404 on `gentle-ai` and `@gentleman-programming/gentle-ai`). It installs from the pinned GitHub release tarball `v4.2.0`, sha256-verified against the release's published `checksums.txt`. Like other digest pins, refreshes are manual.
 - **Host confinement:** no docker/podman socket mount, no privileged mode, no host networking; the container's access is the writeable workspace bind plus read-only prod/dev staging subdirectories containing the agent kubeconfigs. Prod uses a read-only ServiceAccount token; the separate dev kubeconfig grants full access to dev only.

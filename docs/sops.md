@@ -19,14 +19,14 @@ See [ADR-017](adrs/017-vault-paused-sops-default.md) for why SOPS is the default
 ## Prerequisites
 
 - `sops` and `age` binaries installed.
-- The age private key available locally (never committed). CI restores it from RustFS automatically.
+- The age private key available locally (never committed). `bootstrap/init-sops.sh` restores it from RustFS when you run `just secrets-apply`, then shreds it.
 - `.sops.yaml` at the repo root with a `creation_rules` entry whose `path_regex` matches
   `platform/*/sops/*.enc.yaml` (and `apps/*/sops/*.enc.yaml` if you add app charts).
 
 ## Creating a new encrypted secret
 
 1. Make sure your age key is available and `SOPS_AGE_KEY_FILE` points at it
-   (CI uses `/tmp/age-keys.txt`; locally it comes from your `.env`):
+   (the key path usually comes from your `.env`):
    ```bash
    echo $SOPS_AGE_KEY_FILE
    ```
