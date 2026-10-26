@@ -37,7 +37,7 @@ See [ADR-017](adrs/017-vault-paused-sops-default.md) for why SOPS is the default
    export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
    ```
 2. Write the plaintext manifest as pure YAML at `<chart>/sops/<name>.enc.yaml`
-   (e.g. `platform/monitoring/sops/loki-s3.enc.yaml`). It must be a plain `Secret` —
+   (e.g. `platform/monitoring/sops/grafana-admin.enc.yaml`). It must be a plain `Secret` —
    see "No Helm templating" below.
 3. Encrypt in place **from the repo root, with the repo-relative path** —
    `sops` matches `path_regex` against the path you pass, so an absolute path
@@ -45,16 +45,16 @@ See [ADR-017](adrs/017-vault-paused-sops-default.md) for why SOPS is the default
    `--encrypted-regex '^(data|stringData)$'` encrypts only secret values,
    leaving `apiVersion`/`kind`/`metadata` readable (see below):
    ```bash
-   sops --encrypt --in-place --encrypted-regex '^(data|stringData)$' platform/monitoring/sops/loki-s3.enc.yaml
+   sops --encrypt --in-place --encrypted-regex '^(data|stringData)$' platform/monitoring/sops/grafana-admin.enc.yaml
    ```
 4. Verify it is really encrypted before `git add`: the file must contain
    `ENC[AES256_GCM` markers and no plaintext values:
    ```bash
-   grep -c 'ENC\[AES256_GCM' platform/monitoring/sops/loki-s3.enc.yaml
+   grep -c 'ENC\[AES256_GCM' platform/monitoring/sops/grafana-admin.enc.yaml
    ```
 5. Sanity-check the decrypted render without applying:
    ```bash
-   sops decrypt platform/monitoring/sops/loki-s3.enc.yaml | kubectl apply --dry-run=client -f -
+   sops decrypt platform/monitoring/sops/grafana-admin.enc.yaml | kubectl apply --dry-run=client -f -
    ```
 6. Apply for real: `just secrets-apply` (loads `.env`, restores the key,
    decrypts + applies, shreds the key).
@@ -63,7 +63,7 @@ To edit an existing encrypted file, open it through sops itself
 (decrypts to a temp file, re-encrypts on save):
 
 ```bash
-sops platform/monitoring/sops/loki-s3.enc.yaml
+sops platform/monitoring/sops/grafana-admin.enc.yaml
 ```
 
 ## Lessons learned (read before creating one)

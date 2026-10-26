@@ -10,7 +10,7 @@ Restore path: Velero for PVC/PV + file data, Barman for Postgres, ArgoCD for man
 | Postgres (CNPG) | Barman PITR, step 5 |
 | Vault | Re-bootstrap, see Vault at the end |
 
-Survival storage is external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Velero → `velero-homelab`, Barman → `cnpg-db-backups`, Loki → `loki`.
+Survival storage is external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Velero → `velero-homelab`, Barman → `cnpg-db-backups`. Loki no longer uses RustFS (2026-10-26): its chunks live on a Longhorn PVC and are deliberately excluded from Velero, because only 14 days of disposable logs are retained.
 
 **ArgoCD is reinstalled, never restored.** `daily-full` excludes `argocd` and `kube-system`; every `Application` already lives in Git under `gitops/templates/`.
 

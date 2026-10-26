@@ -1,6 +1,7 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
 # CiliumNetworkPolicies for monitoring namespace — portfolio-grade default-deny with scoped allowlists
-# Covers: Alloy DaemonSet -> kube-api + Loki gateway + DNS, Prometheus scraping, Grafana ingress, Loki -> RustFS S3, Hubble
+# Covers: Alloy DaemonSet -> kube-api + Loki gateway + DNS, Prometheus scraping, Grafana ingress, Hubble
+# (Loki no longer egresses to RustFS: it uses local filesystem storage since 2026-10-26.)
 
 # 1) DNS egress — allow all pods in monitoring to resolve via kube-dns (Cilium DNS-aware)
 ---
@@ -28,7 +29,7 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# 2) Egress allowlist — kube-apiserver, intra-monitoring, RustFS S3, Hubble, and cluster scraping
+# 2) Egress allowlist — kube-apiserver, intra-monitoring, Hubble, and cluster scraping
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -67,22 +68,10 @@ spec:
               protocol: TCP
             - port: "3000"
               protocol: TCP
-    # Loki -> RustFS S3 (443) — bucketNames loki (chunks + ruler share one bucket)
-    # Velero pattern: FQDN:443 L4 only + toCIDR tailnetIp/32 as FQDN-independent
-    # fallback (Cilium only learns FQDN->IP by observing DNS).
-    - toFQDNs:
-        - matchName: rustfs.lonk-mirfak.ts.net
-        - matchPattern: "*.lonk-mirfak.ts.net"
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-    - toCIDR:
-        - {{ required "backup.tailnetIp is required (set backup.tailnetIp in platform/monitoring values.yaml)" .Values.backup.tailnetIp }}/32
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
+    # (No RustFS/S3 egress here: Loki moved to local `filesystem` storage on
+    # 2026-10-26. Grafana's CNPG Barman backups reach RustFS through the
+    # dedicated `grafana-backup-to-rustfs-s3` policy in
+    # grafana-database-networkpolicy.yaml, scoped to the DB pods.)
     # Prometheus scraping: allow egress to any pod in cluster on scrape ports (9100 node-exporter, 8080 kube-state-metrics, 9090, 9153 coredns, 10250 kubelet, 9187 CNPG metrics)
     # Uses toEntities cluster to avoid enumerating every namespace/selector — Hubble will show flows per-identity
     # Cilium metrics (9962 agent, 9963 operator, 9964 envoy, 9965 hubble, 9966 relay)

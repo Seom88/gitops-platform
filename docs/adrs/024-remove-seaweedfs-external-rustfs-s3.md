@@ -38,3 +38,35 @@ ADRs and historical notes that referenced SeaweedFS as live state (ADR-006 wave 
 - `git grep -n seaweedfs platform/ gitops/` returns no chart or template references outside documentation.
 - `helm template monitoring platform/monitoring` renders the `loki-bucket-init` Job and no `seaweedfs` resources.
 - `docs/rustfs-iam.md` matches the IAM used in the RustFS console (`s3:CreateBucket`, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:AbortMultipartUpload`, `s3:ListMultipartUploadParts`, `s3:ListBucket`, `s3:ListBucketVersions`, `s3:ListBucketMultipartUploads`, `s3:GetBucketVersioning` scoped to `arn:aws:s3:::loki`).
+
+## Amendment 2026-10-26: Loki Leaves External S3 for a Local Longhorn Volume
+
+**Status:** Accepted · **Date:** 2026-10-26 · **Deciders:** Seom88 · **Amends:** decisions 2, 3 and 4 · **Related:** [ADR-025](025-solar-energy-aware-operations.md), [ADR-019](019-single-node-bare-metal-migration.md)
+
+Decision 2's premise — that Loki must back onto external RustFS — did not survive contact with the energy budget. This amendment reverses it for Loki only. Velero and CNPG/Barman still use RustFS exactly as ADR-009 and ADR-024 established; nothing else in this ADR changes.
+
+### Why the decision was reversed
+
+1. **Loki was the only always-on RustFS writer.** Measured 2026-10-26 from cAdvisor container-network counters (Loki's own `loki_*` metrics are not scraped — the chart ships no `ServiceMonitor`): the `monitoring-loki-0` pod averaged 4.25 KB/s egress, roughly **368 MB/day of chunks written continuously**. Velero (`0 18 * * *`) and Barman backups are scheduled bursts that let disks sleep between windows; Loki's write path never idles, so the TrueNAS HDDs never spun down. That is precisely the standing load [ADR-025](025-solar-energy-aware-operations.md) exists to eliminate.
+2. **The survival property bought less than it cost.** ADR-024's positive case was that logs survive cluster loss because they live outside it. But Loki retains only 14 days, and the operator accepted losing that history outright — the external copy protected data nobody intended to keep, while adding a hard dependency on a VM that restarts frequently.
+3. **The dependency was inverted risk.** "Every log ingestion now depends on `rustfs.lonk-mirfak.ts.net`" was listed here as a negative and is the one that materialised: a TrueNAS restart broke logging, the component meant to diagnose restarts.
+
+### Amended decision
+
+- **Loki uses `filesystem` storage** on its own Longhorn PVC: `common.storage.filesystem` at `/var/loki/chunks` and `/var/loki/rules`, `object_store: filesystem` in a single schema entry starting `2026-10-26`. Longhorn stores the replicas on node-local disk, so log writes never cross the tailnet.
+- **Retention is 14 days** (`limits_config.retention_period: 336h`, compactor enabled with `delete_request_store: filesystem`). Without it Loki keeps everything and fills the claim. The PVC is 10 Gi, sized from the measured 368 MB/day (~5.2 GB of chunks over 14 days) plus index and compactor working space; Longhorn allows expansion.
+- **The volume is excluded from Velero** by PVC annotation `velero.io/exclude-from-backup: "true"`. Disaster recovery for logs is "you lose the 14 days"; the `logs` from the cluster being restored are more useful than the ones behind it. Loki also stops participating in the `daily-full` FsBackup, which previously copied the PVC every night.
+- **The `loki` bucket, its scoped key, the `loki-bucket-init` Job, the `vault-loki-s3` ExternalSecret and `sops/loki-s3-credentials.enc.yaml` are removed from the repo.** The Cilium egress allowlist drops the Loki→RustFS FQDN and CIDR rules. Grafana's Barman backup keeps its own `grafana-backup-to-rustfs-s3` policy, so `backup.tailnetIp` remains in use.
+- **Old chunks are abandoned.** Anything still in the RustFS `loki` bucket is unreachable through the new schema: queries for ranges before 2026-10-26 return no data. The bucket and `loki-backup` key may be deleted from the console.
+
+### Consequences
+
+- Log ingestion no longer depends on RustFS, Tailscale or the TrueNAS VM. A TrueNAS restart now affects backups only.
+- Logs are no longer cluster-loss-durable. Accepted: 14 days of disposable data, and the PVC survives workload restarts because it is a Longhorn volume, not `emptyDir`.
+- New failure mode: a full volume silently stops ingestion. Mitigated by 14-day retention (~50% headroom at 10 Gi) and by watching `kubelet_volume_stats_available_bytes` for `storage-monitoring-loki-0`; expand with `size:` in `values.yaml` and a PVC patch (Longhorn supports online expansion).
+- Longhorn snapshots are a separate axis: monitoring volumes opt out through the `recurring-job-group.longhorn.io/no-snapshot` label on the Volume CR, applied manually after provisioning. A recreated Loki volume must have it re-applied, or the `default` 2-hour snapshot group will start snapshotting it.
+
+### Verification
+
+- `helm template monitoring platform/monitoring` renders `common.storage.filesystem`, a single `2026-10-26` schema entry with `object_store: filesystem`, `retention_period: 336h`, `delete_request_store: filesystem`, a 10 Gi `longhorn` claim annotated `velero.io/exclude-from-backup`, and no `loki-bucket-init`, `loki-s3-credentials`, or RustFS egress rule.
+- `git grep -n 'loki-s3\|loki-bucket-init'` returns only historical task documents under `odd/tasks/`.

@@ -10,12 +10,25 @@ loki:
   singleBinary:
     replicas: 1
     persistence:
-      size: 2Gi  # chunks live on external RustFS S3; local PVC holds WAL only (measured ~10Mi, 2026-09-22)
-      storageClass: ""
-    # Inject RustFS S3 credentials from SOPS-managed Secret
-    extraEnvFrom:
-      - secretRef:
-          name: loki-s3-credentials
+      # Chunks + TSDB index live here (storage type `filesystem`, no object
+      # store). Sized from measured ingest, not guessed: the loki pod's eth0
+      # egress rate averaged 4.25 KB/s (~368 MB/day of compressed chunks)
+      # over 2026-10-26 — Loki's own `loki_*` metrics are not scraped by
+      # Prometheus, so the container-network counters were the only source.
+      # 14d retention x 368 MB/day ~= 5.2 GB, plus TSDB index and compactor
+      # working space. Longhorn allows volume expansion: raise `size` before
+      # the volume approaches full (`kubectl -n monitoring exec
+      # monitoring-loki-0 -c loki -- df -h /var/loki`).
+      size: 10Gi
+      storageClass: longhorn
+      # Velero `daily-full` FsBackups every PVC outside its exclusions.
+      # Loki keeps only 14d of disposable logs, so copying several GB off-box
+      # every night buys recovery of data we already accept losing, at the
+      # cost of backup time and energy (ADR-025). The annotation drops the
+      # PVC and its volume from the backup; the StatefulSet recreates the
+      # claim from this template on restore.
+      annotations:
+        velero.io/exclude-from-backup: "true"
     # Lean homelab sizing (prod): log volume fits the small request; the
     # limit caps query spikes without starving neighbors.
     resources:
@@ -50,23 +63,29 @@ loki:
     commonConfig:
       replication_factor: 1
     storage:
-      type: s3
-      s3:
-        endpoint: https://rustfs.lonk-mirfak.ts.net
-        region: us-east-1
-        s3ForcePathStyle: true
-      bucketNames:
-        chunks: loki
-        ruler: loki
+      # Local disk inside the pod (Longhorn PVC mounted at /var/loki). Loki
+      # supports `filesystem` as an object store for single-binary deployments;
+      # it is unreplicated by design, which is acceptable for disposable log
+      # data and removes the RustFS/TrueNAS dependency from the hottest write
+      # path (TrueNAS restarts were repeated, and its HDDs never spun down
+      # while Loki wrote chunks around the clock — see ADR-025).
+      type: filesystem
       filesystem:
         chunks_directory: /var/loki/chunks
         rules_directory: /var/loki/rules
 
     schemaConfig:
       configs:
-        - from: "2024-04-01"
+        # S3 -> filesystem cutover on 2026-10-26. The previous `s3` entry
+        # (from 2024-04-01) is intentionally dropped rather than kept: Loki
+        # validates every schema period against a configured object-store
+        # client, and keeping it would re-introduce the S3 credentials this
+        # change removes. Chunks still in the RustFS `loki` bucket are
+        # abandoned by decision — queries for ranges before this date return
+        # no data.
+        - from: "2026-10-26"
           store: tsdb
-          object_store: s3
+          object_store: filesystem
           schema: v13
           index:
             prefix: loki_index_
@@ -77,12 +96,22 @@ loki:
 
     # Grafana Logs Drilldown requirements
     limits_config:
+      # Loki keeps logs forever when retention is unset; on a local volume
+      # that fills the PVC. 14d x measured ~368 MB/day ~= 5.2 GB, which the
+      # 10Gi claim holds with headroom.
+      retention_period: 336h
       volume_enabled: true
       discover_log_levels: true
       discover_service_name:
         - service_name
         - app
         - container
+    compactor:
+      working_directory: /var/loki/compactor
+      retention_enabled: true
+      # Loki 3.x requires an explicit delete-request store and rejects the
+      # config when it is unset. It must match the backend holding the chunks.
+      delete_request_store: filesystem
     pattern_ingester:
       enabled: true
 

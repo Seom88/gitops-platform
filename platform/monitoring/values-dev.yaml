@@ -1,7 +1,8 @@
 developmentApp:
   enabled: true
 
-# Loki S3 endpoint — unified service name (no -dev suffix after ADR-012 simplification)
+# Loki storage is the local `filesystem` backend defined in values.yaml
+# (S3 was dropped 2026-10-26), so dev no longer overrides an endpoint.
 loki:
   singleBinary:
     # Dev sizing: full requests/limits for rich query metrics and to catch
@@ -9,10 +10,6 @@ loki:
     resources:
       requests: { cpu: 300m, memory: 512Mi }
       limits: { cpu: 1000m, memory: 1024Mi }
-  loki:
-    storage:
-      s3:
-        endpoint: https://rustfs.lonk-mirfak.ts.net
 
 # Configuration for the Kube-Prometheus-Stack subchart — dev single-node tuning (16GB host, 6GB VM)
 kube-prometheus-stack:
