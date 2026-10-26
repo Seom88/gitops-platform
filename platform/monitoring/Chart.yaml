@@ -14,13 +14,13 @@ maintainers:
 
 dependencies:
   - name: loki
-    version: 7.3.0
+    version: 7.5.0
     repository: https://grafana.github.io/helm-charts
   - name: kube-prometheus-stack
     version: 92.11.0
     repository: https://prometheus-community.github.io/helm-charts
   - name: alloy
-    version: 1.14.0
+    version: 1.14.2
     repository: https://grafana.github.io/helm-charts
   - name: s3-bucket-lib
     version: 0.1.0
