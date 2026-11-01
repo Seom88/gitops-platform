@@ -37,7 +37,7 @@ Wave `-2` `tailscale-operator` (tailnet DNS stub `coredns-custom` in `kube-syste
 
 | Schedule | Cron | Scope | TTL | Status |
 |----------|------|-------|-----|--------|
-| `daily-full` | `0 18 * * *` | all namespaces except `vault`, control-plane (`velero`, `kube-*`, `longhorn-system`, `argocd`) | 30d | active |
+| `daily-full` | `0 18 * * *` | all namespaces except `vault`, control-plane (`velero`, `kube-*`, `longhorn-system`, `argocd`) | 7d | active |
 | `vault-hourly` | `0 * * * *` | `vault` namespace (retired) | 7d | `disabled: true` — see Vault policy |
 
 - `defaultVolumesToFsBackup: true` + `deployNodeAgent: true` + `nodeAgent.enabled: true` → Longhorn PVCs backed up via filesystem copy (no CSI snapshots). The node-agent gate and the FsBackup default must stay on together.

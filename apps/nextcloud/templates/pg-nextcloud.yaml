@@ -154,6 +154,15 @@ spec:
       secretAccessKey:
         name: {{ .Values.backup.secretName }}
         key: SECRET_ACCESS_KEY
+    # Compress both streams. CNPG forces a WAL switch at least every
+    # `archive_timeout` (5 min by default), so on an idle database most of
+    # every 16 MiB segment is empty padding — gzip collapses those by an
+    # order of magnitude, and base backups shrink ~4x. Restores read old
+    # uncompressed segments transparently, so no back-catalogue rewrite.
+    data:
+      compression: gzip
+    wal:
+      compression: gzip
   retentionPolicy: {{ .Values.backup.retentionPolicy | quote }}
 ---
 apiVersion: postgresql.cnpg.io/v1

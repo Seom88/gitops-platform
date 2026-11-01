@@ -22,13 +22,14 @@ sudo chown -R vscode:vscode /home/vscode/.local/share/opencode \
     /home/vscode/.config/opencode
 
 # Installs into $OPENCODE_CONFIG (a volume), so it stays at runtime.
-opencode plugin @tarquinen/opencode-dcp@latest --global
+opencode plugin add @tarquinen/opencode-dcp@latest
 
 echo "📦 Install pi config..."
 # pi is still unpinned; pinning it is tracked as follow-up in the ODD task log.
 mkdir -p ~/.pi/agent
 ln -sf /workspace/.devcontainer/local-config/pi.lmstudio.json ~/.pi/agent/lmstudio.json
 pi install npm:pi-lmstudio
+pi install npm:pi-llama-cpp
 pi install npm:pi-wtf
 pi update --extensions
 

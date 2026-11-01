@@ -581,9 +581,9 @@ backup:
   # captures the database row without the file, and the bytes are gone.
   schedule: "55 1 * * *"
   # Recovery-window retention. The plugin CRD only accepts `<n>[dwm]`, so the
-  # window is written as 30d — the same 30d Velero keeps, so both layers reach
+  # window is written as 7d — the same 7d Velero keeps, so both layers reach
   # back the same distance on restore.
-  retentionPolicy: "30d"
+  retentionPolicy: "7d"
 
 # Pattern 2 — recovery by flag.
 #
@@ -639,3 +639,8 @@ cnpg:
       max_wal_size: "256MB"
       min_wal_size: "80MB"
       wal_keep_size: "128MB"
+      # Forced segment-switch floor. CNPG's global default is 5min, which on
+      # an idle database still archives 288 full 16 MiB segments/day (~4.5 GiB)
+      # of mostly empty WAL. 30min caps the RPO at half an hour (Velero is
+      # daily anyway) and cuts that floor 6x; ObjectStore gzip does the rest.
+      archive_timeout: "30min"

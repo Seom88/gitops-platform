@@ -213,7 +213,8 @@ velero:
         argocd.argoproj.io/compare-options: IgnoreExtraneous
         argocd.argoproj.io/sync-options: Prune=false
       template:
-        ttl: 720h
+        # 7d, aligned with the CNPG recovery window (ObjectStore retentionPolicy).
+        ttl: 168h
         includedNamespaces:
           - "*"
         excludedNamespaces:

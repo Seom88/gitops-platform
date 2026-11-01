@@ -201,6 +201,6 @@ RUN npm install -g pnpm@${PNPM_VERSION} \
 # Install opencode and pi agent
 RUN --mount=type=cache,target=/home/vscode/.local/share/pnpm/store,uid=1000,gid=1000 \
     set -eu \
-    && pnpm add -g --allow-build=opencode-ai opencode-ai@1.19.4 \
+    && pnpm add -g --allow-build=@opencode/cli @opencode/cli \
     && pnpm add -g @colbymchenry/codegraph@1.6.2 \
     && pnpm add -g --ignore-scripts @earendil-works/pi-coding-agent 

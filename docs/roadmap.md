@@ -89,7 +89,7 @@ The scope for v1.0 is defined as Phases 1 through 4. Items previously labeled "P
 - [x] Longhorn — distributed block storage
 - [x] External RustFS — S3-compatible object storage
 - [x] Loki → RustFS integration for centralized logging (SingleBinary + gateway, bucket `loki`)
-- [x] Velero — **automated backup** (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 18:00 UTC, all namespaces, 30d TTL, Longhorn volumes via FsBackup; subchart `12.2.1` / app `1.18.2`) — deployed and running. Vault is excluded by policy; its hourly protection is the Longhorn `vault-hourly-snapshot` RecurringJob, not a Velero schedule. **Manual restore executed** (immich pilot, Oct 2026) and working after the runbook fixes; the formal drill with RTO/RPO evidence is deferred to v2.0. See [What blocks v1.0.0](#what-blocks-v100).
+- [x] Velero — **automated backup** (wave 0, S3-compatible RustFS backend, bucket `velero-homelab`, FQDN injected from `gitops/values.yaml`; `daily-full` 18:00 UTC, all namespaces, 7d TTL, Longhorn volumes via FsBackup; subchart `12.2.1` / app `1.18.2`) — deployed and running. Vault is excluded by policy; its hourly protection is the Longhorn `vault-hourly-snapshot` RecurringJob, not a Velero schedule. **Manual restore executed** (immich pilot, Oct 2026) and working after the runbook fixes; the formal drill with RTO/RPO evidence is deferred to v2.0. See [What blocks v1.0.0](#what-blocks-v100).
 
 ### Phase 4 — Hardening & Developer Experience ✅ Complete
 
