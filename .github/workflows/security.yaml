@@ -1,0 +1,155 @@
+# Security — Trivy image + misconfig scans, split from ci.yaml so CVE findings
+# never flip the CI badge. Runs ONLY on main/dev refs — this covers pushes to
+# main/dev, the weekly CVE cron (runs on the default branch) and manual
+# dispatches on those branches. All PRs — including Renovate bump PRs — skip
+# Trivy: matrix images × PRs is too much compute for pre-merge, and the
+# runtime Trivy Operator plus the main/dev scans catch regressions.
+# Feature-branch pushes skip Trivy. Fail-closed only for digest-pinned
+# first-party images; upstream subchart images are advisory.
+name: Security
+
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 1'
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v4.3.1
+
+jobs:
+  # Dynamic image discovery: render every chart (platform/* + apps/*) and
+  # collect unique `image:` refs, supplemented by a repo-wide source grep
+  # (inline `image:` refs plus split `repo:`/`tag:` pairs such as the
+  # Tailscale DNSConfig, which never appears as an `image:` line in rendered
+  # output). The union is scanned, so Renovate bumps are covered without
+  # anyone maintaining a hardcoded list. trivy-images consumes the JSON.
+  discover:
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      images: ${{ steps.collect.outputs.images }}
+      pinned: ${{ steps.collect.outputs.pinned }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Helm (${{ env.HELM_VERSION }})
+        uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Discover runtime images from charts
+        id: collect
+        run: |
+          ./scripts/discover-images.sh /tmp/discover-images
+          echo "images=$(jq -c . /tmp/discover-images/images.json)" >> "$GITHUB_OUTPUT"
+          echo "pinned=$(jq -c . /tmp/discover-images/pinned.json)" >> "$GITHUB_OUTPUT"
+
+  trivy-images:
+    needs: [discover]
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Suppress only Trivy's update/version notice; vulnerability results remain visible.
+      TRIVY_SKIP_VERSION_CHECK: "true"
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJson(needs.discover.outputs.images) }}
+    steps:
+      - name: Checkout (for .trivyignore)
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Derive sanitized image name
+        id: name
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: echo "safe=${IMAGE//[:\/]/_}" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy image scan (table, ${{ matrix.image }})
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          format: table
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: ${{ contains(fromJSON(needs.discover.outputs.pinned), matrix.image) && '1' || '0' }}
+          limit-severities-for-sarif: "true"
+        # All images are scanned and their findings are uploaded to SARIF.
+        # Advisory refs use exit 0 and continue-on-error; only exact refs in
+        # `pinned` use exit 1 and fail the step.
+        continue-on-error: ${{ !contains(fromJSON(needs.discover.outputs.pinned), matrix.image) }}
+
+      - name: Trivy image scan (SARIF, ${{ matrix.image }})
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          format: sarif
+          output: trivy-${{ steps.name.outputs.safe }}.sarif
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: ${{ contains(fromJSON(needs.discover.outputs.pinned), matrix.image) && '1' || '0' }}
+          limit-severities-for-sarif: "true"
+        # Runs even when the table scan failed so SARIF remains available.
+        # Advisory findings do not create a failed step; only pinned refs use exit 1.
+        continue-on-error: ${{ !contains(fromJSON(needs.discover.outputs.pinned), matrix.image) }}
+
+      - name: Upload SARIF (${{ matrix.image }})
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-${{ steps.name.outputs.safe }}.sarif
+          category: trivy-${{ steps.name.outputs.safe }}
+
+  trivy-config:
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Trivy config scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          limit-severities-for-sarif: "true"
+        # Advisory: ~100 HIGH/CRITICAL misconfigs (default securityContexts
+        # etc.) need baseline tuning first (v2 PSA work) — blocking now would
+        # fail day 1. The fail-closed gate is the image scan above.
+        continue-on-error: true
+
+      - name: Upload SARIF (config)
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config

@@ -150,8 +150,8 @@ Backups are easy to claim and hard to prove. You ran a restore, wrote down what 
 - Local mirrors of CI logic
 
 **Evidence:**
-- **GitHub Actions** — Unified `ci.yaml` (validate + security jobs: helm lint/template, image-convention, detect-secrets, ShellCheck, Trivy images + misconfig with SARIF). CI never touches the cluster — deploys are GitOps pull via ArgoCD. See [`.github/workflows/`](../.github/workflows/)
-- **CI Workflow** — Single `CI` run per push/PR. See [`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml) and [`docs/ci-cd.md`](./ci-cd.md)
+- **GitHub Actions** — Separate `ci.yaml` (validate) + `security.yaml` (security jobs: helm lint/template, image-convention, detect-secrets, ShellCheck, Trivy images + misconfig with SARIF). CI never touches the cluster — deploys are GitOps pull via ArgoCD. See [`.github/workflows/`](../.github/workflows/)
+- **CI Workflow** — `CI` + `Security` workflows. See [`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml) and [`docs/ci-cd.md`](./ci-cd.md)
 - **GitOps pull deploys** — ArgoCD root app self-manages (automated + prune + selfHeal); break-glass bootstrap/secrets via `just init-prod` / `just secrets-apply`. See [`docs/ci-cd.md`](./ci-cd.md)
 - **Renovate Configuration** — Weekly dependency updates with manual review for critical components. See [`renovate.json`](../renovate.json)
 - **Local Validation** — `just validate` / `just validate-images` / `just scan-config` mirror CI checks offline. See [`justfile`](../justfile)

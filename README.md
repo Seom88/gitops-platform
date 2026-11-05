@@ -7,6 +7,7 @@
 
 [![Release](https://img.shields.io/badge/Release-v1.0.0_scope_complete-blue?style=flat-square)](./docs/roadmap.md#what-blocks-v100)
 [![CI Status](https://img.shields.io/github/actions/workflow/status/Seom88/gitops-platform/ci.yaml?style=flat-square&label=CI)](https://github.com/Seom88/gitops-platform/actions)
+[![Security](https://img.shields.io/github/actions/workflow/status/Seom88/gitops-platform/security.yaml?style=flat-square&label=Security)](https://github.com/Seom88/gitops-platform/actions)
 [![Last Commit](https://img.shields.io/github/last-commit/Seom88/gitops-platform?style=flat-square)](https://github.com/Seom88/gitops-platform/commits)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
@@ -145,7 +146,7 @@ gitops-platform/
 ├── docs/            # guides + adrs/ (26 decisions and counting)
 ├── odd/tasks/       # feature specs and decision logs
 ├── .devcontainer/   # Podman devcontainer for AI agents (least privilege)
-├── .github/workflows/ # ci.yaml (lint+scan) — CI never touches the cluster; deploys are ArgoCD pull
+├── .github/workflows/ # ci.yaml (lint/validate) + security.yaml (Trivy) — CI never touches the cluster; deploys are ArgoCD pull
 ├── justfile         # init-prod/dev, secrets-apply, validate, scan, status-cluster
 ├── renovate.json    # weekly dependency updates
 └── CHANGELOG.md     # release history

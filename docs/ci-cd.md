@@ -6,7 +6,7 @@
 
 ## Workflows
 
-The only workflow is `ci.yaml` (`.github/workflows/`) and it is distro-agnostic — no Terraform, no cluster, no credentials, no Tailscale. **CI never touches the cluster.** All deploys happen through GitOps: commit to `main`, ArgoCD pulls, done (see the [deploy model](#deploy-model--argocd-pull-only) below).
+The workflows are `ci.yaml` (validation) and `security.yaml` (Trivy scans) (`.github/workflows/`) and they are distro-agnostic — no Terraform, no cluster, no credentials, no Tailscale. **CI never touches the cluster.** All deploys happen through GitOps: commit to `main`, ArgoCD pulls, done (see the [deploy model](#deploy-model--argocd-pull-only) below).
 
 > ### Deploy model — GitOps pull-only
 >
@@ -34,7 +34,8 @@ The only workflow is `ci.yaml` (`.github/workflows/`) and it is distro-agnostic 
 
 | Workflow | Trigger | Needs cluster | What it does |
 |----------|---------|---------------|--------------|
-| `ci.yaml` | `push` + `pull_request` + weekly cron (`0 4 * * 1`) + manual | No | Validate job (Helm lint/template, platform lint, shellcheck, YAML/JSON sanity) + security jobs (Trivy images + config, SARIF; fail-closed for pinned images) — one run, one gate signal |
+| `ci.yaml` | `push` + `pull_request` + manual | No | Validate job (Helm lint/template, platform lint, shellcheck, YAML/JSON sanity) — the CI badge reflects repo validity, not upstream CVEs |
+| `security.yaml` | `push` + weekly cron (`0 4 * * 1`) + manual; jobs gated to `main`/`dev` | No | Security jobs (Trivy images + config, SARIF; fail-closed for pinned images) — separate badge so CVE findings never flip CI |
 
 ## Deploy model — GitOps pull-only
 
@@ -76,9 +77,9 @@ For forks: nothing cluster-side to configure. The only GitHub-side assets remain
 | Auto-apply on secret rotation | `just secrets-apply` (reapplies + rollout-restarts the operator — see `scripts/tailscale-secret.sh`) |
 | Tailnet connectivity from runners | Gone — runners never join the tailnet; `tag:cicd` releases can be reclaimed in the Tailscale admin console |
 
-### `ci.yaml` — Validate + Security (fast feedback, no cluster)
+### `ci.yaml` — Validate (fast feedback, no cluster)
 
-Triggers: `push` + `pull_request` (all branches) + weekly cron (`0 4 * * 1`, Mondays 04:00 UTC — images accumulate CVEs without repo changes) + `workflow_dispatch`. Concurrency per workflow ref (`cancel-in-progress: true`). No cluster, no creds. Formerly two workflows (`validate.yaml` + `security.yaml`); merged into one run so each push fires a single CI signal.
+Triggers: `push` + `pull_request` (all branches) + `workflow_dispatch`. Concurrency per workflow ref (`cancel-in-progress: true`, on the validate job). No cluster, no creds. Split back out from the former merged `CI` workflow so Trivy CVE findings never flip the CI badge — security scans live in `security.yaml` (weekly cron there, since images accumulate CVEs without repo changes).
 
 ```yaml
 # .github/workflows/ci.yaml — triggers
@@ -86,8 +87,6 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: '0 4 * * 1'
 
 permissions:
   contents: read
@@ -120,9 +119,9 @@ jobs:
 
 Local equivalent: `just validate` (same checks, no creds). Sub-recipes: `just validate-gitops`, `just validate-platform`, `just validate-scripts`, `just validate-yaml`, `just validate-json`.
 
-### Security jobs (in `ci.yaml` — Trivy scans, no cluster)
+### `security.yaml` — Security jobs (Trivy scans, no cluster)
 
-Same triggers as above (including the weekly cron). Top-level `permissions: contents: read`. No cluster, no creds.
+Triggers: `push` + weekly cron (`0 4 * * 1`, Mondays 04:00 UTC) + `workflow_dispatch`; jobs are gated to `main`/`dev` refs only (PRs and feature branches skip Trivy). Top-level `permissions: contents: read`. No cluster, no creds.
 
 | Job | What it does |
 |-----|--------------|
@@ -152,8 +151,8 @@ Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summa
 | JSON syntax | `python3 -m json.tool` over `**/*.json` | `ci.yaml`, `just validate-json` |
 | Inline image convention | No split `repository:` blocks in `values*.yaml` (Renovate-manager-1 invisible) | `ci.yaml` (`validate-images`), `just validate-images`, pre-commit hook |
 | Secret scan | `detect-secrets-hook --baseline .secrets.baseline` (fail on new) | `ci.yaml`, `.pre-commit-config.yaml` |
-| Image scan | `trivy-action@v0.36.0`, `HIGH,CRITICAL` + SARIF (fail-closed for pinned images, advisory for upstream) | `ci.yaml` (security jobs), `just scan`, `.trivyignore` |
-| Config scan | `scan-type: config`, misconfig SARIF | `ci.yaml` (security jobs), `just scan-config` |
+| Image scan | `trivy-action@v0.36.0`, `HIGH,CRITICAL` + SARIF (fail-closed for pinned images, advisory for upstream) | `security.yaml`, `just scan`, `.trivyignore` |
+| Config scan | `scan-type: config`, misconfig SARIF | `security.yaml`, `just scan-config` |
 | Full local CI | `just validate` (gitops + platform + scripts + yaml + json) + `just validate-images` | `justfile` |
 | Hardened inputs | `helm lint` strict, `null` guards in bootstrap, CSI wait gate before Vault | [Getting Started](./getting-started.md), `bootstrap/init-gitops.sh` |
 

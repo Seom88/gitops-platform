@@ -448,14 +448,14 @@ just scan
 ### GitHub Actions
 
 - **Trigger** — Every push and pull request on any branch (1 CI run; deploys are ArgoCD pull — no deploy workflow)
-- **Unified CI** — `ci.yaml` runs validate + security jobs (Trivy images + misconfig, SARIF) against prod and dev values
+- **Split CI** — `ci.yaml` (validate) + `security.yaml` (Trivy images + misconfig, SARIF) against prod and dev values; separate badges so CVEs never flip CI
 - **Deploy** — GitOps pull-only: ArgoCD self-manages the root app (automated + prune + selfHeal); break-glass bootstrap/secrets via `just init-prod` / `just secrets-apply`
 - **Rollback** — Revert commit to rollback (ArgoCD resumes the previous manifest set)
 
 ### Key Files
 
 - Workflows: [`.github/workflows/`](../.github/workflows/)
-  - Validate + security: `ci.yaml`
+  - Validation: `ci.yaml` · Security: `security.yaml`
   - (No cluster-touching workflow — deploys are ArgoCD pull)
 - Local mirror: [`justfile`](../justfile) — `just validate` command
 - Documentation: [`docs/ci-cd.md`](../docs/ci-cd.md)

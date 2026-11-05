@@ -15,6 +15,10 @@ This project has never been released. There is no version tag and no published b
 
 ## [Unreleased]
 
+### Changed
+
+- **CI split into `ci.yaml` + `security.yaml`** — Trivy image/misconfig scans moved out of the merged `CI` workflow into a dedicated `Security` workflow (push to `main`/`dev`, weekly CVE cron, manual dispatch; PRs and feature branches skip Trivy as before). The CI badge now reflects repo validity (lint/render/secret-scan/sanity), not upstream image CVEs; a separate Security badge tracks the Trivy gate (fail-closed for digest-pinned first-party images, advisory otherwise). Weekly CVE cron moved with it; validate no longer runs on schedule.
+
 ### Added
 
 **Cluster foundation**
