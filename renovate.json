@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "baseBranchPatterns": ["dev"],
+  "baseBranchPatterns": ["main"],
   "schedule": ["before 5am on monday"],
   "timezone": "Europe/Madrid",
   "labels": ["dependencies"],
@@ -43,10 +43,16 @@
   },
   "packageRules": [
     {
-      "description": "Automerge patch+minor to dev (human promotes dev -> main after CI green)",
+      "description": "Automerge patch+minor (targets main directly — no dev environment exists in this repo, CI is the only gate; humans promote nothing). Helm minor/patch already automerge via this rule — none of the previous manual-review exclusions exist in this file anymore.",
       "matchUpdateTypes": ["minor", "patch"],
       "automerge": true,
       "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Digest bumps on already-pinned docker refs carry the CVE fixes for a fixed tag — automerge them (same semver, new bits; minimumReleaseAge stays null per the digest rule below, since timestamp-required would stall them). Postgres overrides this with automerge:false further down the file.",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": true
     },
     {
       "description": "Majors never automerge",

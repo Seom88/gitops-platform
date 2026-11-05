@@ -192,17 +192,20 @@ Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summa
 
 ## Renovate
 
-`renovate.json` runs weekly **Monday before 05:00 `Europe/Madrid`**, `config:recommended`, labels `dependencies`, ignores `**/charts/*.tgz`:
+`renovate.json` runs weekly **Monday before 05:00 `Europe/Madrid`**, `config:recommended`, `baseBranchPatterns: ["main"]`, labels `dependencies`, ignores `**/charts/*.tgz`. **This repo has no `dev` environment** (single k3s cluster; the `dev` branch is dormant), so Renovate targets `main` directly and ArgoCD pull-deploys `main` on merge — the only gates are CI, `minimumReleaseAge`, and the human review of majors.
 
-| Rule | Datasource | Group / Label | Automerge |
-|------|------------|---------------|-----------|
-| Vault Raft + TLS + auto-unseal — wave 1, paused/disabled by default — needs manual review | `helm` `vault` | `manual-review/vault` | `false` |
-| Longhorn storage — needs manual validation (CSI-gated wave 0) | `helm` `longhorn` | `manual-review/longhorn` | `false` |
-| cert-manager wave-0 healthy — needs manual review before wave 1 | `helm` `cert-manager` | `manual-review/cert-manager` | `false` |
-| Group non-critical Helm charts (loki, kube-prometheus-stack, tailscale-operator, external-secrets) | `helm` excl. vault/longhorn/cert-manager | `helm charts` (`helm-charts`), `helm` | grouped PR |
-| Group GitHub Actions | `github-actions` | `github actions` (`github-actions`), `github-actions` | grouped PR |
+| Rule | Update types | Automerge |
+|------|--------------|-----------|
+| minor/patch — **all datasources** (docker images, helm charts, GitHub Actions, regex managers) | minor, patch | `true` after 3 days (grouped for Helm/Actions) |
+| docker digest bumps on already-pinned refs (`tag@sha256:…` → new bits) | digest | `true` (`minimumReleaseAge: null`, since `timestamp-required` would stall them) |
+| Majors — everything | major | `false` (manual review, review the PR before merging) |
+| Postgres (`ghcr.io/cloudnative-pg/postgresql`) | any | `false` (every bump restarts the DB pods) |
+| Helm charts | minor/patch/major, grouped (`helm charts`) | automerge inherits the minor/patch rule — there are no per-chart automerge exclusions (vault/longhorn/cert-manager included) |
+| GitHub Actions | minor/patch/major, grouped | automerge inherits the minor/patch rule |
 
-Regex managers cover hardcoded `image:` lines (`platform/*/templates`, `apps/*/templates`, `apps/*/values*`, Velero initContainers), CNPG `imageName:` Postgres images, and `HELM_VERSION` in workflows — so digest-pinned refs (`tag@sha256:…`) keep tag bumps flowing with refreshed digests. Inline one-line maps (`image: { repository: X, tag: T }` in nextcloud/immich values) are owned by Renovate's built-in `helm-values` manager: adding a regex manager for the same lines double-extracts the dep and breaks branch creation (seen as `Error updating branch: update failure` on the `library/nextcloud` digest branch). `digest`/`pinDigest` updates run with `minimumReleaseAge: null` (Docker Hub rate-limited `/tags` listings leave no `releaseTimestamp`, which would hold them forever under `timestamp-required`). Postgres image bumps are never auto-merged — every `imageName` change restarts the DB pods. Validate Vault/Longhorn/cert-manager upgrades via `just validate` + `helm template` before merging.
+Effects to be aware of: an automerged minor/patch helm chart deploys to prod via ArgoCD at merge time — `minimumReleaseAge: 3 days` is the only incubation. Digest bumps can merge without waiting (digest ≠ minor/patch, and no reliable `releaseTimestamp` exists). If a helm release burns you, pin the offender with one `packageRules` entry (`matchPackageNames` + `automerge: false`) or revert the commit.
+
+Regex managers cover hardcoded `image:` lines (`platform/*/templates`, `apps/*/templates`, `apps/*/values*`, Velero initContainers), CNPG `imageName:` Postgres images, and `HELM_VERSION` in workflows — so digest-pinned refs (`tag@sha256:…`) keep tag bumps flowing with refreshed digests. Inline one-line maps (`image: { repository: X, tag: T }` in nextcloud/immich values) are owned by Renovate's built-in `helm-values` manager: adding a regex manager for the same lines double-extracts the dep and breaks branch creation (seen as `Error updating branch: update failure` on the `library/nextcloud` digest branch). `digest`/`pinDigest` updates run with `minimumReleaseAge: null` (Docker Hub rate-limited `/tags` listings leave no `releaseTimestamp`, which would hold them forever under `timestamp-required`). Postgres image bumps are never auto-merged — every `imageName` change restarts the DB pods. Validate Vault/Longhorn/cert-manager upgrades via `just validate` + `helm template` when in doubt.
 
 ## Velero bootstrap
 
