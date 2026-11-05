@@ -1,0 +1,7 @@
+# Dev override: separate tailnet device + hostname (branch `dev`, gitops/values-dev.yaml).
+tailscaleIngress:
+  rancher:
+    hostname: rancher-dev
+
+rancher:
+  hostname: rancher-dev.lonk-mirfak.ts.net

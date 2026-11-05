@@ -13,6 +13,7 @@ helm_repos_ensure() {
   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
   helm repo add tailscale https://pkgs.tailscale.com/helmcharts >/dev/null 2>&1 || true
   helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
+  helm repo add rancher https://releases.rancher.com/server-charts/stable >/dev/null 2>&1 || true
   helm repo add aquasecurity https://aquasecurity.github.io/helm-charts >/dev/null 2>&1 || true
   helm repo update >/dev/null 2>&1 || true
 }

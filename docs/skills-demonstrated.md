@@ -229,7 +229,7 @@ You write code that's maintainable and reusable. This isn't spaghetti configurat
 - Clear explanation of complex systems
 
 **Evidence:**
-- **Architecture Decision Records** — 26 ADRs documenting decisions and re-entry conditions (superseded ones kept: ADR-004 → ADR-010, ADR-008 → ADR-024, ADR-012 → ADR-018). See [`docs/adrs/`](./adrs/)
+- **Architecture Decision Records** — 27 ADRs documenting decisions and re-entry conditions (superseded ones kept: ADR-004 → ADR-010, ADR-008 → ADR-024, ADR-012 → ADR-018). See [`docs/adrs/`](./adrs/)
 - **Getting Started Guide** — End-to-end walkthrough for new users. See [`docs/getting-started.md`](./getting-started.md)
 - **Customization Guide** — Forking instructions with dependency management. See [`docs/customization-guide.md`](./customization-guide.md)
 - **Secrets Structure** — SOPS-first secret organization, with the optional Vault path documented separately. See [`docs/secrets-structure.md`](./secrets-structure.md)

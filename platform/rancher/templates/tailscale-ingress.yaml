@@ -1,0 +1,24 @@
+{{- if .Values.tailscaleIngress.rancher.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rancher
+  namespace: cattle-system
+  annotations:
+    tailscale.com/proxy-group: ingress-proxies
+spec:
+  ingressClassName: tailscale
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rancher
+                port:
+                  number: 80
+  tls:
+  - hosts:
+    - {{ .Values.tailscaleIngress.rancher.hostname }}
+{{- end }}

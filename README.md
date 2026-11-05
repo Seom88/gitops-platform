@@ -20,7 +20,7 @@ A personal homelab that runs real services on a single mini PC — zero-trust ac
 1. [What this proves I can do](#what-this-proves-i-can-do) — the skill-to-evidence map.
 2. [`docs/skills-demonstrated.md`](./docs/skills-demonstrated.md) — the long version, with links to the code and decisions behind each claim.
 3. [`docs/features-deep-dive.md`](./docs/features-deep-dive.md) — how the platform actually works.
-4. [`docs/adrs/`](./docs/adrs/) — 26 decision records, including the ones where I chose *not* to ship something (Vault paused, single-node tradeoff).
+4. [`docs/adrs/`](./docs/adrs/) — 27 decision records, including the ones where I chose *not* to ship something (Vault paused, single-node tradeoff).
 5. [`docs/cluster-recovery.md`](./docs/cluster-recovery.md) — the restore runbook, including what went wrong in the immich pilot.
 
 ## In 30 seconds
@@ -57,6 +57,7 @@ graph TD
     ROOT --> STORAGE[Longhorn + Velero + RustFS S3]
     ROOT --> SECRETS[SOPS + age - default<br/>Vault - frozen, paused]
     ROOT --> OBS[Monitoring<br/>Prometheus + Grafana + Loki + Alloy]
+    ROOT --> RANCHER[Rancher<br/>local cluster mgmt, wave 4]
     ROOT --> DATA[CloudNativePG + Valkey<br/>Immich + Nextcloud]
 ```
 
@@ -141,9 +142,9 @@ gitops-platform/
 ├── gitops/          # Root App-of-Apps chart (values.yaml + values-dev.yaml)
 ├── platform/        # First-party charts: vault, monitoring, ts-operator,
 │                    #   longhorn, velero, valkey, trivy-operator, kepler,
-│                    #   s3-bucket-lib
+│                    #   s3-bucket-lib, rancher
 ├── apps/            # homepage, immich, nextcloud
-├── docs/            # guides + adrs/ (26 decisions and counting)
+├── docs/            # guides + adrs/ (27 decisions and counting)
 ├── odd/tasks/       # feature specs and decision logs
 ├── .devcontainer/   # Podman devcontainer for AI agents (least privilege)
 ├── .github/workflows/ # ci.yaml (lint/validate) + security.yaml (Trivy) — CI never touches the cluster; deploys are ArgoCD pull

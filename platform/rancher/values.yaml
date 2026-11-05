@@ -1,0 +1,59 @@
+# Rancher server for the LOCAL cluster only (no downstream/provider management).
+# ArgoCD remains the single deploy engine (App-of-Apps); Rancher is the
+# management/RBAC/catalog UI and local-cluster telemetry. See ADR-027.
+#
+# TLS is terminated at the Tailscale operator (ADR-018): `tls: external` tells
+# Rancher the edge is behind an HTTPS proxy, so the container keeps its HTTP
+# listener on :80 and the wrapper's own templates/tailscale-ingress.yaml owns
+# the Exposure. No cert-manager Certificate, no Rancher-issued CA.
+#
+# `hostname` is the URL users (and the local cluster agent) use: the
+# MagicDNS FQDN on the tailnet. Dev override lives in values-dev.yaml.
+
+ciliumNetworkPolicy:
+  enabled: true
+
+developmentApp:
+  enabled: false
+
+# Per-app Tailscale Ingress (ADR-018 pattern; this chart owns its ingress)
+tailscaleIngress:
+  rancher:
+    enabled: true
+    hostname: rancher
+
+# Upstream subchart: rancher 2.15.3 (see Chart.yaml; Renovate groups helm charts).
+rancher:
+  replicas: 1
+  # External TLS at the tailnet ingress; must match the Tailscale device name.
+  hostname: rancher.lonk-mirfak.ts.net
+  tls: external
+  # No chart-owned Ingress/Gateway/Issuer: the wrapper renders the
+  # Tailscale Ingress, and none of the cert-manager machinery is wanted.
+  networkExposure:
+    type: none
+  # Packaged (in-image) system charts — no outbound pull of rancher/system-charts.
+  useBundledSystemChart: true
+  # Empty => Rancher generates a random bootstrap password at first boot;
+  # retrieve it once with:
+  #   kubectl -n cattle-system get secret bootstrap-secret \
+  #     -o jsonpath='{.data.bootstrapPassword}' | base64 -d
+  # Never commit a real value here; it is plaintext in the rendered Secret otherwise.
+  bootstrapPassword: ""
+  antiAffinity: preferred
+  priorityClassName: rancher-critical
+  # Must stay >= 500m/1Gi: Rancher is the local management plane, not a best-effort pod.
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 4Gi
+  # 4Gi is deliberate: Rancher + Fleet + rancher-webhook + system-upgrade-controller
+  # on a single node need room; requests stay lean.
+  features: ""
+  # Fleet stays enabled (default) for the local cluster; disable downstream
+  # provisioning by simply not registering any downstream cluster.
+  # pod security: chart runs as root by default — the namespace is privileged.
+
+# Chart-owned hooks pull `rancher/shell`; they are user-invisible post-delete/pre-upgrade jobs.

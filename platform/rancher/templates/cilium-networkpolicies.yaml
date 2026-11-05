@@ -1,0 +1,119 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# CiliumNetworkPolicies for cattle-system (Rancher server, wave 4, namespace cattle-system).
+#
+# Scope: Rancher's runtime-created namespaces (cattle-fleet-system,
+# cattle-fleet-local-system, cattle-global-nt, rancher-operator-system) are NOT
+# covered here — Rancher creates them outside this chart and their policy is a
+# separate decision (they are recorded as uncovered in docs/roadmap.md, ADR-027).
+#
+# 1) DNS
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: rancher-allow-dns
+  namespace: cattle-system
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 2) Egress — intra-cattle-system (rancher <-> rancher-webhook / shell jobs) +
+#    kube-apiserver (local cluster + webhook admission) + Hubble + world/443.
+#    World/https is required by Fleet to clone configured git repos and by
+#    Rancher for anything the operator points it at (catalogs, external APIs);
+#    it is the only route out of this namespace.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: rancher-allow-egress
+  namespace: cattle-system
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cattle-system
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Hubble observability
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: hubble-relay
+      toPorts:
+        - ports:
+            - port: "4244"
+              protocol: TCP
+---
+# 3) Ingress — Tailscale proxy (ADR-018, the only route in for users),
+#    intra-cattle-system, kube-apiserver + host/remote-node (webhooks + probes),
+#    monitoring scrape (443).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: rancher-allow-ingress
+  namespace: cattle-system
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cattle-system
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+            k8s:tailscale.com/managed: "true"
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # rancher-webhook (8443/9443 advertised) + rancher's own 443; kubelet probes on 80/443
+    - fromEntities:
+        - kube-apiserver
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "444"
+              protocol: TCP
+            - port: "8443"
+              protocol: TCP
+            - port: "9443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+{{- end }}

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: rancher
+description: "Rancher management plane for the local k3s cluster (local cluster, single-replica, Tailscale-exposed). ArgoCD remains the deploy engine; Fleet is enabled for the local cluster only."
+type: application
+version: 1.0.0
+home: https://rancher.com
+icon: https://raw.githubusercontent.com/rancher/ui/master/public/assets/images/logos/welcome-cow.svg
+sources:
+  - https://github.com/rancher/rancher
+maintainers:
+  - name: Seom88
+    url: https://github.com/Seom88
+dependencies:
+  - name: rancher
+    version: 2.15.3
+    repository: https://releases.rancher.com/server-charts/stable
