@@ -21,6 +21,7 @@ This project has never been released. There is no version tag and no published b
 
 ### Changed
 
+- **Renovate now targets `main` directly (no `dev` environment exists)** — `baseBranchPatterns` moved from `dev` to `main`; minor/patch (docker images, helm charts, GitHub Actions, regex managers) and docker digest bumps on already-pinned refs automerge to `main` after CI green + `minimumReleaseAge` (3 days; null for digests). Majors keep PRs and never automerge. New `digest → automerge` rule added; the `dev` branch is dormant, not deleted (`gitops/values-dev.yaml`, `just init-dev` kept for a future dev cluster). `docs/ci-cd.md` Renovate table rewritten to match the file (stale `manual-review/*` entries removed) and [ADR-028](./docs/adrs/028-renovate-targets-main.md) added. GitHub-side: enable **Allow auto-merge** + required check `validate` on `main`, drop required approvals (Renovate cannot self-approve) — see ADR-028 §4.
 - **CI split into `ci.yaml` + `security.yaml`** — Trivy image/misconfig scans moved out of the merged `CI` workflow into a dedicated `Security` workflow (push to `main`/`dev`, weekly CVE cron, manual dispatch; PRs and feature branches skip Trivy as before). The CI badge now reflects repo validity (lint/render/secret-scan/sanity), not upstream image CVEs; a separate Security badge tracks the Trivy gate (fail-closed for digest-pinned first-party images, advisory otherwise). Weekly CVE cron moved with it; validate no longer runs on schedule.
 
 ### Added
