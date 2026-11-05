@@ -12,7 +12,7 @@ This guide provides the steps to initialize the Homelab GitOps environment, incl
 
 ## 1. Bootstrap the Environment
 
-Run the initialization script to configure the foundation of your GitOps flow. The script deploys the root **App-of-Apps** (cert-manager, External Secrets Operator and the platform apps sync via ArgoCD) and applies the SOPS-encrypted secrets ([SOPS + age](sops.md) is the default secrets path — [ADR-017](adrs/017-vault-paused-sops-default.md); Vault is paused, not deleted). You can choose between `prod` (default) and `dev` environments using the `just` recipes:
+Run the initialization script to configure the foundation of your GitOps flow. The script deploys the root **App-of-Apps** (cert-manager, the optional External Secrets Operator and the platform apps sync via ArgoCD) and applies the SOPS-encrypted secrets ([SOPS + age](sops.md) is the default secrets path — [ADR-017](adrs/017-vault-paused-sops-default.md); Vault is paused, not deleted). You can choose between `prod` (default) and `dev` environments using the `just` recipes:
 
 ```bash
 # For production (default)
@@ -23,13 +23,16 @@ just init-dev
 ```
 
 > [!TIP]
-> The raw scripts are also available at `./bootstrap/01-init-gitops.sh [prod|dev]` if you prefer running them directly.
+> The raw scripts are also available at `./bootstrap/init-gitops.sh [prod|dev]` if you prefer running them directly. Use `--check` for a read-only verification or `--force` to reapply the root Application.
 
 > [!IMPORTANT]
 > The cluster must have **ArgoCD** installed **before** running the bootstrap. Longhorn is deployed by this repo as a wave -1 App-of-Apps app with a CSI readiness gate — the bootstrap script does not install ArgoCD or any storage component.
 
 > [!NOTE]
-> **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/` ordered by `argocd.argoproj.io/sync-wave`: wave `-2` ts-operator → wave `-1` cert-manager/cloudnative-pg/longhorn → wave `0` external-secrets/velero → wave `1` vault (gated off by default, ADR-017) → wave `2` valkey → wave `3` monitoring/trivy-operator/homepage (`sync-only`) → wave `5` immich → wave `6` nextcloud (user apps, `sync-only`). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua, ADR-006), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` and `tailscale` are `sync-only` leaves, Tailscale still exposes other apps even if monitoring is degraded.
+> **Wave ordering and idempotency:** Platform apps are plain `Application` resources in `gitops/templates/` ordered by `argocd.argoproj.io/sync-wave`: wave `-2` ts-operator → wave `-1` cert-manager/cloudnative-pg/longhorn → wave `0` external-secrets/velero → wave `1` vault (gated off by default, ADR-017) → wave `2` valkey (`healthy`) → wave `3` monitoring/trivy-operator/kepler/homepage (`sync-only`) → wave `5` immich → wave `6` nextcloud (user apps, `sync-only`). The default `wave-policy: healthy` makes each wave wait for `Synced + Healthy` (custom Application health Lua, ADR-006), matching Flux `dependsOn` semantics; `sync-only` leaves need only `Synced`. Bootstrap is idempotent — if the root `Application` already exists the script skips reapply and acts as a status verifier. Because `monitoring` is a `sync-only` leaf, application waves do not wait for it to become healthy.
+
+> [!TIP]
+> Working with AI coding agents? [`docs/devcontainer.md`](devcontainer.md) describes an optional Podman devcontainer that mounts masked secrets and a read-only production ServiceAccount (`just dev-up`). Bootstrap works the same from inside it.
 
 ## 2. Secrets (SOPS default, Vault paused)
 

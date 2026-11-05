@@ -4,6 +4,8 @@
 
 Vault is paused, not deleted. SOPS + age is the default secrets path until velocity allows a Vault return.
 
+> **Current-state note (2026-10-26):** The CI restore/apply references in this ADR describe the former implementation. The active path is local SOPS application through `just secrets-apply` / `bootstrap/init-sops.sh`; CI validates but does not deploy or touch cluster credentials. See [`docs/ci-cd.md`](../ci-cd.md) and [`docs/secrets-structure.md`](../secrets-structure.md).
+
 ## Context
 
 Vault HA with Raft, TLS, autounseal, bootstrap Job, and per-service ESO `ClusterSecretStore` (ADR-002, ADR-009) is production-grade. It is also expensive per feature: every new secret touches policy + role + seed Job + `ClusterSecretStore` + `ExternalSecret`, plus raft, unseal, and backup concerns.
@@ -34,7 +36,7 @@ Decision: freeze `platform/vault/` in place, disable Vault/ESO via flags, and sh
 
 - Velocity restored: secret change = edit + `sops encrypt` + commit + PR, with Git diffs and rollback.
 - DR honest: `git clone` + 1 age key + RustFS bootstrap prefix recovers secrets without a running cluster.
-- Vault knowledge preserved: code, ADR-002/009, and the frozen archive under `s3://secrets-homelab` stay searchable. The cluster restore procedure lives in [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook).
+- Vault knowledge preserved: code, ADR-002/009, and the frozen archive under `s3://secrets-homelab` stay searchable. The cluster restore procedure lives in [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-step-by-step).
 
 ### Negative
 
@@ -70,6 +72,6 @@ Decision: freeze `platform/vault/` in place, disable Vault/ESO via flags, and sh
 - ADR-002: Vault config decentralization (per-service ESO stores)
 - ADR-004: Tailscale OAuth seed strategy (bootstrap Secret outside Vault — same chicken-egg precedent)
 - ADR-009: Vault DR — single-leader restore + raft snapshot golden rule
-- Runbook: `docs/runbook-vault-restore.md` (deleted; golden rule in [ADR-009](009-vault-dr-and-velero-backup.md) §Decision 1, cluster restore procedure in [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-runbook))
+- Runbook: `docs/runbook-vault-restore.md` (deleted; golden rule in [ADR-009](009-vault-dr-and-velero-backup.md) §Decision 1, cluster restore procedure in [`docs/cluster-recovery.md` §2](../cluster-recovery.md#2-restore-step-by-step))
 - Velero: `docs/cluster-recovery.md`, `platform/velero/values.yaml`
 - SOPS: https://github.com/mozilla/sops — age: https://github.com/FiloSottile/age

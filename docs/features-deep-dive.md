@@ -16,38 +16,38 @@ Detailed technical explanations of the key features implemented in this project.
 - Age key restored from RustFS (`s3://secrets-homelab/sops/keys.txt`), shredded after apply
 - Applied locally via `just secrets-apply` — CI holds no cluster credentials
 
-**Vault 3-Node High-Availability Cluster** (paused — chart frozen in place):
-- HA quorum for fault tolerance — cluster survives 1 node failure
-- TLS encryption for client-server and node-to-node communication
-- Auto-unseal via CronJob — automatically unseals on pod restart
+**Vault (paused — chart frozen in place, 1 replica):**
+- Raft storage with TLS for client-server and node-to-node communication — the chart supports a 3-node quorum, but the cluster is single-node (ADR-019), so it runs 1 replica
+- Auto-unseal via the `vault-autounseal` Deployment — unseals Vault after a pod restart
 - Kubernetes auth method — applications authenticate via service account tokens
 - External Secrets Operator (ESO) — syncs secrets from Vault → native K8s Secrets
 - Per-service ClusterSecretStores — least-privilege per-application access
 
 ### Why This Matters
 
-Vault is the industry standard for secrets management. Implementing it from scratch (not just installing) demonstrates:
-- Understanding of distributed systems (Raft consensus)
+Vault is the industry standard for secrets management. Designing it from scratch (not just installing it), then **choosing to pause it** while SOPS + age covers the live path, demonstrates:
+- Understanding of distributed systems (Raft consensus, quorum tradeoffs)
 - TLS/PKI knowledge
 - Production-grade security patterns
 - Kubernetes RBAC integration
+- Judgement: shipping the simpler path when the operational cost is not justified yet ([ADR-017](./adrs/017-vault-paused-sops-default.md))
 
-### How It Works
+### How It Works (when Vault is re-enabled)
 
 1. **Initialization** — Bootstrap script generates Vault init keys, unseals cluster, and configures Kubernetes auth
 2. **Secret Storage** — Applications store secrets in Vault (e.g., `secret/app/database/password`)
 3. **Sync to K8s** — External Secrets Operator watches Vault, syncs to native Secrets
 4. **Pod Injection** — Applications read from K8s Secrets or use Vault agent for direct injection
-5. **Auto-Unseal** — CronJob detects sealed pods, unseals them via KMS (backend depends on configuration)
+5. **Auto-Unseal** — a `vault-autounseal` Deployment watches the Vault pods and unseals them after a restart
 
 ### Key Files
 
 - Configuration: [`platform/vault/Chart.yaml`](../platform/vault/Chart.yaml)
 - Templates: [`platform/vault/templates/`](../platform/vault/templates/)
-  - StatefulSet (3 replicas): `statefulset.yaml`
+  - StatefulSet (1 replica, upstream `vault` subchart): `values.yaml`
   - Network Policies: `networkpolicy.yaml`
-  - ClusterSecretStores: `clustersecretstore.yaml` # pragma: allowlist secret
-  - Auto-unseal CronJob: `autounseal-cronjob.yaml`
+  - ClusterSecretStores: `eso/cluster-store-monitoring.yaml` # pragma: allowlist secret
+  - Auto-unseal Deployment: `unseal/deployment-autounseal.yaml`
 - Bootstrap: [`bootstrap/init-gitops.sh`](../bootstrap/init-gitops.sh) (Vault init & auth setup)
 - ADR: [ADR-002: Vault Config Decentralization](./adrs/002-vault-config-decentralization.md)
 
@@ -114,7 +114,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 ### How It Works
 
 1. **eBPF Datapath vs iptables** — Cilium replaces kube-proxy (`kubeProxyReplacement: strict`) with eBPF programs attached to the kernel. With `ipam: kubernetes`, Cilium owns pod address allocation and service routing end to end.
-2. **Policy Lifecycle — 3-Rule Template per Namespace** — Each chart renders `platform/*/templates/cilium-networkpolicies.yaml` (gated by `ciliumNetworkPolicy.enabled`):
+2. **Policy Lifecycle — 3-Rule Template per Namespace** — Each chart renders `platform/*/templates/cilium-networkpolicies.yaml` — `platform/kepler/templates/cilium-networkpolicy.yaml` uses the singular filename — gated by `ciliumNetworkPolicy.enabled`:
    - `allow-dns` — `endpointSelector: {}` + `toEndpoints: {k8s-app: kube-dns, k8s:io.kubernetes.pod.namespace: kube-system}` on port 53 (UDP/TCP) with `toFQDNs: [{matchPattern: "*"}]` and `rules.dns`.
     - `allow-egress` — kube-apiserver (443/6443), `hubble-relay` (4244), intra-namespace (`k8s:io.kubernetes.pod.namespace: <ns>`), plus per-app specifics (e.g., Vault Raft, Longhorn storage ports).
    - `allow-ingress` — intra-namespace and `toEntities: {host, remote-node, kube-apiserver}` + `health` probes.
@@ -125,7 +125,7 @@ open https://prometheus.lonk-mirfak.ts.net/
 ### Key Files
 
 - Fallback (non-Cilium clusters): `platform/*/templates/networkpolicy.yaml` (`networking.k8s.io/v1`) — retained for non-Cilium clusters, not enforced when Cilium is active
-- Cilium (enforced): `platform/*/templates/cilium-networkpolicies.yaml` + `apps/*/templates/` (10 charts, gated by `ciliumNetworkPolicy.enabled=true`) + `*/values.yaml` (`ciliumNetworkPolicy.enabled: true` default)
+- Cilium (enforced): `platform/*/templates/cilium-networkpolicies.yaml` + `apps/*/templates/` (11 charts, including kepler's singular `cilium-networkpolicy.yaml`; gated by `ciliumNetworkPolicy.enabled=true`) + `*/values.yaml` (`ciliumNetworkPolicy.enabled: true` default)
 - ADRs: [ADR-014: Cilium CNI and Identity-Aware NetworkPolicies](./adrs/014-cilium-cni-and-identity-networkpolicies.md) · [Networking guide](./networking.md)
 
 ---
@@ -175,7 +175,7 @@ Wave 0 (Healthy required):
 Wave 1 (Healthy required):
   └── vault          ← Depends on wave 0 (paused by default — ADR-017; SOPS is the live secrets path)
 
-Wave 2 (Sync-only):
+Wave 2 (Healthy required):
   └── valkey         ← Shared cache service (namespace valkey); consumed by immich (redis db 0, Bull queues) and nextcloud (redis db 1, cache + locking) over valkey.valkey.svc.cluster.local
 
 Wave 3 (Sync-only):
@@ -254,13 +254,13 @@ Includes:
 
 ### Key Files
 
-- Chart: [`platform/monitoring/Chart.yaml`](../platform/monitoring/Chart.yaml) — dependencies: `loki:7.3.0`, `kube-prometheus-stack:88.6.1`, `alloy:1.12.1`
+- Chart: [`platform/monitoring/Chart.yaml`](../platform/monitoring/Chart.yaml) — dependencies: `loki:7.3.0`, `kube-prometheus-stack:92.11.0`, `alloy:1.14.0`
 - Values: [`platform/monitoring/values.yaml`](../platform/monitoring/values.yaml) — Loki SingleBinary + S3 (RustFS), Grafana Loki datasource (`X-Scope-OrgID: fake`), Alloy `discovery.kubernetes`/`loki.source.kubernetes`/`loki.write` pipeline
 - Templates: [`platform/monitoring/templates/`](../platform/monitoring/templates/)
   - Prometheus config: `prometheus-configmap.yaml`
   - Grafana datasources: `grafana-datasources.yaml`
   - Loki S3 config: `loki-config.yaml`
-- Application: [`gitops/templates/apps/03-monitoring.yaml`](../gitops/templates/apps/03-monitoring.yaml)
+- Application: [`gitops/templates/platform/03-monitoring.yaml`](../gitops/templates/platform/03-monitoring.yaml)
 - Log collector: Alloy DaemonSet (stateless, no PVC, RBAC auto-created; replaces Promtail — deprecated) — see `platform/monitoring/values.yaml` `alloy:` block
 
 ---
@@ -269,19 +269,19 @@ Includes:
 
 ### Longhorn: Distributed Block Storage
 
-**What it is:** Kubernetes-native distributed storage that turns local disks on worker nodes into a shared storage pool.
+**What it is:** Kubernetes-native block storage that turns local disks on worker nodes into a shared storage pool. This lab runs a single node, so Longhorn provides snapshots and a stable CSI interface rather than node-level redundancy.
 
 **Why it matters:**
 - Stateful workloads (databases, Vault) need persistent storage
-- Longhorn provides HA — data replicated across nodes
+- Longhorn provides replication and snapshots; with one node it runs a single replica (ADR-019), so node failure is still total downtime
 - CSI integration — applications claim storage via PVCs
 
 **How it works:**
 1. **Node Preparation** — Every node must provide `iscsi-tools` and a kubelet mount for `/var/lib/longhorn`
 2. **Disk Assignment** — Each node has a `longhorn-disk` directory
-3. **Replication** — Longhorn creates replicas across nodes (default 3)
+3. **Replication** — Longhorn creates replicas across nodes (`defaultReplicaCount: 1` on this single-node lab)
 4. **PVC Binding** — Applications claim storage via `PersistentVolumeClaim`
-5. **Wave-0 Deployment** — Longhorn deployed before Vault to ensure storage is ready
+5. **Wave -1 Deployment** — Longhorn is deployed before the data layer so storage is ready
 
 **CSI Readiness Gate:**
 ```yaml
@@ -305,7 +305,7 @@ podSpec:
 - S3 API compatibility — works with any S3 client library
 
 **How it works:**
-1. **Deployment** — Runs on a VM outside the cluster (managed externally)
+1. **Deployment** — Runs in a TrueNAS VM (6 GiB RAM / 6 vCPU) on the same mini PC, outside the k3s cluster
 2. **S3 API** — Exposes S3-compatible endpoint at `rustfs.lonk-mirfak.ts.net`
 3. **Credentials** — SOPS + age in git (Velero, CNPG, Loki S3 credentials; ADR-017 — Vault is paused)
 4. **Applications** — Use standard S3 client (boto3, AWS SDK) with cluster endpoint
@@ -363,13 +363,13 @@ loki:
 # Force reapply (safe, idempotent)
 ./bootstrap/init-gitops.sh prod --force
 
-# Dry-run (preview without applying)
-./bootstrap/init-gitops.sh prod --dry-run
+# Read-only check (no changes)
+./bootstrap/init-gitops.sh prod --check
 ```
 
 ### Key Concepts
 
-- **Dry-run safety** — Preview changes before applying
+- **Read-only check** — `--check` verifies the root Application without changing it
 - **State verification** — Check cluster state without modifying
 - **Incremental deployment** — Rerun to continue partial deployments
 - **Error handling** — Clear error messages guide troubleshooting
@@ -378,7 +378,7 @@ loki:
 
 - Bootstrap script: [`bootstrap/init-gitops.sh`](../bootstrap/init-gitops.sh)
 - Root app definition: [`gitops/templates/root-prod-app.yaml`](../gitops/templates/root-prod-app.yaml)
-- Vault init logic: Inside bootstrap script (search for `vault_init`)
+- Vault init logic: Inside the bootstrap script (search for `vault_init`); only runs when Vault is re-enabled (ADR-017)
 - Documentation: [`docs/getting-started.md`](./getting-started.md)
 
 ---
@@ -435,19 +435,19 @@ Every commit runs through:
 Before pushing, run locally:
 
 ```bash
-# Lint all files
-just lint
-
-# Validate Helm charts (no cluster required)
+# Validate Helm charts, scripts, YAML and images (no cluster required)
 just validate
 
-# Format check
-just fmt
+# Repo checks (tools, docs links, git state)
+just check
+
+# Security scan mirror of CI
+just scan
 ```
 
 ### GitHub Actions
 
-- **Trigger** — On every push to `main` or `dev` (1 CI run; deploys are ArgoCD pull — no deploy workflow)
+- **Trigger** — Every push and pull request on any branch (1 CI run; deploys are ArgoCD pull — no deploy workflow)
 - **Unified CI** — `ci.yaml` runs validate + security jobs (Trivy images + misconfig, SARIF) against prod and dev values
 - **Deploy** — GitOps pull-only: ArgoCD self-manages the root app (automated + prune + selfHeal); break-glass bootstrap/secrets via `just init-prod` / `just secrets-apply`
 - **Rollback** — Revert commit to rollback (ArgoCD resumes the previous manifest set)

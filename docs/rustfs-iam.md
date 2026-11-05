@@ -165,65 +165,18 @@ Manual step (once): create bucket `cnpg-db-backups` in console before the first
 backup. No cluster-side provisioning — the old SeaweedFS `backup-init` IAM flow
 is gone with `charts/cnpg` (deleted 2026-09-28).
 
-### Loki (`loki`)
+### Loki — decommissioned (2026-10-26)
 
-Loki writes chunks and rules to S3. One bucket, one key — `bucketNames.chunks`
-and `bucketNames.ruler` both point to `loki`. Loki separates data internally
-by key prefix.
+Loki no longer uses RustFS. Its chunks and index moved to a local Longhorn PVC
+(`filesystem` storage type in `platform/monitoring/values.yaml`), the
+`loki-s3-credentials` ExternalSecret, its SOPS file and the `loki-bucket-init`
+Job were deleted, and the identical `s3:CreateBucket` recipe now applies only to
+Velero (`platform/velero/templates/job-bucket-init.yaml`).
 
-`s3:CreateBucket` **is** required here: `platform/monitoring/templates/job-bucket-init.yaml`
-creates the `loki` bucket idempotently with this same scoped key (mirrors the
-Velero recipe in `platform/velero/templates/job-bucket-init.yaml`, where
-`velero-bucket-init` does the same with its own scoped key). The earlier wording
-("No `s3:CreateBucket`") was wrong and is the direct cause of the
-`AccessDenied`/exit-254 failures observed when cutting Loki over from SeaweedFS
-to RustFS. Grant `s3:CreateBucket` on `arn:aws:s3:::loki` to the `loki-backup`
-key, or pre-create the bucket once in the RustFS console before the first sync.
-The key still cannot create or touch any other bucket (scoped to this single ARN).
-
-Observed 2026-10-10: Loki needs the same object-level verbs as CNPG (`GetObject`,
-`PutObject`, `DeleteObject`, `AbortMultipartUpload`, `ListMultipartUploadParts`)
-plus bucket-level listing. The three extra bucket verbs (`ListBucketVersions`,
-`ListBucketMultipartUploads`, `GetBucketVersioning`) are kept for AWS parity —
-Loki's Boltdb-shipper does not call them, but the policy is future-proof and
-harmless.
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetBucketLocation",
-        "s3:ListBucket",
-        "s3:ListBucketVersions",
-        "s3:ListBucketMultipartUploads",
-        "s3:GetBucketVersioning",
-        "s3:CreateBucket"
-      ],
-      "Resource": ["arn:aws:s3:::loki"]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:AbortMultipartUpload",
-        "s3:ListMultipartUploadParts"
-      ],
-      "Resource": ["arn:aws:s3:::loki/*"]
-    }
-  ]
-}
-```
-
-**Apply in RustFS console** (key `loki-backup`): paste the JSON above as the
-session policy. Then update `platform/monitoring/values.yaml` to point Loki at
-RustFS (`https://rustfs.lonk-mirfak.ts.net`, remove `insecure: true`) and
-re-encrypt `platform/monitoring/sops/loki-s3-credentials.enc.yaml` with the new
-key material.
+Remaining manual cleanup, in the RustFS console: the `loki` bucket and the
+`loki-backup` key are unused. Removing them is safe — the chunks inside are
+abandoned by decision, so queries for log ranges before 2026-10-26 return no
+data. Keeping them costs disk on the RustFS pool and nothing else.
 
 ### Sharing one key + one bucket across namespaces
 

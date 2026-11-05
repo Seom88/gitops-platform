@@ -72,7 +72,7 @@ For forks: nothing cluster-side to configure. The only GitHub-side assets remain
 | Former deploy.yaml behavior | Now |
 |-----------------------------|-----|
 | `force_reapply` manual dispatch | `just init-prod-force` |
-| CI status/diagnostics run | `just init-prod` (idempotent rerun) or `just status` |
+| CI status/diagnostics run | `just init-prod` (idempotent rerun) or `just status-cluster` |
 | Auto-apply on secret rotation | `just secrets-apply` (reapplies + rollout-restarts the operator — see `scripts/tailscale-secret.sh`) |
 | Tailnet connectivity from runners | Gone — runners never join the tailnet; `tag:cicd` releases can be reclaimed in the Tailscale admin console |
 
@@ -93,7 +93,7 @@ permissions:
   contents: read
 
 env:
-  HELM_VERSION: v3.18.4
+  HELM_VERSION: v4.3.1
 
 jobs:
   validate:
@@ -105,7 +105,7 @@ jobs:
 |------|--------------|
 | `checkout` | `actions/checkout@v7` `persist-credentials: false` |
 | `secret scan` | `detect-secrets-hook --baseline .secrets.baseline` — fail on new secrets, never auto-updates |
-| `setup-helm` | `azure/setup-helm@v5` `version: v3.18.4` |
+| `setup-helm` | `azure/setup-helm@v5` `version: v4.3.1` |
 | `helm dependency build (gitops)` | `helm dependency build gitops` (no-op if no deps) |
 | `helm dependency build (platform charts)` | `helm repo add` longhorn/grafana/prometheus-community/tailscale/hashicorp + `helm repo update`; loop `platform/*/` → `helm dependency update/build` |
 | `lint gitops (prod)` | `helm lint gitops -f gitops/values.yaml` |
@@ -113,7 +113,7 @@ jobs:
 | `render gitops (prod) — empty check` | `helm template gitops gitops -f gitops/values.yaml > /tmp/gitops-prod.yaml` + `test -s` + `wc -l` + `grep -c '^---'` + `head -n 80` |
 | `render gitops (dev) — empty check` | `helm template gitops gitops -f gitops/values-dev.yaml > /tmp/gitops-dev.yaml` + `test -s` |
 | `lint platform charts` | Loop `platform/*/` with `Chart.yaml` → `helm lint "$dir"` (fail aggregated via `failed` flag) |
-| `shellcheck` | Install `shellcheck` if missing (`apt-get`); `shellcheck bootstrap/init-gitops.sh` + `shellcheck platform/vault/scripts/bootstrap-vault.sh` |
+| `shellcheck` | Install `shellcheck` if missing, then `./scripts/shellcheck-check.sh` — all bootstrap and `scripts/` files |
 | `yaml sanity` | `python3` + `yaml.safe_load_all` over `**/*.yaml` skipping `/templates/` `/charts/` `platform/longhorn/charts/` and Go templates (`{{`/`{%`) |
 | `json sanity` | `python3 -m json.tool` over `**/*.json` skipping `charts/.git/node_modules`; warn if `renovate.json` missing |
 | `yamllint` | `continue-on-error: true` — `pip install yamllint`, `yamllint -c .yamllint.yaml gitops/ platform/ bootstrap/` (templates ignored, `helm lint` owns them) |
@@ -197,7 +197,7 @@ Local equivalent: `just scan` (same discovery loop + `HIGH,CRITICAL` table summa
 
 | Rule | Datasource | Group / Label | Automerge |
 |------|------------|---------------|-----------|
-| Vault HA Raft + TLS + auto-unseal — wave 1 healthy — needs manual review | `helm` `vault` | `manual-review/vault` | `false` |
+| Vault Raft + TLS + auto-unseal — wave 1, paused/disabled by default — needs manual review | `helm` `vault` | `manual-review/vault` | `false` |
 | Longhorn storage — needs manual validation (CSI-gated wave 0) | `helm` `longhorn` | `manual-review/longhorn` | `false` |
 | cert-manager wave-0 healthy — needs manual review before wave 1 | `helm` `cert-manager` | `manual-review/cert-manager` | `false` |
 | Group non-critical Helm charts (loki, kube-prometheus-stack, tailscale-operator, external-secrets) | `helm` excl. vault/longhorn/cert-manager | `helm charts` (`helm-charts`), `helm` | grouped PR |

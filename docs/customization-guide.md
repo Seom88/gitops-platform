@@ -19,7 +19,7 @@ The main entry point is `gitops/templates/root-prod-app.yaml`, which uses the `r
 
 By default, the `prod` environment targets the `main` branch, while the `dev` environment targets the `dev` branch. You can change this behavior in `gitops/templates/root-prod-app.yaml` and in each `gitops/templates/platform/*.yaml` / `gitops/templates/apps/*.yaml` (via `targetRevision`).
 
-To add a new ordered app, create a new `gitops/templates/platform/0N-name.yaml` (platform) or `gitops/templates/apps/0N-name.yaml` (user app) as a plain `Application` with the correct `argocd.argoproj.io/sync-wave` annotation and `wave-policy` label (`healthy` to block the next wave until `Synced + Healthy`, `sync-only` to require only `Synced`). Use the existing files as templates: wave `-2` ts-operator → `-1` cert-manager/cloudnative-pg/longhorn (CSI readiness gate on Longhorn) → `0` external-secrets/velero → `1` vault (gated off by default, ADR-017) → `2` valkey (shared dependency for immich + nextcloud) → `3` monitoring/trivy-operator/homepage → `5` immich → `6` nextcloud — see ADRs 010/011/018. (No `ts-ingress` chart: each chart owns its Tailscale Ingress.)
+To add a new ordered app, create a new `gitops/templates/platform/0N-name.yaml` (platform) or `gitops/templates/apps/0N-name.yaml` (user app) as a plain `Application` with the correct `argocd.argoproj.io/sync-wave` annotation and `wave-policy` label (`healthy` to block the next wave until `Synced + Healthy`, `sync-only` to require only `Synced`). Use the existing files as templates: wave `-2` ts-operator → `-1` cert-manager/cloudnative-pg/longhorn (CSI readiness gate on Longhorn) → `0` external-secrets/velero → `1` vault (gated off by default, ADR-017) → `2` valkey (`healthy`, shared dependency for immich + nextcloud) → `3` monitoring/trivy-operator/kepler/homepage → `5` immich → `6` nextcloud — see ADRs 010/011/018. (No `ts-ingress` chart: each chart owns its Tailscale Ingress.)
 
 ## 2. Tailscale Configuration
 
@@ -33,11 +33,11 @@ This homelab integrates with Tailscale for secure networking:
 
 > Vault is paused, not deleted ([ADR-017](adrs/017-vault-paused-sops-default.md)). New secrets ship with **SOPS + age** — see the [SOPS guide](sops.md). The Vault notes below apply only if you re-enable the Vault path.
 
-This lab relies heavily on HashiCorp Vault. The setup is mostly automated:
+The live path is **SOPS + age**, and it needs no cluster-side component:
 
-1.  **Initialization**: Follow the [Getting Started](getting-started.md) guide. The bootstrap script handles initialization, unsealing, and basic configuration (KV engine and Kubernetes auth).
-2.  **Secrets Structure**: It is **crucial** to follow the [Secrets Structure guide](secrets-structure.md) to understand how to seed your own credentials (Tailscale, Cloudflare, etc.) into Vault.
-3.  **External Secrets Operator (ESO)**: The `ClusterSecretStore` is pre-configured to connect to Vault using the internal Kubernetes service name. No manual updates are required unless you change the Vault deployment namespace or service names.
+1.  **Initialize the age key**: `just secrets-init` creates the key material and `bootstrap/init-sops.sh` wires it. `just secrets-apply` encrypts with SOPS and applies the result.
+2.  **Secret layout**: Follow the [Secrets Structure guide](secrets-structure.md) for the per-chart `sops/*.enc.yaml` layout. Tailscale and RustFS credentials come from your local `.env`; CI never holds a cluster credential.
+3.  **Vault (optional, paused)**: Re-enabling Vault is a separate decision ([ADR-017](adrs/017-vault-paused-sops-default.md)). Flip `vault.enabled` / `eso.enabled` in `gitops/values.yaml`, then follow the old KV-engine and Kubernetes-auth steps in the [Getting Started](getting-started.md) guide. ESO's `ClusterSecretStore` already points at the internal Vault service; only change it if you rename the namespace or service.
 
 
 ## 4. Personal Branding

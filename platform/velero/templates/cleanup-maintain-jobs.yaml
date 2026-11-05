@@ -5,7 +5,7 @@
 # Auto-cleanup for Velero kopia repository-maintenance Jobs.
 # These Jobs are created by the velero server controller (not by a CronJob),
 # so neither ttlSecondsAfterFinished nor failed/successfulJobsHistoryLimit can
-# be set on them — the subchart (vmware-tanzu/velero 12.2.0) exposes only
+# be set on them — the subchart (vmware-tanzu/velero 12.2.1) exposes only
 # `configuration.repositoryMaintenanceJob...keepLatestMaintenanceJobs` (pinned
 # to 3 in values.yaml). That cap is per-repository and has no TTL: orphans
 # from deleted BackupRepositories or missed prunes accumulate as Failed

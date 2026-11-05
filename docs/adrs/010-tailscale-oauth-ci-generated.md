@@ -1,6 +1,9 @@
 # ADR-010: Tailscale OAuth — CI-Generated Secret, Two-Chart Wave Split
 
-**Status:** Accepted · **Date:** 2026-08-31 · **Supersedes:** [ADR-004](004-tailscale-oauth-seed-strategy.md) · **Follow-up:** [ADR-011](011-tailscale-dns-np.md) removes `hostNetwork` fallback and scopes DNS via `coredns-patch` + NetworkPolicy (2026-09-01)
+**Status:** Superseded by current local bootstrap path · **Date:** 2026-08-31 · **Supersedes:** [ADR-004](004-tailscale-oauth-seed-strategy.md) · **Follow-up:** [ADR-011](011-tailscale-dns-np.md) removes `hostNetwork` fallback and scopes DNS via `coredns-patch` + NetworkPolicy (2026-09-01)
+
+> [!NOTE]
+> **Addendum (2026-10-26).** `deploy.yaml` was removed; CI never touches the cluster and no GitHub secret is consumed. The only Tailscale credential path is now the local `.env` via `just secrets-apply` / `bootstrap/init-gitops.sh`. The operator also moved to chart `1.104.1` at wave `-2` (`healthy`). The CI-generated design and version pins below are history; the current path is in [`docs/secrets-structure.md`](../secrets-structure.md).
 
 ## Context
 

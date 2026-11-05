@@ -1,5 +1,5 @@
 # Nextcloud on Kubernetes — homelab wiring (Seom88).
-# Upstream chart: nextcloud/nextcloud 9.4.0 (appVersion 35.0.1), apache flavor.
+# Upstream chart: nextcloud/nextcloud 9.4.1 (appVersion 35.0.2), apache flavor.
 # DB: CloudNativePG (initdb; recovery branch templated but gated off) — ADR-022.
 # Cache/locking: shared platform/valkey on redis dbindex 1 (ADR-021).
 # Exposure: per-app Tailscale Ingress (ADR-018) — templates/tailscale-ingress.yaml.
@@ -26,12 +26,12 @@ backup:
   # Tailnet IP of the RustFS host (S3 API :443). FQDN-independent egress
   # fallback (Cilium toCIDR, velero pattern) — same literal as immich.
   tailnetIp: "100.89.39.31"
-  # 01:55 UTC daily, ahead of Velero `daily-full` (02:00). Barman first leaves
+  # 01:55 UTC daily, comfortably ahead of Velero `daily-full` (18:00 UTC). Barman first leaves
   # an orphaned file recoverable on disk; Velero first would capture the row
   # without the file.
   schedule: "55 1 * * *"
-  # Recovery-window retention; 30d matches Velero and the other CNPG clusters.
-  retentionPolicy: "30d"
+  # Recovery-window retention; 7d matches Velero and the other CNPG clusters.
+  retentionPolicy: "7d"
 
 # Pattern 2 — recovery by flag (same as platform/monitoring grafana-database).
 # `spec.bootstrap` is WRITE-ONE in CNPG, so a cluster born from initdb can later
@@ -64,6 +64,11 @@ cnpg:
       max_wal_size: "256MB"
       min_wal_size: "80MB"
       wal_keep_size: "128MB"
+      # Forced segment-switch floor. CNPG's global default is 5min, which on
+      # an idle database still archives 288 full 16 MiB segments/day (~4.5 GiB)
+      # of mostly empty WAL. 30min caps the RPO at half an hour (Velero is
+      # daily anyway) and cuts that floor 6x; ObjectStore gzip does the rest.
+      archive_timeout: "30min"
 
 # ─── upstream chart values (dependency name: nextcloud) ───
 nextcloud:

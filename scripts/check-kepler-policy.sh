@@ -53,4 +53,17 @@ grep -q 'remote-node' <<<"$ingress" \
 grep -q 'kepler' docs/roadmap.md \
   || fail "docs/roadmap.md policy coverage must list the kepler chart"
 
+# 6) Metric relabeling must drop the scrape target's own pod/namespace labels.
+# Prometheus attaches the target's labels to every series of the scrape, so
+# without this every kepler_container_* series claims to belong to
+# pod kepler-<hash> in namespace kepler. Any panel or ad-hoc query grouping
+# those metrics by namespace then silently ranks the exporter as the consumer.
+metrics_render="$(helm template monitoring platform/monitoring -n monitoring \
+  --show-only templates/services/kepler-servicemonitor.yaml)"
+grep -q 'action: labeldrop' <<<"$metrics_render" \
+  || fail "kepler ServiceMonitor must labeldrop the target's pod/namespace labels"
+grep -q 'regex: pod|namespace' <<<"$metrics_render" \
+  || fail "kepler ServiceMonitor labeldrop regex must be 'pod|namespace'"
+
 echo "✅ Kepler Cilium policy: OK (apiserver 443/6443, kubelet 10250, metrics :$metrics_port, probes, docs)"
+echo "✅ Kepler metrics contract: OK (target pod/namespace labels dropped)"

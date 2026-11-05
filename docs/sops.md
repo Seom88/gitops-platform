@@ -19,14 +19,14 @@ See [ADR-017](adrs/017-vault-paused-sops-default.md) for why SOPS is the default
 ## Prerequisites
 
 - `sops` and `age` binaries installed.
-- The age private key available locally (never committed). CI restores it from RustFS automatically.
+- The age private key available locally (never committed). `bootstrap/init-sops.sh` restores it from RustFS when you run `just secrets-apply`, then shreds it.
 - `.sops.yaml` at the repo root with a `creation_rules` entry whose `path_regex` matches
   `platform/*/sops/*.enc.yaml` (and `apps/*/sops/*.enc.yaml` if you add app charts).
 
 ## Creating a new encrypted secret
 
 1. Make sure your age key is available and `SOPS_AGE_KEY_FILE` points at it
-   (CI uses `/tmp/age-keys.txt`; locally it comes from your `.env`):
+   (the key path usually comes from your `.env`):
    ```bash
    echo $SOPS_AGE_KEY_FILE
    ```
@@ -37,7 +37,7 @@ See [ADR-017](adrs/017-vault-paused-sops-default.md) for why SOPS is the default
    export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
    ```
 2. Write the plaintext manifest as pure YAML at `<chart>/sops/<name>.enc.yaml`
-   (e.g. `platform/monitoring/sops/loki-s3.enc.yaml`). It must be a plain `Secret` —
+   (e.g. `platform/monitoring/sops/grafana-admin.enc.yaml`). It must be a plain `Secret` —
    see "No Helm templating" below.
 3. Encrypt in place **from the repo root, with the repo-relative path** —
    `sops` matches `path_regex` against the path you pass, so an absolute path
@@ -45,16 +45,16 @@ See [ADR-017](adrs/017-vault-paused-sops-default.md) for why SOPS is the default
    `--encrypted-regex '^(data|stringData)$'` encrypts only secret values,
    leaving `apiVersion`/`kind`/`metadata` readable (see below):
    ```bash
-   sops --encrypt --in-place --encrypted-regex '^(data|stringData)$' platform/monitoring/sops/loki-s3.enc.yaml
+   sops --encrypt --in-place --encrypted-regex '^(data|stringData)$' platform/monitoring/sops/grafana-admin.enc.yaml
    ```
 4. Verify it is really encrypted before `git add`: the file must contain
    `ENC[AES256_GCM` markers and no plaintext values:
    ```bash
-   grep -c 'ENC\[AES256_GCM' platform/monitoring/sops/loki-s3.enc.yaml
+   grep -c 'ENC\[AES256_GCM' platform/monitoring/sops/grafana-admin.enc.yaml
    ```
 5. Sanity-check the decrypted render without applying:
    ```bash
-   sops decrypt platform/monitoring/sops/loki-s3.enc.yaml | kubectl apply --dry-run=client -f -
+   sops decrypt platform/monitoring/sops/grafana-admin.enc.yaml | kubectl apply --dry-run=client -f -
    ```
 6. Apply for real: `just secrets-apply` (loads `.env`, restores the key,
    decrypts + applies, shreds the key).
@@ -63,7 +63,7 @@ To edit an existing encrypted file, open it through sops itself
 (decrypts to a temp file, re-encrypts on save):
 
 ```bash
-sops platform/monitoring/sops/loki-s3.enc.yaml
+sops platform/monitoring/sops/grafana-admin.enc.yaml
 ```
 
 ## Lessons learned (read before creating one)

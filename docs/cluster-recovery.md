@@ -10,7 +10,7 @@ Restore path: Velero for PVC/PV + file data, Barman for Postgres, ArgoCD for man
 | Postgres (CNPG) | Barman PITR, step 5 |
 | Vault | Re-bootstrap, see Vault at the end |
 
-Survival storage is external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Velero → `velero-homelab`, Barman → `cnpg-db-backups`, Loki → `loki`.
+Survival storage is external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Velero → `velero-homelab`, Barman → `cnpg-db-backups`. Loki no longer uses RustFS (2026-10-26): its chunks live on a Longhorn PVC and are deliberately excluded from Velero, because only 14 days of disposable logs are retained.
 
 **ArgoCD is reinstalled, never restored.** `daily-full` excludes `argocd` and `kube-system`; every `Application` already lives in Git under `gitops/templates/`.
 
@@ -18,7 +18,7 @@ Survival storage is external RustFS (`https://rustfs.lonk-mirfak.ts.net`): Veler
 
 Chart `platform/velero`, namespace `velero`. BSL `default`: bucket `velero-homelab`, prefix `velero/`.
 
-Schedule `daily-full` — `0 2 * * *`, TTL `720h`:
+Schedule `daily-full` — `0 18 * * *`, TTL `168h`:
 
 | Includes | Excludes |
 |---|---|
@@ -45,7 +45,7 @@ If it fails with `Permission denied` in `bootstrap/`: `chmod +x bootstrap/*.sh` 
 
 ### Step 1 — Freeze GitOps
 
-Every `Application` runs `automated: {prune, selfHeal}`: left alive, it reverts whatever the restore writes mid-flight (observed: CNPG killing pods with `FindingCluster Unknown` while Velero was still in `restore-wait`). A `deny` window on the `default` project — where the 12 apps live, and which is not in Git so nothing reverts it — freezes all syncs, automatic and manual, leaving UI and health alive:
+Every `Application` runs `automated: {prune, selfHeal}`: left alive, it reverts whatever the restore writes mid-flight (observed: CNPG killing pods with `FindingCluster Unknown` while Velero was still in `restore-wait`). A `deny` window on the `default` project — where the applications live, and which is not in Git so nothing reverts it — freezes all syncs, automatic and manual, leaving UI and health alive:
 
 ```bash
 # ArgoCD login: `just pf-argocd` in another terminal, password from `just argocd-password`.
@@ -62,7 +62,7 @@ Single-app alternative (proven on `immich`, Oct 2026): instead of the project wi
 
 ### Step 2 — Pause backups and quiesce workloads
 
-The `02:00` `daily-full` must not fire mid-restore (snapshot of half-restored volumes + contention with the node-agent):
+The `18:00` `daily-full` must not fire mid-restore (snapshot of half-restored volumes + contention with the node-agent):
 
 ```bash
 velero schedule pause daily-full
@@ -131,7 +131,7 @@ A live Postgres FsBackup is crash-consistent: not valid recovery. All CNPG clust
 
 Restored or fresh DB volumes are empty by design — Barman fills them, not Velero. But the restore replants the database *objects* (PVCs and pods ride along in `includedResources`; only the data is skipped), and those shells block recovery: the CNPG operator reconciles a franken-state of initdb Cluster + empty replanted PVCs + stale same-named pods, and bootstrap never gets a clean shot. Clean slate first, recovery second. Git manifests only carry `bootstrap.initdb` — no `recovery:` stanza — so recovery is applied by hand with the app frozen. Unfreezing afterwards is safe: `bootstrap`/`recovery` only run on empty PGDATA, Git reconciles without touching data.
 
-Prerequisites: secret `cnpg-backup-s3-credentials` in the namespace (comes from SOPS, applied in step 0; `daily-full` does not back up Secrets). For PITR, `targetTime` with explicit timezone inside the 30d retention (`kubectl -n immich get backup` to see what exists; on a fresh cluster an empty list is normal, not loss).
+Prerequisites: secret `cnpg-backup-s3-credentials` in the namespace (comes from SOPS, applied in step 0; `daily-full` does not back up Secrets). For PITR, `targetTime` with explicit timezone inside the 7d retention (`kubectl -n immich get backup` to see what exists; on a fresh cluster an empty list is normal, not loss).
 
 Manifest (immich; grafana: namespace `monitoring`, cluster `grafana-database`, store `grafana-backup-store`, `serverName: grafana-database`, database/owner `grafana`, no `postgresql:` block; nextcloud: namespace `nextcloud`, cluster `nextcloud-database`, store `nextcloud-backup-store`, `serverName: nextcloud-database`, database/owner `nextcloud`, `postgresql:` block verbatim from Git if present):
 
@@ -265,7 +265,7 @@ Then the real data — historic metrics + one Immich photo older than the disast
 | Recovery stalls / initdb never runs | Velero-replanted DB PVCs, pods, or Cluster in the way — clean slate per step 5.0 before applying recovery |
 | Recovery stuck `Setting up primary` + `Expected empty archive` | Manifest kept `plugins:` — remove and re-apply (step 5) |
 | WAL replay fails on `vchord` | Missing verbatim `spec.postgresql` from Git (step 5) |
-| PITR never arrives | `targetTime` outside the 30d window or missing timezone (step 5) |
+| PITR never arrives | `targetTime` outside the 7d window or missing timezone (step 5) |
 | Apps CrashLoop after unfreeze, DBs healthy | Every CNPG cluster must be primary before its app (step 6.2) |
 | `NoSuchBucket` or Velero unreachable | RustFS down — [RustFS IAM](./rustfs-iam.md). If the bucket is gone: `aws s3api create-bucket --bucket velero-homelab --endpoint-url https://rustfs.lonk-mirfak.ts.net --region us-east-1` |
 | `BSL not Ready` | Check `s3Url`/`s3ForcePathStyle`, Secret `cloud-credentials` (`bootstrap/init-sops.sh`), and tailnet DNS: `coredns-custom` exists in `kube-system`, tailscaled runs with `--accept-dns` on the node, `nslookup rustfs.lonk-mirfak.ts.net` succeeds from a pod |

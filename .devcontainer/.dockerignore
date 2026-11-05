@@ -1,9 +1,3 @@
-# Keep secret material and heavy paths out of the build context.
-# The Dockerfile has no COPY/ADD, but excluding these makes the context
-# itself safe to expose to the engine.
-.git
-.env
-.env.*
-kubeconfig
-**/sops/
-docs/secrets-steps/
+# The build needs no file from the context: the Dockerfile has no COPY from it.
+*
+!Dockerfile
