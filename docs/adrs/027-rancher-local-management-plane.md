@@ -88,7 +88,7 @@ The wrapper owns: `cattle-system` namespace (privileged pod-security), the Tails
 
 1. `git push` → ArgoCD syncs wave 4.
 2. `kubectl -n cattle-system get pods` → rancher/webhook healthy.
-3. Retrieve bootstrap secret with the command above; log in at `https://rancher.lonk-mirfak.ts.net`.
+3. Retrieve bootstrap secret with the command above; log in at `https://rancher.lonk-mirfak.ts.net`. If the Tailscale edge answers 503/unreachable while everything in `cattle-system` is healthy, check `ts-operator-proxy-egress` (`platform/ts-operator`) for `cattle-system → TCP 80` before any app-side policy — it is the proxy→backend allowlist and was missing until 2026-11-05.
 4. Confirm `local` cluster is `Active`; `cattle-fleet-local-system` pods green.
 5. Confirm the Tailscale proxy HTTPS cert is valid (ts.net CA).
 6. Decide *explicitly* whether to onboard Fleet; until then, Rancher is read/operate only.

@@ -298,6 +298,14 @@ spec:
         - ports:
             - port: "8200"
               protocol: TCP
+    # Rancher UI behind the Tailscale Ingress (pod 80, HTTP backend, ADR-027)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cattle-system
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: kube-system

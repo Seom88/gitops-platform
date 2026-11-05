@@ -15,6 +15,10 @@ This project has never been released. There is no version tag and no published b
 
 ## [Unreleased]
 
+### Fixed
+
+- **Rancher unreachable through the Tailscale ingress (503/timeout)** — `ts-operator-proxy-egress` in `platform/ts-operator` is the managed-proxy → backend allowlist and had no entry for the Rancher pod. The app side (`rancher-allow-ingress` → TCP 80 from `tailscale.com/managed=true` proxies, external TLS at the Tailscale edge, plain-HTTP pod on :80) was correct, so the tailnet hostname failed while every Rancher-side policy read clean. Added `cattle-system → TCP 80` to the proxy egress. In line with ADR-023's failure mode: check the proxy egress before the app policies. See [ADR-027](./docs/adrs/027-rancher-local-management-plane.md).
+
 ### Changed
 
 - **CI split into `ci.yaml` + `security.yaml`** — Trivy image/misconfig scans moved out of the merged `CI` workflow into a dedicated `Security` workflow (push to `main`/`dev`, weekly CVE cron, manual dispatch; PRs and feature branches skip Trivy as before). The CI badge now reflects repo validity (lint/render/secret-scan/sanity), not upstream image CVEs; a separate Security badge tracks the Trivy gate (fail-closed for digest-pinned first-party images, advisory otherwise). Weekly CVE cron moved with it; validate no longer runs on schedule.
