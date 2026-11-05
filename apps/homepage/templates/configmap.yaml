@@ -32,6 +32,10 @@ data:
             icon: argo-cd
             href: https://argocd{{ .Values.myDomain }}/
             description: GitOps deployments, sync status and app history
+        - Rancher:
+            icon: rancher
+            href: https://rancher{{ .Values.myDomain }}/
+            description: Rancher UI, local cluster inventory, catalogs and access
         {{- if .Values.vault.enabled }}
         - Vault:
             icon: vault
@@ -74,14 +78,6 @@ data:
             icon: si-almalinux
             href: https://aleph.lonk-mirfak.ts.net/
             description: Bare-metal node aleph, AlmaLinux 10.
-        - TrueNAS:
-            icon: truenas-scale
-            href: https://truenas-scale.lonk-mirfak.ts.net/
-            description: NAS pools, datasets, shares, snapshots and backups
-        - Portainer:
-            icon: portainer
-            href: https://truenas-scale.lonk-mirfak.ts.net:9443/
-            description: Containers, stacks, images and endpoint management
   widgets.yaml: |
     - kubernetes:
         cluster:
