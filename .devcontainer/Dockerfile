@@ -1,7 +1,7 @@
 # engram is a Go binary. Build it in a throwaway stage so the runtime image
 # keeps no Go toolchain (see S8 in odd/tasks/devcontainer-hardening.md).
 # v3.6.0 declares `go 1.26.10`, so the builder must be >= 1.26.
-FROM golang:1.26-bookworm AS engram
+FROM golang:1.27-bookworm AS engram
 ARG ENGRAM_VERSION=v3.6.0
 ENV GOBIN=/out
 RUN mkdir -p /out \
