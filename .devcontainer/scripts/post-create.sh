@@ -22,6 +22,7 @@ sudo chown -R vscode:vscode /home/vscode/.local/share/opencode \
     /home/vscode/.config/opencode
 
 # Installs into $OPENCODE_CONFIG (a volume), so it stays at runtime.
+gentle-ai install
 opencode plugin add @tarquinen/opencode-dcp@latest
 
 echo "📦 Install pi config..."

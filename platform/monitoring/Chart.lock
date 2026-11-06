@@ -4,12 +4,12 @@ dependencies:
   version: 7.5.0
 - name: kube-prometheus-stack
   repository: https://prometheus-community.github.io/helm-charts
-  version: 92.17.0
+  version: 92.21.1
 - name: alloy
   repository: https://grafana.github.io/helm-charts
   version: 1.15.0
 - name: s3-bucket-lib
   repository: file://../s3-bucket-lib
   version: 0.1.0
-digest: sha256:a4f659aed647d6cc4f6952d64c3174a0cfab694c65a3f01b6e071c987c75f454
-generated: "2026-11-05T16:06:28.809252374Z"
+digest: sha256:2e3334007d6fe1c829d8105088f47c579452b43302185e364950248df50ea702
+generated: "2026-11-05T23:45:24.566666988Z"

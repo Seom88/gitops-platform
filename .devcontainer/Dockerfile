@@ -1,14 +1,14 @@
 # engram is a Go binary. Build it in a throwaway stage so the runtime image
 # keeps no Go toolchain (see S8 in odd/tasks/devcontainer-hardening.md).
 # v3.6.0 declares `go 1.26.10`, so the builder must be >= 1.26.
-FROM golang:1.26-bookworm AS engram
+FROM golang:1.27-bookworm AS engram
 ARG ENGRAM_VERSION=v3.6.0
 ENV GOBIN=/out
 RUN mkdir -p /out \
     && go install "github.com/Gentleman-Programming/engram/v3/cmd/engram@${ENGRAM_VERSION}" \
     && test -x /out/engram
 
-FROM mcr.microsoft.com/devcontainers/base:debian13@sha256:6ee2b4097c75d33e9a94d941577a3286e5d629434fba384688b06daeeaaeac99
+FROM mcr.microsoft.com/devcontainers/base:debian13@sha256:71b6fe7c4e07ec747a94a72b2a17f2f8c286eaa7b1c59862888df764efb8b6c6
 
 LABEL org.opencontainers.image.title="secured-gitops-tailscale-homelab devcontainer"
 LABEL org.opencontainers.image.description="Podman devcontainer with gentle-ai agents, kubectl pointed at the tailnet API server; no tailscale client, no host toolchain, no inherited credentials."
@@ -155,7 +155,7 @@ RUN set -eu \
     && rm -rf /tmp/velero*
 
 # python
-COPY --from=ghcr.io/astral-sh/uv:0.8.0 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /usr/local/bin/
 ENV PYTHONPYCACHEPREFIX=/home/vscode/.cache/pycache
 
 ENV VIRTUAL_ENV=/opt/venv \
