@@ -155,7 +155,7 @@ RUN set -eu \
     && rm -rf /tmp/velero*
 
 # python
-COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /uvx /usr/local/bin/
 ENV PYTHONPYCACHEPREFIX=/home/vscode/.cache/pycache
 
 ENV VIRTUAL_ENV=/opt/venv \
