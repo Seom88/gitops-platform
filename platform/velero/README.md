@@ -37,9 +37,10 @@ Wave `-2` `tailscale-operator` (tailnet DNS stub `coredns-custom` in `kube-syste
 
 | Schedule | Cron | Scope | TTL | Status |
 |----------|------|-------|-----|--------|
-| `daily-full` | `0 18 * * *` | all namespaces except `vault`, control-plane (`velero`, `kube-*`, `longhorn-system`, `argocd`) | 7d | active |
+| `daily-full` | `0 18 * * *` | all namespaces except `vault`, control-plane (`velero`, `kube-*`, `longhorn-system`, `argocd`), and disposable telemetry (`monitoring`, `trivy-system`) | 7d | active |
 | `vault-hourly` | `0 * * * *` | `vault` namespace (retired) | 7d | `disabled: true` — see Vault policy |
 
+- `monitoring` and `trivy-system` are excluded by namespace. Prometheus/Loki data is regenerable telemetry and Trivy's cache is re-downloaded; together they accounted for ~97 GB of the ~132 GB RustFS bucket. This keeps the bucket small enough to fit on the 240 GB SSD alongside the OS.
 - `defaultVolumesToFsBackup: true` + `deployNodeAgent: true` + `nodeAgent.enabled: true` → Longhorn PVCs backed up via filesystem copy (no CSI snapshots). The node-agent gate and the FsBackup default must stay on together.
 - Resource guard: `resources.limits.memory: 512Mi` (chart default `128Mi` OOMKills during FsBackup on this homelab) — do not lower it.
 - Storage: `s3ForcePathStyle: true`, `s3Url: https://<FQDN>` (from `sharedS3.tailnetFqdn`; the svc name can never complete a RustFS TLS handshake — SNI must equal the LE-cert FQDN), `region: us-east-1`, `prefix: velero/`, single BSL `default`. Server-side FQDN resolution goes through kube-dns → `coredns-custom` (`lonk-mirfak.ts.net → 100.100.100.100`, node tailscaled with `--accept-dns`), closing the former `SERVER-RESOLUTION GAP`; the bucket-init Job additionally pins FQDN→resolved-IP at runtime (see `templates/job-bucket-init.yaml`).

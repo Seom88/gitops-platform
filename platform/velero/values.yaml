@@ -223,6 +223,12 @@ velero:
           - kube-public
           - kube-node-lease
           - longhorn-system
+          # Disposable telemetry. Prometheus/Loki data and the Trivy cache are
+          # regenerated (or not worth restoring) and dominated the RustFS
+          # bucket: ~97 GB of ~132 GB. Excluding the whole namespace keeps the
+          # 240 GB SSD viable without losing application data.
+          - monitoring
+          - trivy-system
           # Vault is NEVER backed up by Velero (policy): Raft restores from
           # Velero corrupt the cluster. DR is re-bootstrap via
           # platform/vault/scripts/bootstrap-vault.sh (init if
