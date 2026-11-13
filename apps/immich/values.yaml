@@ -40,7 +40,7 @@ backup:
 # Single source for instances/image/storage/database/owner; templates render it.
 cnpg:
   instances: 2
-  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.7-system-trixie
   storage:
     class: longhorn-cnpg
     # Was 2Gi and wedged at 100% on 2026-10-08: pg_wal grew unbounded because
