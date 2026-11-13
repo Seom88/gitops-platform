@@ -1,6 +1,6 @@
 dependencies:
 - name: kepler
   repository: oci://quay.io/sustainable_computing_io/charts
-  version: 0.12.0
-digest: sha256:9e4d0d87adcb72216f73d99c31fbfe79cf27b9c2936772db0eefc65a3f3d48b5
-generated: "2026-10-18T22:14:30.84059732-05:00"
+  version: 0.13.0
+digest: sha256:1158a0e6d5eb7bcc701e16896a727105e1fb0fabb80f8fdccd43828adcd15ef7
+generated: "2026-11-13T15:23:41.509791282Z"
