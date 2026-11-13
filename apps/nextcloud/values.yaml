@@ -47,7 +47,7 @@ recovery:
 # Shared CNPG Cluster contract (direct manifests in templates/pg-nextcloud.yaml).
 cnpg:
   instances: 2
-  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.7-system-trixie
   storage:
     class: longhorn-cnpg
     size: 3Gi
@@ -75,7 +75,7 @@ nextcloud:
   # Digest-pinned. The chart builds the ref as registry/repository:tag with no
   # digest field, so the digest travels inside tag; inline map keeps
   # `just validate-images` happy (no split repository:/tag: lines).
-  image: { registry: docker.io, repository: library/nextcloud, tag: 35.0.2-apache@sha256:57ef13427eb50e6fac64933e0f50cc4a2abaa142dfaf52dfb6c658382dd103a8 }
+  image: { registry: docker.io, repository: library/nextcloud, tag: 35.0.2-apache@sha256:d88929dc8386420b8963f86cabb667fdaf733eef9dcf8fc98e226801a32c023c }
 
   # Wave 2: this Deployment reads the CNPG-generated `nextcloud-database-app`
   # Secret (Cluster at wave 1). Without the delay, ArgoCD applies the Deployment
