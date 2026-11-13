@@ -8,6 +8,9 @@
 #     Secrets in this cluster). ConfigMaps are excluded by the same default
 #     decision; they can be added back later with one line if ever needed.
 #   - No exec/attach/portforward subresources — read-only means just that.
+#   - No metrics/proxy access: agents see service endpoints, not Prometheus
+#     queries. Trivy Operator reports below cover the CVE triage need that
+#     would otherwise require scraping metrics.
 #   - No write verbs: only get/list/watch are granted, on explicitly listed
 #     resources. Rules are written out in full (no aggregation) so the
 #     effective permissions stay deterministic and auditable.
@@ -71,4 +74,18 @@ rules:
   - apiGroups: ["cilium.io"]
     resources:
       - ciliumnetworkpolicies
+    verbs: ["get", "list", "watch"]
+  # Trivy Operator scan reports (in-cluster continuous CVE scanning). Read-only
+  # so agents triage the live findings from the cluster instead of relaying a
+  # stale dashboard screenshot. Cluster-scoped reports cover node images;
+  # the namespaced reports cover every workload image.
+  - apiGroups: ["aquasecurity.github.io"]
+    resources:
+      - vulnerabilityreports
+      - clustervulnerabilityreports
+      - configauditreports
+      - clusterauditreports
+      - exposedsecretreports
+      - sbomreports
+      - clustersbomreports
     verbs: ["get", "list", "watch"]
