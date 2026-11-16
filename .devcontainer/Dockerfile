@@ -8,7 +8,7 @@ RUN mkdir -p /out \
     && go install "github.com/Gentleman-Programming/engram/v3/cmd/engram@${ENGRAM_VERSION}" \
     && test -x /out/engram
 
-FROM mcr.microsoft.com/devcontainers/base:debian13@sha256:71b6fe7c4e07ec747a94a72b2a17f2f8c286eaa7b1c59862888df764efb8b6c6
+FROM mcr.microsoft.com/devcontainers/base:debian13@sha256:38f9e6c291f054e3c868d95a5477cbfcf76c0fa7c218dda65dc6aa3fbfe06871
 
 LABEL org.opencontainers.image.title="secured-gitops-tailscale-homelab devcontainer"
 LABEL org.opencontainers.image.description="Podman devcontainer with gentle-ai agents, kubectl pointed at the tailnet API server; no tailscale client, no host toolchain, no inherited credentials."
