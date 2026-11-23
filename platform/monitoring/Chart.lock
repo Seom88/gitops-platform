@@ -1,7 +1,7 @@
 dependencies:
 - name: loki
   repository: https://grafana.github.io/helm-charts
-  version: 7.6.0
+  version: 7.7.0
 - name: kube-prometheus-stack
   repository: https://prometheus-community.github.io/helm-charts
   version: 92.22.0
@@ -11,5 +11,5 @@ dependencies:
 - name: s3-bucket-lib
   repository: file://../s3-bucket-lib
   version: 0.1.0
-digest: sha256:3220ac96345a16eb7cce62b669130af9961470573303c511a6ddc1fa4568bfce
-generated: "2026-11-17T07:14:17.639001676Z"
+digest: sha256:aad41234bd8deed23c72fff977b7da30f45e7ca0c81a983e1fb152de7e5e9f55
+generated: "2026-11-23T02:31:39.60151677Z"
